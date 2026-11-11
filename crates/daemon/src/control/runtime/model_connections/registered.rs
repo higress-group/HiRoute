@@ -481,7 +481,13 @@ mod tests {
             .iter()
             .find(|product| product.product_key == "bailian-token-team-cn-beijing")
             .unwrap();
-        assert_eq!(token_plan_team.documented_upstream_model_ids.len(), 22);
+        assert_eq!(token_plan_team.documented_upstream_model_ids.len(), 23);
+        assert!(
+            token_plan_team
+                .documented_upstream_model_ids
+                .iter()
+                .any(|id| id == "deepseek-v4.1-flash-1017")
+        );
         for id in ["qwen4-max-preview", "qwen4.0-max-preview"] {
             assert!(
                 token_plan_team

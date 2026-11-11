@@ -252,8 +252,7 @@
       "authority_key": "meta",
       "description": "Primary provider documentation for meta",
       "allowed_https_prefixes": [
-        "https://ai.developer.meta.com/",
-        "https://dev.meta.ai/docs/"
+        "https://ai.developer.meta.com/"
       ],
       "evidence_scope": "provider identity, model capability, endpoint, authentication and discovery facts",
       "refresh_days": 14

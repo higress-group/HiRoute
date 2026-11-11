@@ -5,10 +5,9 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 NEW_MODELS = {
-    'qwen-4-max-preview', 'mistral-large-4', 'minimax-m3', 'minimax-m3-1-flash',
-    'glm-5-3-flashx-global', 'glm-5-3-flashx-legal-global', 'hunyuan-hy4',
+    'qwen-4-max-preview', 'minimax-m3', 'minimax-m3-1-flash',
+    'glm-5-3-flashx-global',
     'deepseek-v4-1-flash-1017', 'gemini-4-argon', 'gemini-4-carbon', 'grok-4-7',
-    'muse-wonder-1-0', 'muse-ember-1-0', 'muse-spark-1-3',
 }
 
 
@@ -125,8 +124,8 @@ class November11ModelProjectionTests(unittest.TestCase):
                 self.assertEqual(s['condition']['cache_mode'], 'implicit-only')
                 self.assertNotIn('cache-write', s['rates'])
 
-    def test_grok_and_ember_keep_published_thresholds_without_assumed_integer_units(self):
-        for key, low, high in [('grok-4-7', '< 200k', '>= 200k'), ('muse-ember-1-0', '<= 200K', '> 200K')]:
+    def test_grok_keeps_published_thresholds_without_assumed_integer_units(self):
+        for key, low, high in [('grok-4-7', '< 200k', '>= 200k')]:
             price, = self.prices(key)
             schedules = {s['schedule_key']: s for s in price['schedules']}
             self.assertEqual(schedules['standard-short-context']['condition']['provider_threshold'], low)
@@ -137,31 +136,56 @@ class November11ModelProjectionTests(unittest.TestCase):
                 self.assertNotIn('maximum_input_tokens', schedule['condition'])
                 self.assertNotIn('minimum_input_tokens', schedule['condition'])
 
-    def test_muse_contributor_requires_distinct_product_and_effort(self):
-        standard = self.records['official/meta-model-api-standard/muse-spark-1.3']
-        contributor = self.records['official/meta-model-api-contributor/muse-spark-1.3-contributor']
-        self.assertIn('max', standard['reasoning_rendering_hints']['supported_reasoning_efforts'])
-        self.assertNotIn('max', contributor['reasoning_rendering_hints']['supported_reasoning_efforts'])
-        self.assertFalse(self.source_records[standard['model_record_key']]['source_assertions'][0]['content_used_for_training'])
-        self.assertTrue(self.source_records[contributor['model_record_key']]['source_assertions'][0]['content_used_for_training'])
-        for key in ('muse-wonder-1-0', 'muse-ember-1-0'):
-            self.assertTrue(all(b['product_key'] == 'meta-model-api-standard' for b in self.bindings(key)))
-        self.assertFalse(any('wonder-full' in b['upstream_model_id'] for b in self.metadata['endpoint_bindings']))
+    def test_scope_deferral_does_not_add_specialist_or_extra_vendor_bindings(self):
+        deferred = {'muse-wonder-1-0', 'muse-ember-1-0', 'muse-spark-1-3',
+                    'mistral-large-4', 'hunyuan-hy4', 'glm-5-3-flashx-legal-global'}
+        self.assertTrue(deferred.isdisjoint(self.models))
+        self.assertFalse(any(b['model_key'] in deferred for b in self.metadata['endpoint_bindings']))
+        self.assertFalse(any(p['model_key'] in deferred for p in self.data['pricing_facts']))
+        self.assertIn('hunyuan-hy4-preview', self.models)
+        # Previously published client-scoped Muse records are preserved.
+        self.assertIn('openclaw/meta/muse-spark-1.3', self.records)
 
-    def test_unpublished_integer_limits_and_legal_vision_remain_unset(self):
-        for key in ('hunyuan-hy4', 'glm-5-3-flashx-global', 'glm-5-3-flashx-legal-global', 'mistral-large-4'):
-            self.assertIsNone(self.models[key]['context_tokens']['value'])
-        legal = self.models['glm-5-3-flashx-legal-global']
-        self.assertNotIn('image_input', legal['modalities'])
-        for key in ('glm-5-3-flashx-global', 'glm-5-3-flashx-legal-global'):
-            self.assertTrue(all(b['product_key'] == 'zai-general-global' for b in self.bindings(key)))
-        self.assertNotEqual(self.models['hunyuan-hy4']['model_key'], 'hunyuan-hy4-preview')
+    def test_flashx_stays_general_api_without_assumed_integer_limits(self):
+        model = self.models['glm-5-3-flashx-global']
+        self.assertIsNone(model['context_tokens']['value'])
+        self.assertIsNone(model['max_output_tokens']['value'])
+        self.assertTrue(all(b['product_key'] == 'zai-general-global'
+                            for b in self.bindings('glm-5-3-flashx-global')))
+
+    def test_deepseek_dated_revision_has_product_and_protocol_scoped_bindings(self):
+        model = self.models['deepseek-v4-1-flash-1017']
+        self.assertEqual(model['context_tokens']['state'], 'unknown')
+        self.assertEqual(model['max_output_tokens']['state'], 'unknown')
+        self.assertIsNone(model['reasoning']['default'])
+        self.assertEqual(model['reasoning']['profiles'], [])
+        bindings = self.bindings('deepseek-v4-1-flash-1017')
+        self.assertEqual({b['product_key'] for b in bindings}, {
+            'bailian-payg-cn', 'bailian-token-personal-cn-beijing', 'bailian-token-team-cn-beijing'})
+        for binding in bindings:
+            product = self.products[binding['product_key']]
+            self.assertIn('deepseek-v4.1-flash-1017', product['documented_upstream_model_ids'])
+            interfaces = {i['interface_key']: i for i in product['interfaces']}
+            self.assertEqual({interfaces[i]['protocol'] for i in binding['interface_candidates']},
+                             {'openai-chat', 'openai-responses', 'anthropic-messages'})
+            if binding['product_key'] == 'bailian-payg-cn':
+                face = interfaces['bailian-payg-cn/anthropic-messages-workspace-beijing']
+                self.assertEqual(face['base_url_template'],
+                                 'https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/apps/anthropic')
+                self.assertEqual(face['request_path'], '/v1/messages')
+
+    def test_qwen4_retirement_does_not_apply_to_the_entire_token_plan(self):
+        for tier in ('personal', 'team'):
+            product = self.products[f'bailian-token-{tier}-cn-beijing']
+            self.assertNotIn('2026-11-25', product['restriction'])
+            self.assertNotIn('retired', product['restriction'])
+            self.assertNotIn('preview', product['restriction'].lower())
+        self.assertIn('2026-11-25T16:00:00Z', self.models['qwen-4-max-preview']['data_note'])
 
     def test_callable_ids_and_lifecycle_survive_projection(self):
         old = self.models['mistral-large-3']
         self.assertEqual(old['lifecycle'], 'deprecated')
         self.assertEqual(old['upstream_ids'], ['mistral-large-2512'])
-        self.assertEqual(self.models['mistral-large-4']['upstream_ids'], ['mistral-large-4'])
         self.assertFalse(any(b['upstream_model_id'] == 'mistral-large-3-25-12' for b in self.metadata['endpoint_bindings']))
         self.assertIn('qwen3.8-max-0902', self.models['qwen-3-8-max']['upstream_ids'])
         self.assertIn('deepseek-v4.1-flash-1017', self.models['deepseek-v4-1-flash-1017']['upstream_ids'])
@@ -176,7 +200,7 @@ class November11ModelProjectionTests(unittest.TestCase):
         sources = {s['source_key']: s for s in self.source['evidence_sources']}
         self.assertEqual(sources['source-001']['collected_on'], '2026-09-13')
         self.assertEqual(sources['source-214']['collected_on'], '2026-11-10')
-        for key in ('source-qwen4-preview', 'source-minimax-pricing-current', 'source-mistral4', 'source-gemini4-carbon'):
+        for key in ('source-qwen4-preview', 'source-minimax-pricing-current', 'source-mistral3-lifecycle', 'source-gemini4-carbon'):
             self.assertEqual(sources[key]['collected_on'], '2026-11-11')
             self.assertEqual(sources[key]['digest_state'], 'captured')
             self.assertRegex(sources[key]['bytes_digest'], r'^sha256:[0-9a-f]{64}$')

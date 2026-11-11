@@ -1,7 +1,7 @@
 {
   "artifact_kind": "hiroute.model-metadata-client-discovery-runs",
   "as_of": "2026-11-11",
-  "catalog_digest_compared": "sha256:4bb742a3e6265f59acc745075a67c252b97ad4d788898bf436eb93c18f6388f1",
+  "catalog_digest_compared": "sha256:52358d8a1ce88fa63cf59e757bc0cc39be986bb703145511f6c4b8773ec355c7",
   "policy": {
     "candidate_outputs_materialized": true,
     "metadata_records_materialized": true,
@@ -11,26 +11,26 @@
     "determinate_outcome_closure_script": ".agents/skills/model-metadata-maintainer/scripts/close_model_metadata.py"
   },
   "materialization": {
-    "model_metadata_record_count": 791,
-    "provider_metadata_record_count": 115,
+    "model_metadata_record_count": 787,
+    "provider_metadata_record_count": 113,
     "scenario_eligible_record_counts": {
       "adapter-planning": 4,
-      "context-limit-prefill": 781,
+      "context-limit-prefill": 777,
       "cost-hint-display": 240,
-      "credential-setup-hint": 115,
-      "custom-api-endpoint-prefill": 94,
-      "custom-api-model-prefill": 791,
-      "lifecycle-warning": 791,
-      "model-directory": 791,
+      "credential-setup-hint": 113,
+      "custom-api-endpoint-prefill": 92,
+      "custom-api-model-prefill": 787,
+      "lifecycle-warning": 787,
+      "model-directory": 787,
       "model-discovery-setup": 102,
-      "output-limit-prefill": 752,
-      "provider-directory": 115,
-      "reasoning-capability-prefill": 787,
-      "reasoning-rendering-hint": 389,
-      "request-limit-prefill": 751,
-      "vision-capability-prefill": 789
+      "output-limit-prefill": 751,
+      "provider-directory": 113,
+      "reasoning-capability-prefill": 783,
+      "reasoning-rendering-hint": 385,
+      "request-limit-prefill": 750,
+      "vision-capability-prefill": 785
     },
-    "unique_upstream_model_id_count": 416
+    "unique_upstream_model_id_count": 414
   },
   "runs": [
     {
@@ -125,7 +125,7 @@
       "change_key": "november-11-primary-provider-refresh",
       "client_signal": "Earlier pinned client snapshots and current canonical catalog omit newly documented provider IDs and product boundaries.",
       "provider_resolution": "Rechecked first-party model, protocol, lifecycle and pricing documentation on 2026-11-11 against current main and production feed revision 10. Pinned client scans and unrelated evidence dates are unchanged.",
-      "catalog_result": "Add 14 canonical identities and scoped official prefill records; keep Qwen4 timed Token Plan preview and alias, protocol budgets, Gemini decode and dated rates, Muse consent, MiniMax tiers, HY4 and Legal boundaries explicit. Correct Qwen3.8 snapshot and Mistral Large 3 lifecycle/callable ID; no account or wire qualification is claimed."
+      "catalog_result": "Add seven general/reasoning/coding identities and a dated DeepSeek 1017 channel identity; preserve model-scoped preview windows, product/protocol budgets, dated prices and lifecycle corrections. No account or wire qualification is claimed."
     },
     {
       "change_key": "november-personal-quotas-doubao-terra-kimi-pro",

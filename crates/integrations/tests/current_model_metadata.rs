@@ -111,8 +111,8 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
             .all(|capability| !capability.capability_id.starts_with("cap.runtime.")),
         "incomplete bindings must not become executable capabilities"
     );
-    assert_eq!(data.metadata_catalog.provider_records.len(), 115);
-    assert_eq!(data.metadata_catalog.model_records.len(), 791);
+    assert_eq!(data.metadata_catalog.provider_records.len(), 113);
+    assert_eq!(data.metadata_catalog.model_records.len(), 787);
     assert_eq!(data.metadata_catalog.inference_rules.len(), 190);
     for product_key in [
         "bailian-token-personal-cn-beijing",
@@ -1003,10 +1003,7 @@ fn november_provider_limits_and_price_boundaries_survive_official_snapshot_loadi
     );
     let snapshot = serde_json::to_value(catalog.official_snapshot()).unwrap();
     let prices = snapshot["data"]["pricing_facts"].as_array().unwrap();
-    for (key, low, high) in [
-        ("grok-4-7", "< 200k", ">= 200k"),
-        ("muse-ember-1-0", "<= 200K", "> 200K"),
-    ] {
+    for (key, low, high) in [("grok-4-7", "< 200k", ">= 200k")] {
         let price = prices.iter().find(|p| p["model_key"] == key).unwrap();
         let schedules = price["schedules"].as_array().unwrap();
         let short = schedules

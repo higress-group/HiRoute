@@ -2669,10 +2669,10 @@
             "offer-only-until-price-contract-converges"
           ],
           "documented_upstream_model_ids": [
+            "MiniMax-M2.5",
             "glm-4.7",
             "glm-5",
             "kimi-k2.5",
-            "MiniMax-M2.5",
             "qwen3-coder-next",
             "qwen3-coder-plus",
             "qwen3-max-2026-01-23",
@@ -2794,6 +2794,14 @@
               "request_path_template": null
             },
             {
+              "base_url": null,
+              "base_url_template": "https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/apps/anthropic",
+              "interface_key": "bailian-payg-cn/anthropic-messages-workspace-beijing",
+              "protocol": "anthropic-messages",
+              "request_path": "/v1/messages",
+              "request_path_template": null
+            },
+            {
               "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
               "base_url_template": null,
               "interface_key": "bailian-payg-cn/openai-chat",
@@ -2855,6 +2863,7 @@
             "deepseek-v4-pro",
             "deepseek-v4-pro-0813",
             "deepseek-v4.1-flash",
+            "deepseek-v4.1-flash-1017",
             "glm-5.2",
             "glm-5.3",
             "qwen3.6-flash",
@@ -2913,7 +2922,7 @@
             "Credits reset each subscription month and do not roll over; usage pauses when exhausted unless a usage pack is available"
           ],
           "region_scope": "China, Beijing only",
-          "restriction": "Personal plan; Credits and eligibility are not PAYG tokens Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG."
+          "restriction": "Personal plan; Credits and eligibility are not PAYG tokens"
         },
         {
           "billing": "monthly-credits-per-seat",
@@ -2931,6 +2940,7 @@
             "deepseek-v4-pro",
             "deepseek-v4-pro-0813",
             "deepseek-v4.1-flash",
+            "deepseek-v4.1-flash-1017",
             "glm-5",
             "glm-5.1",
             "glm-5.2",
@@ -2988,7 +2998,7 @@
             "25000, 100000, or 250000 Credits per seat/month depending on tier"
           ],
           "region_scope": "China, Beijing only",
-          "restriction": "Team seat entitlement; no personal rolling-7-day semantics Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG."
+          "restriction": "Team seat entitlement; no personal rolling-7-day semantics"
         },
         {
           "billing": "aws-metered",
@@ -3393,104 +3403,6 @@
             "needs-runtime-qualification"
           ],
           "documented_upstream_model_ids": [
-            "muse-spark-1.3-contributor"
-          ],
-          "evidence_refs": [
-            "source-muse-pricing-current",
-            "source-muse-responses-current"
-          ],
-          "interfaces": [
-            {
-              "base_url": "https://api.meta.ai/v1",
-              "base_url_template": null,
-              "interface_key": "meta-model-api-contributor/anthropic-messages",
-              "protocol": "anthropic-messages",
-              "request_path": "/messages",
-              "request_path_template": null
-            },
-            {
-              "base_url": "https://api.meta.ai/v1",
-              "base_url_template": null,
-              "interface_key": "meta-model-api-contributor/openai-chat",
-              "protocol": "openai-chat",
-              "request_path": "/chat/completions",
-              "request_path_template": null
-            },
-            {
-              "base_url": "https://api.meta.ai/v1",
-              "base_url_template": null,
-              "interface_key": "meta-model-api-contributor/openai-responses",
-              "protocol": "openai-responses",
-              "request_path": "/responses",
-              "request_path_template": null
-            }
-          ],
-          "product": "Meta Model API Contributor",
-          "product_key": "meta-model-api-contributor",
-          "product_kind": "api-payg",
-          "provider": "Meta",
-          "quota_facts": [],
-          "region_scope": "Meta Model API account; model-specific regional restrictions apply",
-          "restriction": "Contributor content may be used to train Meta models. Requires explicit selection and consent, never a silent cheaper fallback. Only Spark variants are documented; max effort is unavailable on Spark 1.3 Contributor."
-        },
-        {
-          "billing": "payg",
-          "credential": "bearer API key",
-          "disposition": [
-            "catalog-representable",
-            "needs-runtime-qualification"
-          ],
-          "documented_upstream_model_ids": [
-            "muse-ember-1.0",
-            "muse-spark-1.3",
-            "muse-wonder-1.0"
-          ],
-          "evidence_refs": [
-            "source-muse-pricing-current",
-            "source-muse-responses-current"
-          ],
-          "interfaces": [
-            {
-              "base_url": "https://api.meta.ai/v1",
-              "base_url_template": null,
-              "interface_key": "meta-model-api-standard/anthropic-messages",
-              "protocol": "anthropic-messages",
-              "request_path": "/messages",
-              "request_path_template": null
-            },
-            {
-              "base_url": "https://api.meta.ai/v1",
-              "base_url_template": null,
-              "interface_key": "meta-model-api-standard/openai-chat",
-              "protocol": "openai-chat",
-              "request_path": "/chat/completions",
-              "request_path_template": null
-            },
-            {
-              "base_url": "https://api.meta.ai/v1",
-              "base_url_template": null,
-              "interface_key": "meta-model-api-standard/openai-responses",
-              "protocol": "openai-responses",
-              "request_path": "/responses",
-              "request_path_template": null
-            }
-          ],
-          "product": "Meta Model API Standard",
-          "product_key": "meta-model-api-standard",
-          "product_kind": "api-payg",
-          "provider": "Meta",
-          "quota_facts": [],
-          "region_scope": "Meta Model API account; model-specific regional restrictions apply",
-          "restriction": "Standard content is not used to train Meta models. Muse Wonder is unavailable in South Korea. Wonder Full is Muse Code subscription-only."
-        },
-        {
-          "billing": "payg",
-          "credential": "bearer API key",
-          "disposition": [
-            "catalog-representable",
-            "needs-runtime-qualification"
-          ],
-          "documented_upstream_model_ids": [
             "MiniMax-M2.7"
           ],
           "evidence_refs": [
@@ -3609,7 +3521,6 @@
           ],
           "documented_upstream_model_ids": [
             "mistral-large-2512",
-            "mistral-large-4",
             "mistral-small-2603"
           ],
           "evidence_refs": [
@@ -3617,8 +3528,7 @@
             "source-029",
             "source-030",
             "source-mistral-models-current",
-            "source-mistral3-lifecycle",
-            "source-mistral4"
+            "source-mistral3-lifecycle"
           ],
           "interfaces": [
             {
@@ -3776,63 +3686,10 @@
             "needs-runtime-qualification",
             "offer-only-until-price-contract-converges"
           ],
-          "documented_upstream_model_ids": [
-            "hy4",
-            "hy4-preview"
-          ],
-          "evidence_refs": [
-            "source-tencent-plans-current"
-          ],
-          "interfaces": [
-            {
-              "base_url": "https://tokenhub.tencentmaas.com/plan/anthropic",
-              "base_url_template": null,
-              "interface_key": "tencent-general-token-plan/tokenhub-anthropic-messages",
-              "protocol": "anthropic-messages",
-              "request_path": "/v1/messages",
-              "request_path_template": null
-            },
-            {
-              "base_url": "https://tokenhub.tencentmaas.com/plan/v3",
-              "base_url_template": null,
-              "interface_key": "tencent-general-token-plan/tokenhub-openai-chat",
-              "protocol": "openai-chat",
-              "request_path": "/chat/completions",
-              "request_path_template": null
-            },
-            {
-              "base_url": "https://tokenhub.tencentmaas.com/plan/v3",
-              "base_url_template": null,
-              "interface_key": "tencent-general-token-plan/tokenhub-openai-responses",
-              "protocol": "openai-responses",
-              "request_path": "/responses",
-              "request_path_template": null
-            }
-          ],
-          "product": "General Token Plan",
-          "product_key": "tencent-general-token-plan",
-          "product_kind": "credit-subscription",
-          "provider": "Tencent Cloud",
-          "quota_facts": [],
-          "region_scope": "Tencent Cloud plan service",
-          "restriction": "Personal interactive AI-tool use only; no unattended scripts, custom backends or non-interactive batch use. General and Hy Plans share a key but have separate entitlements."
-        },
-        {
-          "billing": "credits-subscription",
-          "credential": "bearer sk-tp",
-          "disposition": [
-            "catalog-representable",
-            "needs-runtime-qualification",
-            "offer-only-until-price-contract-converges"
-          ],
-          "documented_upstream_model_ids": [
-            "hy4",
-            "hy4-preview"
-          ],
+          "documented_upstream_model_ids": [],
           "evidence_refs": [
             "source-017",
-            "source-018",
-            "source-tencent-plans-current"
+            "source-018"
           ],
           "interfaces": [
             {
@@ -3850,30 +3707,6 @@
               "protocol": "openai-chat",
               "request_path": "/chat/completions",
               "request_path_template": null
-            },
-            {
-              "base_url": "https://tokenhub.tencentmaas.com/plan/anthropic",
-              "base_url_template": null,
-              "interface_key": "tencent-hy-token-plan/tokenhub-anthropic-messages",
-              "protocol": "anthropic-messages",
-              "request_path": "/v1/messages",
-              "request_path_template": null
-            },
-            {
-              "base_url": "https://tokenhub.tencentmaas.com/plan/v3",
-              "base_url_template": null,
-              "interface_key": "tencent-hy-token-plan/tokenhub-openai-chat",
-              "protocol": "openai-chat",
-              "request_path": "/chat/completions",
-              "request_path_template": null
-            },
-            {
-              "base_url": "https://tokenhub.tencentmaas.com/plan/v3",
-              "base_url_template": null,
-              "interface_key": "tencent-hy-token-plan/tokenhub-openai-responses",
-              "protocol": "openai-responses",
-              "request_path": "/responses",
-              "request_path_template": null
             }
           ],
           "product": "Hunyuan Token Plan",
@@ -3882,7 +3715,7 @@
           "provider": "Tencent Cloud",
           "quota_facts": [],
           "region_scope": "Tencent Cloud plan service",
-          "restriction": "Personal interactive AI-tool use only; no unattended scripts, custom backends or non-interactive batch use. General and Hy Plans share a key but have separate entitlements."
+          "restriction": "Separate sk-tp credential and Credits semantics"
         },
         {
           "billing": "token-cache-hour-mixed",
@@ -3892,16 +3725,11 @@
             "needs-runtime-qualification",
             "offer-only-until-price-contract-converges"
           ],
-          "documented_upstream_model_ids": [
-            "hy4"
-          ],
+          "documented_upstream_model_ids": [],
           "evidence_refs": [
             "source-013",
             "source-015",
-            "source-016",
-            "source-tencent-hy4-current",
-            "source-tencent-plans-current",
-            "source-tencent-protocols-current"
+            "source-016"
           ],
           "interfaces": [
             {
@@ -4173,8 +4001,7 @@
           "documented_upstream_model_ids": [
             "glm-5.3",
             "glm-5.3-flash",
-            "glm-5.3-flashx",
-            "glm-5.3-flashx-legal"
+            "glm-5.3-flashx"
           ],
           "evidence_refs": [
             "source-034",
@@ -5765,50 +5592,6 @@
           ]
         },
         {
-          "canonical_identity": "glm-5-3-flashx-legal-global",
-          "capabilities": {
-            "streaming": "conditional",
-            "tool": "conditional"
-          },
-          "context_tokens": {
-            "state": "unknown",
-            "value": null
-          },
-          "context_variants": [],
-          "data_note": "The overview labels context 1M and output 128K; no exact integer conversion is assumed. FlashX is not on Coding Plan. Legal is a separately priced text model; its limits and visual capabilities are not inherited from FlashX.",
-          "display_name": "GLM-5.3 FlashX Legal",
-          "evidence_refs": [
-            "source-zai-flashx-current",
-            "source-zai-pricing-current"
-          ],
-          "identity_stability": "immutable-or-provider-stable",
-          "lifecycle": "active",
-          "max_input_tokens": null,
-          "max_output_note": null,
-          "max_output_scope": null,
-          "max_output_tokens": {
-            "state": "unknown",
-            "value": null
-          },
-          "modalities": {
-            "text_input": "supported",
-            "text_output": "supported"
-          },
-          "model_key": "glm-5-3-flashx-legal-global",
-          "publisher": "Z.ai",
-          "reasoning": {
-            "default": null,
-            "kind": "conditional",
-            "note": null,
-            "profiles": []
-          },
-          "source_stability_note": "current-provider-documented",
-          "upstream_id_state": null,
-          "upstream_ids": [
-            "glm-5.3-flashx-legal"
-          ]
-        },
-        {
           "canonical_identity": "glm-5-3",
           "capabilities": {
             "streaming": "supported",
@@ -6474,54 +6257,6 @@
             "hy3",
             "hy3-202608",
             "hy3-preview"
-          ]
-        },
-        {
-          "canonical_identity": "hunyuan-hy4",
-          "capabilities": {
-            "streaming": "supported",
-            "structured_output": "supported",
-            "tool": "supported",
-            "vision": "supported"
-          },
-          "context_tokens": {
-            "state": "unknown",
-            "value": null
-          },
-          "context_variants": [],
-          "data_note": "Official table: context 1024k, input 960k, output 64k; exact integer conversion is unresolved. HY4 adds vision; HY4 Preview remains a separate identity. Promotional prices are not permanent rates.",
-          "display_name": "Hunyuan Hy4",
-          "evidence_refs": [
-            "source-tencent-hy4-current",
-            "source-tencent-plans-current",
-            "source-tencent-protocols-current"
-          ],
-          "identity_stability": "immutable-or-provider-stable",
-          "lifecycle": "active",
-          "max_input_tokens": null,
-          "max_output_note": null,
-          "max_output_scope": null,
-          "max_output_tokens": {
-            "state": "unknown",
-            "value": null
-          },
-          "modalities": {
-            "image_input": "supported",
-            "text_input": "supported",
-            "text_output": "supported"
-          },
-          "model_key": "hunyuan-hy4",
-          "publisher": "Tencent",
-          "reasoning": {
-            "default": null,
-            "kind": "model-documented",
-            "note": "Thinking is on by default; examples use thinking.type=enabled and reasoning_effort=high. An example value is not an established default.",
-            "profiles": []
-          },
-          "source_stability_note": "current-provider-documented",
-          "upstream_id_state": null,
-          "upstream_ids": [
-            "hy4"
           ]
         },
         {
@@ -7235,51 +6970,6 @@
           ]
         },
         {
-          "canonical_identity": "mistral-large-4",
-          "capabilities": {
-            "streaming": "conditional",
-            "structured_output": "supported",
-            "tool": "supported"
-          },
-          "context_tokens": {
-            "state": "unknown",
-            "value": null
-          },
-          "context_variants": [],
-          "data_note": "GA on 2026-11-05. Context label is 1M without an exact integer. Independent output maximum and effort levels are not established. The displayed callable ID is mistral-large-4, not the documentation slug mistral-large-4-0.",
-          "display_name": "Mistral Large 4",
-          "evidence_refs": [
-            "source-mistral4"
-          ],
-          "identity_stability": "immutable-or-provider-stable",
-          "lifecycle": "active",
-          "max_input_tokens": null,
-          "max_output_note": null,
-          "max_output_scope": null,
-          "max_output_tokens": {
-            "state": "unknown",
-            "value": null
-          },
-          "modalities": {
-            "image_input": "supported",
-            "text_input": "supported",
-            "text_output": "supported"
-          },
-          "model_key": "mistral-large-4",
-          "publisher": "Mistral AI",
-          "reasoning": {
-            "default": null,
-            "kind": "model-documented",
-            "note": null,
-            "profiles": []
-          },
-          "source_stability_note": "current-provider-documented",
-          "upstream_id_state": null,
-          "upstream_ids": [
-            "mistral-large-4"
-          ]
-        },
-        {
           "canonical_identity": "mistral-small-4-2603",
           "capabilities": {
             "streaming": "supported",
@@ -7321,177 +7011,6 @@
           "upstream_id_state": null,
           "upstream_ids": [
             "mistral-small-2603"
-          ]
-        },
-        {
-          "canonical_identity": "muse-ember-1-0",
-          "capabilities": {
-            "streaming": "supported",
-            "structured_output": "supported",
-            "tool": "supported"
-          },
-          "context_tokens": {
-            "state": "known",
-            "value": 1048576
-          },
-          "context_variants": [],
-          "data_note": "Reasoning and answer share the output budget, which must fit with input within the context. Maximum output is 524288. Pricing thresholds retain the provider label 200k/200K without an assumed integer conversion.",
-          "display_name": "Muse Ember 1.0",
-          "evidence_refs": [
-            "source-muse-ember-current",
-            "source-muse-reasoning-current",
-            "source-muse-responses-current"
-          ],
-          "identity_stability": "immutable-or-provider-stable",
-          "lifecycle": "active",
-          "max_input_tokens": null,
-          "max_output_note": null,
-          "max_output_scope": null,
-          "max_output_tokens": {
-            "state": "known",
-            "value": 524288
-          },
-          "modalities": {
-            "audio_input": "supported",
-            "image_input": "supported",
-            "pdf_input": "supported",
-            "text_input": "supported",
-            "text_output": "supported",
-            "video_input": "supported"
-          },
-          "model_key": "muse-ember-1-0",
-          "publisher": "Meta",
-          "reasoning": {
-            "default": "max",
-            "kind": "discrete-fixed-on",
-            "note": null,
-            "profiles": [
-              "minimal",
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "source_stability_note": "current-provider-documented",
-          "upstream_id_state": null,
-          "upstream_ids": [
-            "muse-ember-1.0"
-          ]
-        },
-        {
-          "canonical_identity": "muse-spark-1-3",
-          "capabilities": {
-            "streaming": "supported",
-            "structured_output": "supported",
-            "tool": "supported"
-          },
-          "context_tokens": {
-            "state": "known",
-            "value": 1048576
-          },
-          "context_variants": [],
-          "data_note": "Reasoning and answer share the output budget, which must fit with input within the context. Standard Spark 1.3 supports max; Contributor does not.",
-          "display_name": "Muse Spark 1.3",
-          "evidence_refs": [
-            "source-muse-reasoning-current",
-            "source-muse-responses-current",
-            "source-muse-spark-current"
-          ],
-          "identity_stability": "immutable-or-provider-stable",
-          "lifecycle": "active",
-          "max_input_tokens": null,
-          "max_output_note": null,
-          "max_output_scope": null,
-          "max_output_tokens": {
-            "state": "runtime_required",
-            "value": null
-          },
-          "modalities": {
-            "audio_input": "supported",
-            "image_input": "supported",
-            "pdf_input": "supported",
-            "text_input": "supported",
-            "text_output": "supported",
-            "video_input": "supported"
-          },
-          "model_key": "muse-spark-1-3",
-          "publisher": "Meta",
-          "reasoning": {
-            "default": "high",
-            "kind": "discrete-fixed-on",
-            "note": null,
-            "profiles": [
-              "minimal",
-              "low",
-              "medium",
-              "high",
-              "xhigh"
-            ]
-          },
-          "source_stability_note": "current-provider-documented",
-          "upstream_id_state": null,
-          "upstream_ids": [
-            "muse-spark-1.3",
-            "muse-spark-1.3-contributor"
-          ]
-        },
-        {
-          "canonical_identity": "muse-wonder-1-0",
-          "capabilities": {
-            "streaming": "supported",
-            "structured_output": "supported",
-            "tool": "supported"
-          },
-          "context_tokens": {
-            "state": "known",
-            "value": 1048576
-          },
-          "context_variants": [],
-          "data_note": "Reasoning and answer share the output budget, which must fit with input within the context. No independent output maximum is inferred.",
-          "display_name": "Muse Wonder 1.0",
-          "evidence_refs": [
-            "source-muse-reasoning-current",
-            "source-muse-responses-current",
-            "source-muse-wonder-current"
-          ],
-          "identity_stability": "immutable-or-provider-stable",
-          "lifecycle": "active",
-          "max_input_tokens": null,
-          "max_output_note": null,
-          "max_output_scope": null,
-          "max_output_tokens": {
-            "state": "runtime_required",
-            "value": null
-          },
-          "modalities": {
-            "audio_input": "supported",
-            "image_input": "supported",
-            "pdf_input": "supported",
-            "text_input": "supported",
-            "text_output": "supported",
-            "video_input": "supported"
-          },
-          "model_key": "muse-wonder-1-0",
-          "publisher": "Meta",
-          "reasoning": {
-            "default": "max",
-            "kind": "discrete-fixed-on",
-            "note": null,
-            "profiles": [
-              "minimal",
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "source_stability_note": "current-provider-documented",
-          "upstream_id_state": null,
-          "upstream_ids": [
-            "muse-wonder-1.0"
           ]
         },
         {
@@ -8527,6 +8046,7 @@
             "source-bailian-release-current"
           ],
           "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages-workspace-beijing",
             "bailian-payg-cn/openai-chat-workspace-beijing",
             "bailian-payg-cn/openai-responses-workspace-beijing"
           ],
@@ -9024,6 +8544,30 @@
         },
         {
           "availability": {
+            "condition": "Listed for this Beijing Token Plan. Subscription, account, region and protocol eligibility require qualification; this dated revision does not inherit rolling-ID reasoning defaults.",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-personal-cn-beijing/deepseek-v4-1-flash-1017/deepseek-v4.1-flash-1017",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-bailian-deepseek-current",
+            "source-qwen4-personal"
+          ],
+          "interface_candidates": [
+            "bailian-token-personal-cn-beijing/anthropic-messages",
+            "bailian-token-personal-cn-beijing/openai-chat",
+            "bailian-token-personal-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "deepseek-v4-1-flash-1017",
+          "product_key": "bailian-token-personal-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "deepseek-v4.1-flash-1017"
+        },
+        {
+          "availability": {
             "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
             "state": "conditional"
           },
@@ -9408,6 +8952,30 @@
           "replaced_by_upstream_id": null,
           "upstream_identity_role": null,
           "upstream_model_id": "deepseek-v3.2"
+        },
+        {
+          "availability": {
+            "condition": "Listed for this Beijing Token Plan. Subscription, account, region and protocol eligibility require qualification; this dated revision does not inherit rolling-ID reasoning defaults.",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/deepseek-v4-1-flash-1017/deepseek-v4.1-flash-1017",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-bailian-deepseek-current",
+            "source-qwen4-team"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/anthropic-messages",
+            "bailian-token-team-cn-beijing/openai-chat",
+            "bailian-token-team-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "deepseek-v4-1-flash-1017",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "deepseek-v4.1-flash-1017"
         },
         {
           "availability": {
@@ -10803,110 +10371,6 @@
         },
         {
           "availability": {
-            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Contributor content may be used to train Meta models. Requires explicit selection and consent, never a silent cheaper fallback. Only Spark variants are documented; max effort is unavailable on Spark 1.3 Contributor. Reasoning is always on; none is invalid.",
-            "state": "conditional"
-          },
-          "binding_key": "meta-model-api-contributor/muse-spark-1-3/muse-spark-1.3-contributor",
-          "capability_overrides": {},
-          "evidence_refs": [
-            "source-muse-pricing-current",
-            "source-muse-reasoning-current",
-            "source-muse-responses-current",
-            "source-muse-spark-current"
-          ],
-          "interface_candidates": [
-            "meta-model-api-contributor/anthropic-messages",
-            "meta-model-api-contributor/openai-chat",
-            "meta-model-api-contributor/openai-responses"
-          ],
-          "lifecycle": null,
-          "model_key": "muse-spark-1-3",
-          "product_key": "meta-model-api-contributor",
-          "protocol_qualification": "runtime-required",
-          "replaced_by_upstream_id": null,
-          "upstream_identity_role": "canonical-callable-id",
-          "upstream_model_id": "muse-spark-1.3-contributor"
-        },
-        {
-          "availability": {
-            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Standard content is not used to train Meta models. Muse Wonder is unavailable in South Korea. Wonder Full is Muse Code subscription-only. Reasoning is always on; none is invalid.",
-            "state": "conditional"
-          },
-          "binding_key": "meta-model-api-standard/muse-ember-1-0/muse-ember-1.0",
-          "capability_overrides": {},
-          "evidence_refs": [
-            "source-muse-ember-current",
-            "source-muse-pricing-current",
-            "source-muse-reasoning-current",
-            "source-muse-responses-current"
-          ],
-          "interface_candidates": [
-            "meta-model-api-standard/anthropic-messages",
-            "meta-model-api-standard/openai-chat",
-            "meta-model-api-standard/openai-responses"
-          ],
-          "lifecycle": null,
-          "model_key": "muse-ember-1-0",
-          "product_key": "meta-model-api-standard",
-          "protocol_qualification": "runtime-required",
-          "replaced_by_upstream_id": null,
-          "upstream_identity_role": "canonical-callable-id",
-          "upstream_model_id": "muse-ember-1.0"
-        },
-        {
-          "availability": {
-            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Standard content is not used to train Meta models. Muse Wonder is unavailable in South Korea. Wonder Full is Muse Code subscription-only. Reasoning is always on; none is invalid.",
-            "state": "conditional"
-          },
-          "binding_key": "meta-model-api-standard/muse-spark-1-3/muse-spark-1.3",
-          "capability_overrides": {},
-          "evidence_refs": [
-            "source-muse-pricing-current",
-            "source-muse-reasoning-current",
-            "source-muse-responses-current",
-            "source-muse-spark-current"
-          ],
-          "interface_candidates": [
-            "meta-model-api-standard/anthropic-messages",
-            "meta-model-api-standard/openai-chat",
-            "meta-model-api-standard/openai-responses"
-          ],
-          "lifecycle": null,
-          "model_key": "muse-spark-1-3",
-          "product_key": "meta-model-api-standard",
-          "protocol_qualification": "runtime-required",
-          "replaced_by_upstream_id": null,
-          "upstream_identity_role": "canonical-callable-id",
-          "upstream_model_id": "muse-spark-1.3"
-        },
-        {
-          "availability": {
-            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Standard content is not used to train Meta models. Muse Wonder is unavailable in South Korea. Wonder Full is Muse Code subscription-only. Reasoning is always on; none is invalid.",
-            "state": "conditional"
-          },
-          "binding_key": "meta-model-api-standard/muse-wonder-1-0/muse-wonder-1.0",
-          "capability_overrides": {},
-          "evidence_refs": [
-            "source-muse-pricing-current",
-            "source-muse-reasoning-current",
-            "source-muse-responses-current",
-            "source-muse-wonder-current"
-          ],
-          "interface_candidates": [
-            "meta-model-api-standard/anthropic-messages",
-            "meta-model-api-standard/openai-chat",
-            "meta-model-api-standard/openai-responses"
-          ],
-          "lifecycle": null,
-          "model_key": "muse-wonder-1-0",
-          "product_key": "meta-model-api-standard",
-          "protocol_qualification": "runtime-required",
-          "replaced_by_upstream_id": null,
-          "upstream_identity_role": "canonical-callable-id",
-          "upstream_model_id": "muse-wonder-1.0"
-        },
-        {
-          "availability": {
             "condition": "documented for the product; account, region, entitlement, and protocol still require qualification",
             "state": "conditional"
           },
@@ -11103,27 +10567,6 @@
           "replaced_by_upstream_id": null,
           "upstream_identity_role": "canonical-callable-id",
           "upstream_model_id": "mistral-large-2512"
-        },
-        {
-          "availability": {
-            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. GA on 2026-11-05. Context label is 1M without an exact integer. Independent output maximum and effort levels are not established. The displayed callable ID is mistral-large-4, not the documentation slug mistral-large-4-0.",
-            "state": "conditional"
-          },
-          "binding_key": "mistral-platform/mistral-large-4/mistral-large-4",
-          "capability_overrides": {},
-          "evidence_refs": [
-            "source-mistral4"
-          ],
-          "interface_candidates": [
-            "mistral-platform/openai-chat"
-          ],
-          "lifecycle": null,
-          "model_key": "mistral-large-4",
-          "product_key": "mistral-platform",
-          "protocol_qualification": "runtime-required",
-          "replaced_by_upstream_id": null,
-          "upstream_identity_role": "canonical-callable-id",
-          "upstream_model_id": "mistral-large-4"
         },
         {
           "availability": {
@@ -11411,54 +10854,6 @@
         },
         {
           "availability": {
-            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Interactive subscription entitlement; dedicated sk-tp key. No PAYG or permanent per-token price is inferred.",
-            "state": "conditional"
-          },
-          "binding_key": "tencent-general-token-plan/hunyuan-hy4-preview/hy4-preview/tokenhub-current",
-          "capability_overrides": {},
-          "evidence_refs": [
-            "source-tencent-plans-current",
-            "source-tencent-protocols-current"
-          ],
-          "interface_candidates": [
-            "tencent-general-token-plan/tokenhub-anthropic-messages",
-            "tencent-general-token-plan/tokenhub-openai-chat",
-            "tencent-general-token-plan/tokenhub-openai-responses"
-          ],
-          "lifecycle": null,
-          "model_key": "hunyuan-hy4-preview",
-          "product_key": "tencent-general-token-plan",
-          "protocol_qualification": "runtime-required",
-          "replaced_by_upstream_id": null,
-          "upstream_identity_role": "canonical-callable-id",
-          "upstream_model_id": "hy4-preview"
-        },
-        {
-          "availability": {
-            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Interactive subscription entitlement; dedicated sk-tp key. No PAYG or permanent per-token price is inferred.",
-            "state": "conditional"
-          },
-          "binding_key": "tencent-general-token-plan/hunyuan-hy4/hy4/tokenhub-current",
-          "capability_overrides": {},
-          "evidence_refs": [
-            "source-tencent-plans-current",
-            "source-tencent-protocols-current"
-          ],
-          "interface_candidates": [
-            "tencent-general-token-plan/tokenhub-anthropic-messages",
-            "tencent-general-token-plan/tokenhub-openai-chat",
-            "tencent-general-token-plan/tokenhub-openai-responses"
-          ],
-          "lifecycle": null,
-          "model_key": "hunyuan-hy4",
-          "product_key": "tencent-general-token-plan",
-          "protocol_qualification": "runtime-required",
-          "replaced_by_upstream_id": null,
-          "upstream_identity_role": "canonical-callable-id",
-          "upstream_model_id": "hy4"
-        },
-        {
-          "availability": {
             "condition": "documented for the product; account, entitlement, and protocol still require qualification",
             "state": "conditional"
           },
@@ -11553,54 +10948,6 @@
         },
         {
           "availability": {
-            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Interactive subscription entitlement; dedicated sk-tp key. No PAYG or permanent per-token price is inferred.",
-            "state": "conditional"
-          },
-          "binding_key": "tencent-hy-token-plan/hunyuan-hy4-preview/hy4-preview/tokenhub-current",
-          "capability_overrides": {},
-          "evidence_refs": [
-            "source-tencent-plans-current",
-            "source-tencent-protocols-current"
-          ],
-          "interface_candidates": [
-            "tencent-hy-token-plan/tokenhub-anthropic-messages",
-            "tencent-hy-token-plan/tokenhub-openai-chat",
-            "tencent-hy-token-plan/tokenhub-openai-responses"
-          ],
-          "lifecycle": null,
-          "model_key": "hunyuan-hy4-preview",
-          "product_key": "tencent-hy-token-plan",
-          "protocol_qualification": "runtime-required",
-          "replaced_by_upstream_id": null,
-          "upstream_identity_role": "canonical-callable-id",
-          "upstream_model_id": "hy4-preview"
-        },
-        {
-          "availability": {
-            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Interactive subscription entitlement; dedicated sk-tp key. No PAYG or permanent per-token price is inferred.",
-            "state": "conditional"
-          },
-          "binding_key": "tencent-hy-token-plan/hunyuan-hy4/hy4/tokenhub-current",
-          "capability_overrides": {},
-          "evidence_refs": [
-            "source-tencent-plans-current",
-            "source-tencent-protocols-current"
-          ],
-          "interface_candidates": [
-            "tencent-hy-token-plan/tokenhub-anthropic-messages",
-            "tencent-hy-token-plan/tokenhub-openai-chat",
-            "tencent-hy-token-plan/tokenhub-openai-responses"
-          ],
-          "lifecycle": null,
-          "model_key": "hunyuan-hy4",
-          "product_key": "tencent-hy-token-plan",
-          "protocol_qualification": "runtime-required",
-          "replaced_by_upstream_id": null,
-          "upstream_identity_role": "canonical-callable-id",
-          "upstream_model_id": "hy4"
-        },
-        {
-          "availability": {
             "condition": "documented for TokenHub; account, region, entitlement, and protocol still require qualification",
             "state": "conditional"
           },
@@ -11648,31 +10995,6 @@
           "replaced_by_upstream_id": null,
           "upstream_identity_role": "canonical-callable-id",
           "upstream_model_id": "hy4-preview"
-        },
-        {
-          "availability": {
-            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. HY4 supports Chat Completions, Responses and Messages; account and protocol qualification remain required.",
-            "state": "conditional"
-          },
-          "binding_key": "tencent-tokenhub-cn/hunyuan-hy4/hy4",
-          "capability_overrides": {},
-          "evidence_refs": [
-            "source-tencent-hy4-current",
-            "source-tencent-plans-current",
-            "source-tencent-protocols-current"
-          ],
-          "interface_candidates": [
-            "tencent-tokenhub-cn/anthropic-messages",
-            "tencent-tokenhub-cn/openai-chat",
-            "tencent-tokenhub-cn/openai-responses"
-          ],
-          "lifecycle": null,
-          "model_key": "hunyuan-hy4",
-          "product_key": "tencent-tokenhub-cn",
-          "protocol_qualification": "runtime-required",
-          "replaced_by_upstream_id": null,
-          "upstream_identity_role": "canonical-callable-id",
-          "upstream_model_id": "hy4"
         },
         {
           "availability": {
@@ -12023,28 +11345,6 @@
           "replaced_by_upstream_id": null,
           "upstream_identity_role": "canonical-callable-id",
           "upstream_model_id": "glm-5.3-flashx"
-        },
-        {
-          "availability": {
-            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. General API only; no FlashX Coding Plan entitlement is inferred.",
-            "state": "conditional"
-          },
-          "binding_key": "zai-general-global/glm-5-3-flashx-legal-global/glm-5.3-flashx-legal",
-          "capability_overrides": {},
-          "evidence_refs": [
-            "source-zai-flashx-current",
-            "source-zai-pricing-current"
-          ],
-          "interface_candidates": [
-            "zai-general-global/openai-chat"
-          ],
-          "lifecycle": null,
-          "model_key": "glm-5-3-flashx-legal-global",
-          "product_key": "zai-general-global",
-          "protocol_qualification": "runtime-required",
-          "replaced_by_upstream_id": null,
-          "upstream_identity_role": "canonical-callable-id",
-          "upstream_model_id": "glm-5.3-flashx-legal"
         },
         {
           "availability": {
@@ -14322,69 +13622,6 @@
           "source_kind": "provider-documentation"
         },
         {
-          "authority": "docs.mistral.ai",
-          "bytes_digest": "sha256:4975dc9f8bf79b8f4b5d7337181e619470569d28479292f063f74e2e9e3fe39f",
-          "collected_on": "2026-11-11",
-          "digest_state": "captured",
-          "locator": "https://docs.mistral.ai/models/mistral-large-4-0",
-          "source_key": "source-mistral4",
-          "source_kind": "provider-documentation"
-        },
-        {
-          "authority": "dev.meta.ai",
-          "bytes_digest": "sha256:dfb13a51b27873622b0f338175c88b970f063e929e24515f89dd977dbc0d2015",
-          "collected_on": "2026-11-11",
-          "digest_state": "captured",
-          "locator": "https://dev.meta.ai/docs/muse-ember",
-          "source_key": "source-muse-ember-current",
-          "source_kind": "provider-documentation"
-        },
-        {
-          "authority": "dev.meta.ai",
-          "bytes_digest": "sha256:7bb6fa70ef591666906488e33ae06fa613fea2b653a4bf83b6c188285ee06a76",
-          "collected_on": "2026-11-11",
-          "digest_state": "captured",
-          "locator": "https://dev.meta.ai/docs/pricing-rate-limits",
-          "source_key": "source-muse-pricing-current",
-          "source_kind": "provider-documentation"
-        },
-        {
-          "authority": "dev.meta.ai",
-          "bytes_digest": "sha256:d159c9f5b1cb8c19892f69abd2b6437eb09b7ebb4df842fecdf400761b66d25c",
-          "collected_on": "2026-11-11",
-          "digest_state": "captured",
-          "locator": "https://dev.meta.ai/docs/reasoning",
-          "source_key": "source-muse-reasoning-current",
-          "source_kind": "provider-documentation"
-        },
-        {
-          "authority": "dev.meta.ai",
-          "bytes_digest": "sha256:702f0777d8e9de0aea0dee85ef01730565127c2ae3cc892807620f859b6840ba",
-          "collected_on": "2026-11-11",
-          "digest_state": "captured",
-          "locator": "https://dev.meta.ai/docs/protocols/responses",
-          "source_key": "source-muse-responses-current",
-          "source_kind": "provider-documentation"
-        },
-        {
-          "authority": "dev.meta.ai",
-          "bytes_digest": "sha256:a3fb9919661aa31aab67a7f77a0bd74980a44600b860c28579d194fa442963a0",
-          "collected_on": "2026-11-11",
-          "digest_state": "captured",
-          "locator": "https://dev.meta.ai/docs/muse-spark",
-          "source_key": "source-muse-spark-current",
-          "source_kind": "provider-documentation"
-        },
-        {
-          "authority": "dev.meta.ai",
-          "bytes_digest": "sha256:6c5bcf20f31607bf7a24601bfd979d263c38336e65b3ae0d9a169b02dab75c06",
-          "collected_on": "2026-11-11",
-          "digest_state": "captured",
-          "locator": "https://dev.meta.ai/docs/muse-wonder",
-          "source_key": "source-muse-wonder-current",
-          "source_kind": "provider-documentation"
-        },
-        {
           "authority": "help.aliyun.com",
           "bytes_digest": "sha256:02ed6adbf4355a866a73d48805bc18d648c5861a10c825087223c0ae5083f523",
           "collected_on": "2026-11-11",
@@ -14445,33 +13682,6 @@
           "digest_state": "captured",
           "locator": "https://help.aliyun.com/zh/model-studio/token-plan-team-overview",
           "source_key": "source-qwen4-team",
-          "source_kind": "provider-documentation"
-        },
-        {
-          "authority": "cloud.tencent.com",
-          "bytes_digest": "sha256:403866cc005ddc807979618392c39315a93a100be7afe3955ca2f2d4ee3c1363",
-          "collected_on": "2026-11-11",
-          "digest_state": "captured",
-          "locator": "https://cloud.tencent.com/document/product/1823/132252",
-          "source_key": "source-tencent-hy4-current",
-          "source_kind": "provider-documentation"
-        },
-        {
-          "authority": "cloud.tencent.com",
-          "bytes_digest": "sha256:4bf152f0a3cd3adbb99782f59215f084f10b07c15d2e9daa9235da34496caff2",
-          "collected_on": "2026-11-11",
-          "digest_state": "captured",
-          "locator": "https://cloud.tencent.com/document/product/1823/130060",
-          "source_key": "source-tencent-plans-current",
-          "source_kind": "provider-documentation"
-        },
-        {
-          "authority": "cloud.tencent.com",
-          "bytes_digest": "sha256:11db721434bd698a3fddeb5cbf56b7a802104b2de682f921f47d2d3f434399a8",
-          "collected_on": "2026-11-11",
-          "digest_state": "captured",
-          "locator": "https://cloud.tencent.com/document/product/1823/130079",
-          "source_key": "source-tencent-protocols-current",
           "source_kind": "provider-documentation"
         },
         {
@@ -71944,367 +71154,6 @@
           },
           "context_tokens": {
             "state": "known",
-            "value": 1048576
-          },
-          "cost_hint_state": "not_recorded",
-          "cost_hints": [],
-          "display_name": "Muse Spark 1.3",
-          "execution_fit": {
-            "state": "native_text_representable"
-          },
-          "input_modalities": [
-            "audio",
-            "image",
-            "pdf",
-            "text",
-            "video"
-          ],
-          "lifecycle": "active",
-          "max_output_tokens": {
-            "state": "runtime_required",
-            "value": null
-          },
-          "metadata_completeness": {
-            "capabilities": "complete",
-            "cost": "missing",
-            "identity": "complete",
-            "lifecycle": "complete",
-            "limits": "partial",
-            "modalities": "complete",
-            "reasoning_rendering": "complete"
-          },
-          "model_record_key": "official/meta-model-api-contributor/muse-spark-1.3-contributor",
-          "normalized_model_matches": [
-            "muse-spark-1-3"
-          ],
-          "provenance_refs": [
-            {
-              "kind": "evidence-source",
-              "source_key": "source-muse-pricing-current"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-muse-reasoning-current"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-muse-responses-current"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-muse-spark-current"
-            }
-          ],
-          "provider_id": "meta-model-api-contributor",
-          "provider_record_key": "official/meta-model-api-contributor",
-          "reasoning_rendering_hints": {
-            "reasoning_effort_maps": [],
-            "supported_reasoning_efforts": [
-              "high",
-              "low",
-              "medium",
-              "minimal",
-              "xhigh"
-            ],
-            "thinking_level_maps": []
-          },
-          "replacement_upstream_ids": [],
-          "roles": [
-            "provider-documented-model"
-          ],
-          "status_candidates": [],
-          "upstream_model_id": "muse-spark-1.3-contributor",
-          "usable_for": [
-            "context-limit-prefill",
-            "custom-api-model-prefill",
-            "lifecycle-warning",
-            "model-directory",
-            "reasoning-capability-prefill",
-            "reasoning-rendering-hint",
-            "vision-capability-prefill"
-          ]
-        },
-        {
-          "capability_hints": {
-            "reasoning": "supported",
-            "streaming": "supported",
-            "tool": "supported",
-            "vision": "supported"
-          },
-          "context_tokens": {
-            "state": "known",
-            "value": 1048576
-          },
-          "cost_hint_state": "not_recorded",
-          "cost_hints": [],
-          "display_name": "Muse Ember 1.0",
-          "execution_fit": {
-            "state": "native_text_representable"
-          },
-          "input_modalities": [
-            "audio",
-            "image",
-            "pdf",
-            "text",
-            "video"
-          ],
-          "lifecycle": "active",
-          "max_output_tokens": {
-            "state": "known",
-            "value": 524288
-          },
-          "metadata_completeness": {
-            "capabilities": "complete",
-            "cost": "missing",
-            "identity": "complete",
-            "lifecycle": "complete",
-            "limits": "complete",
-            "modalities": "complete",
-            "reasoning_rendering": "complete"
-          },
-          "model_record_key": "official/meta-model-api-standard/muse-ember-1.0",
-          "normalized_model_matches": [
-            "muse-ember-1-0"
-          ],
-          "provenance_refs": [
-            {
-              "kind": "evidence-source",
-              "source_key": "source-muse-ember-current"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-muse-pricing-current"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-muse-reasoning-current"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-muse-responses-current"
-            }
-          ],
-          "provider_id": "meta-model-api-standard",
-          "provider_record_key": "official/meta-model-api-standard",
-          "reasoning_rendering_hints": {
-            "reasoning_effort_maps": [],
-            "supported_reasoning_efforts": [
-              "high",
-              "low",
-              "max",
-              "medium",
-              "minimal",
-              "xhigh"
-            ],
-            "thinking_level_maps": []
-          },
-          "replacement_upstream_ids": [],
-          "roles": [
-            "provider-documented-model"
-          ],
-          "status_candidates": [],
-          "upstream_model_id": "muse-ember-1.0",
-          "usable_for": [
-            "context-limit-prefill",
-            "custom-api-model-prefill",
-            "lifecycle-warning",
-            "model-directory",
-            "output-limit-prefill",
-            "reasoning-capability-prefill",
-            "reasoning-rendering-hint",
-            "request-limit-prefill",
-            "vision-capability-prefill"
-          ]
-        },
-        {
-          "capability_hints": {
-            "reasoning": "supported",
-            "streaming": "supported",
-            "tool": "supported",
-            "vision": "supported"
-          },
-          "context_tokens": {
-            "state": "known",
-            "value": 1048576
-          },
-          "cost_hint_state": "not_recorded",
-          "cost_hints": [],
-          "display_name": "Muse Spark 1.3",
-          "execution_fit": {
-            "state": "native_text_representable"
-          },
-          "input_modalities": [
-            "audio",
-            "image",
-            "pdf",
-            "text",
-            "video"
-          ],
-          "lifecycle": "active",
-          "max_output_tokens": {
-            "state": "runtime_required",
-            "value": null
-          },
-          "metadata_completeness": {
-            "capabilities": "complete",
-            "cost": "missing",
-            "identity": "complete",
-            "lifecycle": "complete",
-            "limits": "partial",
-            "modalities": "complete",
-            "reasoning_rendering": "complete"
-          },
-          "model_record_key": "official/meta-model-api-standard/muse-spark-1.3",
-          "normalized_model_matches": [
-            "muse-spark-1-3"
-          ],
-          "provenance_refs": [
-            {
-              "kind": "evidence-source",
-              "source_key": "source-muse-pricing-current"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-muse-reasoning-current"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-muse-responses-current"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-muse-spark-current"
-            }
-          ],
-          "provider_id": "meta-model-api-standard",
-          "provider_record_key": "official/meta-model-api-standard",
-          "reasoning_rendering_hints": {
-            "reasoning_effort_maps": [],
-            "supported_reasoning_efforts": [
-              "high",
-              "low",
-              "max",
-              "medium",
-              "minimal",
-              "xhigh"
-            ],
-            "thinking_level_maps": []
-          },
-          "replacement_upstream_ids": [],
-          "roles": [
-            "provider-documented-model"
-          ],
-          "status_candidates": [],
-          "upstream_model_id": "muse-spark-1.3",
-          "usable_for": [
-            "context-limit-prefill",
-            "custom-api-model-prefill",
-            "lifecycle-warning",
-            "model-directory",
-            "reasoning-capability-prefill",
-            "reasoning-rendering-hint",
-            "vision-capability-prefill"
-          ]
-        },
-        {
-          "capability_hints": {
-            "reasoning": "supported",
-            "streaming": "supported",
-            "tool": "supported",
-            "vision": "supported"
-          },
-          "context_tokens": {
-            "state": "known",
-            "value": 1048576
-          },
-          "cost_hint_state": "not_recorded",
-          "cost_hints": [],
-          "display_name": "Muse Wonder 1.0",
-          "execution_fit": {
-            "state": "native_text_representable"
-          },
-          "input_modalities": [
-            "audio",
-            "image",
-            "pdf",
-            "text",
-            "video"
-          ],
-          "lifecycle": "active",
-          "max_output_tokens": {
-            "state": "runtime_required",
-            "value": null
-          },
-          "metadata_completeness": {
-            "capabilities": "complete",
-            "cost": "missing",
-            "identity": "complete",
-            "lifecycle": "complete",
-            "limits": "partial",
-            "modalities": "complete",
-            "reasoning_rendering": "complete"
-          },
-          "model_record_key": "official/meta-model-api-standard/muse-wonder-1.0",
-          "normalized_model_matches": [
-            "muse-wonder-1-0"
-          ],
-          "provenance_refs": [
-            {
-              "kind": "evidence-source",
-              "source_key": "source-muse-pricing-current"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-muse-reasoning-current"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-muse-responses-current"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-muse-wonder-current"
-            }
-          ],
-          "provider_id": "meta-model-api-standard",
-          "provider_record_key": "official/meta-model-api-standard",
-          "reasoning_rendering_hints": {
-            "reasoning_effort_maps": [],
-            "supported_reasoning_efforts": [
-              "high",
-              "low",
-              "max",
-              "medium",
-              "minimal",
-              "xhigh"
-            ],
-            "thinking_level_maps": []
-          },
-          "replacement_upstream_ids": [],
-          "roles": [
-            "provider-documented-model"
-          ],
-          "status_candidates": [],
-          "upstream_model_id": "muse-wonder-1.0",
-          "usable_for": [
-            "context-limit-prefill",
-            "custom-api-model-prefill",
-            "lifecycle-warning",
-            "model-directory",
-            "reasoning-capability-prefill",
-            "reasoning-rendering-hint",
-            "vision-capability-prefill"
-          ]
-        },
-        {
-          "capability_hints": {
-            "reasoning": "supported",
-            "streaming": "supported",
-            "tool": "supported",
-            "vision": "supported"
-          },
-          "context_tokens": {
-            "state": "known",
             "value": 1000000
           },
           "cost_hint_state": "not_recorded",
@@ -104723,94 +103572,6 @@
             "api_key"
           ],
           "base_url_candidates": [
-            "https://api.meta.ai/v1"
-          ],
-          "default_model_ids": [],
-          "description_candidates": [],
-          "discovery_modes": [],
-          "display_name": "Meta Model API Contributor (Responses)",
-          "environment_variable_names": [],
-          "metadata_completeness": {
-            "authentication": "complete",
-            "discovery": "missing",
-            "endpoint": "complete",
-            "identity": "complete"
-          },
-          "models_url_candidates": [],
-          "protocol_candidates": [
-            "responses"
-          ],
-          "provenance_refs": [
-            {
-              "kind": "evidence-source",
-              "source_key": "source-muse-pricing-current"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-muse-responses-current"
-            }
-          ],
-          "provider_id": "meta-model-api-contributor",
-          "provider_record_key": "official/meta-model-api-contributor",
-          "signup_url_candidates": [],
-          "unsupported_api_styles": [],
-          "unsupported_transport_locators": [],
-          "usable_for": [
-            "credential-setup-hint",
-            "custom-api-endpoint-prefill",
-            "provider-directory"
-          ]
-        },
-        {
-          "aliases": [],
-          "authentication_candidates": [
-            "api_key"
-          ],
-          "base_url_candidates": [
-            "https://api.meta.ai/v1"
-          ],
-          "default_model_ids": [],
-          "description_candidates": [],
-          "discovery_modes": [],
-          "display_name": "Meta Model API Standard (Responses)",
-          "environment_variable_names": [],
-          "metadata_completeness": {
-            "authentication": "complete",
-            "discovery": "missing",
-            "endpoint": "complete",
-            "identity": "complete"
-          },
-          "models_url_candidates": [],
-          "protocol_candidates": [
-            "responses"
-          ],
-          "provenance_refs": [
-            {
-              "kind": "evidence-source",
-              "source_key": "source-muse-pricing-current"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-muse-responses-current"
-            }
-          ],
-          "provider_id": "meta-model-api-standard",
-          "provider_record_key": "official/meta-model-api-standard",
-          "signup_url_candidates": [],
-          "unsupported_api_styles": [],
-          "unsupported_transport_locators": [],
-          "usable_for": [
-            "credential-setup-hint",
-            "custom-api-endpoint-prefill",
-            "provider-directory"
-          ]
-        },
-        {
-          "aliases": [],
-          "authentication_candidates": [
-            "api_key"
-          ],
-          "base_url_candidates": [
             "https://api.minimax.io/v1"
           ],
           "default_model_ids": [],
@@ -107606,7 +106367,7 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:4bb742a3e6265f59acc745075a67c252b97ad4d788898bf436eb93c18f6388f1"
+      "source_catalog_digest": "sha256:52358d8a1ce88fa63cf59e757bc0cc39be986bb703145511f6c4b8773ec355c7"
     },
     "rating_snapshot": {
       "digest": "sha256:5fa20fef854989fc3c1a6106af04121e5b934ad1f391ab93a414958ec570aadf",
@@ -109715,7 +108476,7 @@
     "schema": "hiroute.release-model-data/v2"
   },
   "official_model_data": {
-    "data_revision": 12,
+    "data_revision": 13,
     "pricing_facts": [
       {
         "pricing_key": "anthropic-platform/claude-fable-5-2/claude-fable-5-2",
@@ -110344,130 +109105,6 @@
         ]
       },
       {
-        "pricing_key": "meta-model-api-contributor/muse-spark-1-3/muse-spark-1.3-contributor",
-        "product_key": "meta-model-api-contributor",
-        "model_key": "muse-spark-1-3",
-        "upstream_model_id": "muse-spark-1.3-contributor",
-        "currency": "USD",
-        "unit": "per-1m-tokens",
-        "price_state": "exact",
-        "schedules": [
-          {
-            "schedule_key": "contributor",
-            "condition": {
-              "kind": "always"
-            },
-            "application": "provider-defined",
-            "rates": {
-              "input": "0.10",
-              "cache-read": "0.002",
-              "output": "0.20"
-            }
-          }
-        ],
-        "evidence_refs": [
-          "source-muse-pricing-current"
-        ]
-      },
-      {
-        "pricing_key": "meta-model-api-standard/muse-ember-1-0/muse-ember-1.0",
-        "product_key": "meta-model-api-standard",
-        "model_key": "muse-ember-1-0",
-        "upstream_model_id": "muse-ember-1.0",
-        "currency": "USD",
-        "unit": "per-1m-tokens",
-        "price_state": "exact",
-        "schedules": [
-          {
-            "schedule_key": "standard-long-context",
-            "condition": {
-              "kind": "prompt-token-threshold",
-              "includes_cached_tokens": true,
-              "includes_stored_conversation": true,
-              "provider_threshold": "> 200K",
-              "threshold_token_unit": "unresolved"
-            },
-            "application": "whole-request",
-            "rates": {
-              "input": "0.30",
-              "cache-read": "0.012",
-              "output": "1.50"
-            }
-          },
-          {
-            "schedule_key": "standard-short-context",
-            "condition": {
-              "kind": "prompt-token-threshold",
-              "includes_cached_tokens": true,
-              "includes_stored_conversation": true,
-              "provider_threshold": "<= 200K",
-              "threshold_token_unit": "unresolved"
-            },
-            "application": "whole-request",
-            "rates": {
-              "input": "0.10",
-              "cache-read": "0.004",
-              "output": "0.50"
-            }
-          }
-        ],
-        "evidence_refs": [
-          "source-muse-pricing-current"
-        ]
-      },
-      {
-        "pricing_key": "meta-model-api-standard/muse-spark-1-3/muse-spark-1.3",
-        "product_key": "meta-model-api-standard",
-        "model_key": "muse-spark-1-3",
-        "upstream_model_id": "muse-spark-1.3",
-        "currency": "USD",
-        "unit": "per-1m-tokens",
-        "price_state": "exact",
-        "schedules": [
-          {
-            "schedule_key": "standard",
-            "condition": {
-              "kind": "always"
-            },
-            "application": "provider-defined",
-            "rates": {
-              "input": "1.25",
-              "cache-read": "0.15",
-              "output": "4.25"
-            }
-          }
-        ],
-        "evidence_refs": [
-          "source-muse-pricing-current"
-        ]
-      },
-      {
-        "pricing_key": "meta-model-api-standard/muse-wonder-1-0/muse-wonder-1.0",
-        "product_key": "meta-model-api-standard",
-        "model_key": "muse-wonder-1-0",
-        "upstream_model_id": "muse-wonder-1.0",
-        "currency": "USD",
-        "unit": "per-1m-tokens",
-        "price_state": "exact",
-        "schedules": [
-          {
-            "schedule_key": "standard",
-            "condition": {
-              "kind": "always"
-            },
-            "application": "provider-defined",
-            "rates": {
-              "input": "4",
-              "cache-read": "0.20",
-              "output": "20"
-            }
-          }
-        ],
-        "evidence_refs": [
-          "source-muse-pricing-current"
-        ]
-      },
-      {
         "pricing_key": "minimax-payg-global/minimax-m3-1-flash/MiniMax-M3.1-Flash",
         "product_key": "minimax-payg-global",
         "model_key": "minimax-m3-1-flash",
@@ -110566,33 +109203,6 @@
         ],
         "evidence_refs": [
           "source-minimax-pricing-current"
-        ]
-      },
-      {
-        "pricing_key": "mistral-platform/mistral-large-4/mistral-large-4",
-        "product_key": "mistral-platform",
-        "model_key": "mistral-large-4",
-        "upstream_model_id": "mistral-large-4",
-        "currency": "USD",
-        "unit": "per-1m-tokens",
-        "price_state": "exact",
-        "schedules": [
-          {
-            "schedule_key": "standard",
-            "condition": {
-              "kind": "service-tier",
-              "service_tier": "standard"
-            },
-            "application": "provider-defined",
-            "rates": {
-              "input": "0.7",
-              "cache-read": "0.07",
-              "output": "2.1"
-            }
-          }
-        ],
-        "evidence_refs": [
-          "source-mistral4"
         ]
       },
       {
@@ -110885,32 +109495,6 @@
         "product_key": "zai-general-global",
         "model_key": "glm-5-3-flashx-global",
         "upstream_model_id": "glm-5.3-flashx",
-        "currency": "USD",
-        "unit": "per-1m-tokens",
-        "price_state": "exact",
-        "schedules": [
-          {
-            "schedule_key": "standard",
-            "condition": {
-              "kind": "always"
-            },
-            "application": "provider-defined",
-            "rates": {
-              "input": "0.37",
-              "cache-read": "0.075",
-              "output": "1.25"
-            }
-          }
-        ],
-        "evidence_refs": [
-          "source-zai-pricing-current"
-        ]
-      },
-      {
-        "pricing_key": "zai-general-global/glm-5-3-flashx-legal-global/glm-5.3-flashx-legal",
-        "product_key": "zai-general-global",
-        "model_key": "glm-5-3-flashx-legal-global",
-        "upstream_model_id": "glm-5.3-flashx-legal",
         "currency": "USD",
         "unit": "per-1m-tokens",
         "price_state": "exact",
