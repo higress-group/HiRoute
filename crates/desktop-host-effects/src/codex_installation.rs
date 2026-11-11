@@ -77,7 +77,7 @@ pub(super) fn installed() -> Option<Installation> {
     ))
     .ok()?;
     // Fixed current-user package query. No shell text, app path or environment comes from IPC.
-    let script = r#"$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); $p=Get-AppxPackage -Name OpenAI.Codex | Sort-Object Version -Descending | Select-Object -First 1; if ($p) { $m=$p | Get-AppxPackageManifest; $a=$m.Package.Applications.Application | Where-Object { $_.Executable -match '(?i)(^|\\)(ChatGPT|Codex)\.exe$' } | Select-Object -First 1; if ($a) { [PSCustomObject]@{executable=[IO.Path]::Combine($p.InstallLocation,[string]$a.Executable)} | ConvertTo-Json -Compress } }"#;
+    let script = r#"$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); $p=Get-AppxPackage -Name OpenAI.Codex | Sort-Object Version -Descending | Select-Object -First 1; if ($p) { $m=$p | Get-AppxPackageManifest; $a=$m.Package.Applications.Application | Where-Object { $_.Executable -match '(?i)(^|[\\/])(ChatGPT|Codex)\.exe$' } | Select-Object -First 1; if ($a) { [PSCustomObject]@{executable=[IO.Path]::Combine($p.InstallLocation,[string]$a.Executable)} | ConvertTo-Json -Compress } }"#;
     let mut child = Command::new(powershell)
         .args([
             "-NoLogo",
