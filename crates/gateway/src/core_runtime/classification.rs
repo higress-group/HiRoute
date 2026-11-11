@@ -809,10 +809,7 @@ impl ProductionGatewayRuntime {
         let binding_key = RuntimeStateKey::binding(binding.consumer_binding_id.clone());
         let mut excluded = Vec::new();
         let mut last_failure = CallFailure::NoUsableCredentials;
-        let spend_estimates = self
-            .ports
-            .credentials
-            .decision_spend_estimates(binding, spending::input_bound(&prepared));
+        let spend_estimates = std::cell::OnceCell::new();
         for key in &admission.keys {
             ensure_call_active(call_deadline, overall_deadline, &cancellation)?;
             let binding_permit =
@@ -928,7 +925,13 @@ impl ProductionGatewayRuntime {
                     Ok(Some(_)) => unreachable!(),
                 }
             };
-            let spending = match spending::reserve(&lease, &spend_estimates) {
+            let spending = match spending::reserve(&lease, || {
+                spend_estimates.get_or_init(|| {
+                    self.ports
+                        .credentials
+                        .decision_spend_estimates(binding, spending::input_bound(&prepared))
+                })
+            }) {
                 Ok(value) => value,
                 Err(failure)
                     if failure.diagnostic().detail().kind == FailureKind::BudgetUnavailable =>

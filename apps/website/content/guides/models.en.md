@@ -88,7 +88,7 @@ In an API connection's details, open **API keys and allowances**, turn on **Limi
 
 Leave **Initial available amount** blank to start with the full amount, or enter the remainder if some credits were already spent.
 
-Allowances estimate spending for traffic through HiRoute. For known prices, HiRoute reserves funds before forwarding a request and settles the charge when the request finishes. This includes decision model calls that reuse the same API key. Set the applicable input, output and cache rates in the same currency under **Edit pricing**. A request with unknown prices can proceed and stays unpriced in the records, outside the spending total. When the allowance cannot cover a known charge, HiRoute tries another key or the next candidate.
+Allowances estimate ordinary inference spending through HiRoute. For known prices, HiRoute reserves funds before forwarding a request and settles the charge when the request finishes. Decision model calls and their connection tests do not use this local allowance, even if they reuse the same API key. The provider can still bill or limit both types of traffic. Set the applicable input, output and cache rates in the same currency under **Edit pricing**. A request with unknown prices can proceed and stays unpriced in the records, outside the spending total. When the allowance cannot cover a known charge, HiRoute tries another key or the next candidate.
 
 ## Set a proxy
 

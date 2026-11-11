@@ -217,11 +217,11 @@ fn decision_membership_issues_exact_leases_and_shares_only_the_destination() {
 }
 
 #[test]
-fn decision_budget_authority_damage_cannot_make_a_limited_key_unlimited() {
+fn budget_authority_damage_preserves_decision_leases_and_blocks_inference() {
     let root = tempdir().unwrap();
     populate_saved_source(root.path(), &WorkspaceId::default());
     let stores = LocalStorageSet::open_for_daemon_startup(root.path()).unwrap();
-    super::key_budgets::configure(
+    let key = super::key_budgets::configure(
         &stores,
         super::key_budgets::new_budget(1000),
         "decision-authority-budget",
@@ -235,23 +235,51 @@ fn decision_budget_authority_damage_cannot_make_a_limited_key_unlimited() {
         run(&stores, add(&source, decision), "decision-authority", false).state,
         OperationState::Succeeded
     );
-    assert!(stores.admit_decision_credentials(&binding).is_ok());
-    stores.control().with_connection(|db| {
-        db.execute("UPDATE decision_source_effects SET key_budget_owner_operation_id='missing-budget-owner'", []).unwrap();
-    });
-    assert!(stores.admit_decision_credentials(&binding).is_err());
-    stores.control().with_connection(|db| {
-        db.execute("UPDATE decision_source_effects SET key_budget_owner_operation_id=before_owner_operation_id", []).unwrap();
-    });
-    assert!(stores.admit_decision_credentials(&binding).is_ok());
-    stores.control().with_connection(|db| {
-        db.execute(
-            "UPDATE decision_source_effects SET key_budget_owner_operation_id=NULL",
-            [],
-        )
-        .unwrap();
-    });
-    assert!(stores.admit_decision_credentials(&binding).is_err());
+    let current = saved(&stores);
+    let inference = super::runtime_leases::frozen_request(&current, 0, 0);
+    assert_eq!(inference.credential_id, key);
+    assert!(
+        stores
+            .lease_native_credential_exact(&inference)
+            .unwrap()
+            .is_some()
+    );
+
+    let admission = stores.admit_decision_credentials(&binding).unwrap();
+    let decision = DecisionCredentialLeaseRequestV1 {
+        binding,
+        admitted_keys: admission.keys.clone(),
+        excluded_key_ids: vec![],
+        key_id: key.clone(),
+    };
+    for owner in [Some("missing-budget-owner"), None] {
+        stores.control().with_connection(|db| {
+            assert_eq!(
+                db.execute(
+                    "UPDATE decision_source_effects SET key_budget_owner_operation_id=?1",
+                    [owner],
+                )
+                .unwrap(),
+                1
+            );
+        });
+        assert!(stores.lease_native_credential_exact(&inference).is_err());
+        assert_eq!(
+            stores
+                .admit_decision_credentials(&decision.binding)
+                .unwrap(),
+            admission
+        );
+        let lease = stores
+            .lease_decision_credential_exact(&decision)
+            .unwrap()
+            .unwrap();
+        assert_eq!(lease.key_id(), key);
+        assert_eq!(
+            lease.generation(),
+            current.credentials[0].credential.generation()
+        );
+    }
     drop(stores);
     assert!(LocalStorageSet::open_for_daemon_startup(root.path()).is_err());
 }

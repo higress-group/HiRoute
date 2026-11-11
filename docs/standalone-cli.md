@@ -1335,13 +1335,11 @@ Key changes affect later calls without republishing. Changing the decision model
 protocol or source creates a new immutable revision; select that revision in the route and publish
 it. Previously published routes keep their selected revision and source.
 
-Shared decision calls and connection tests use the source Key's local allowance.
-Known prices reserve a conservative amount and settle the provider's actual usage,
-including input-cache details. Unknown prices allow the call and retain an unpriced
-pending record; recorded spending excludes that unknown amount. Known exhausted
-allowance still uses the next admitted Key. Current network tests can request
-`include_decision_failure: true` to distinguish local budget exhaustion or accounting
-unavailability from credentials and network failures.
+Shared decision calls and connection tests reuse the source's Key without
+consuming its local inference allowance. A spent local allowance does not prevent
+a decision call. Key permissions, provider billing and upstream limits still
+apply. Existing allowance records stay as recorded. Network tests can request
+`include_decision_failure: true` for details on decision failures.
 
 `decision connections test --service ID@REVISION` can test any exact retained revision, including
 one pinned by a published Plan after a newer save. Read the revision from the Plan when diagnosing

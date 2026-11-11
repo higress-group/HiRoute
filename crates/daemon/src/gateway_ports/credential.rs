@@ -106,9 +106,8 @@ where
         )
         .map_err(|_| PortError::Rejected)?;
         scope.ensure_active().map_err(|_| PortError::Rejected)?;
-        Ok(Some(
-            result.with_spend_authority(self.native.key_spend_authority()),
-        ))
+        // A decision reuses the Key's authorization, not its inference allowance.
+        Ok(Some(result))
     }
 
     fn current_credential_refs(
