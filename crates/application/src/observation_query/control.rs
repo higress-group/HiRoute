@@ -429,11 +429,11 @@ fn map_control(error: ControlReadError) -> ObservationQueryError {
     match error {
         ControlReadError::Denied
         | ControlReadError::CodexProfileConflict
-        | ControlReadError::DshDesktopModelCheckFailed(_)
         | ControlReadError::CollaborationRootRequired => ObservationQueryError::Unauthorized,
         ControlReadError::NotFound => ObservationQueryError::NotFound,
         ControlReadError::Corrupt => ObservationQueryError::Corrupt,
-        ControlReadError::ClientVersionRequired => ObservationQueryError::Unavailable,
+        ControlReadError::ClientVersionRequired
+        | ControlReadError::DshDesktopModelCheckFailed(_) => ObservationQueryError::Unavailable,
         ControlReadError::Unavailable | ControlReadError::SnapshotChanged => {
             ObservationQueryError::Unavailable
         }
