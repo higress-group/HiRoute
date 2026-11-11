@@ -281,6 +281,18 @@ Publication sequence and exact-payload digest acceptance SHALL be scoped to the 
 
 The publication and data-revision acceptance floors SHALL survive cache removal and restart. A corrupt or unavailable held copy SHALL not be partially used. In-flight retrieval invalidated by disable/removal SHALL not restore that copy or reverse the setting. Conditional retrieval SHALL fetch full content when no valid held copy exists. Interrupted activation SHALL recover a complete old or new generation under the existing checkpoint ordering, with an explicit retry/recovery state when necessary.
 
+The feed request SHALL advertise gzip support and SHALL also accept uncompressed JSON. Gzip decoding SHALL enforce the 16 MiB decoded-byte limit across all gzip members and a separate 32 MiB encoded-body limit, including gzip headers and empty members; compressed length SHALL NOT substitute for decoded length. Publication digests, semantic validation and private cache bytes SHALL use the exact decoded JSON. Unsupported content codings and corrupt or truncated gzip SHALL fail retrieval without replacing the held validated publication. This negotiation SHALL NOT change compression behavior for model inference, discovery or account-profile requests.
+
+#### Scenario: Gzip and plain responses preserve publication identity
+
+- **WHEN** the fixed feed origin serves the same publication as plain JSON or gzip, with a content length or chunked transfer
+- **THEN** the client obtains identical complete JSON bytes, payload digest and semantic data, preserves a valid ETag when supplied and retains existing conditional-response behavior.
+
+#### Scenario: A small compressed body exceeds the decoded bound
+
+- **WHEN** a gzip response, including concatenated members, expands beyond the supported decoded-byte limit
+- **THEN** the client stops after bounded decoding, classifies the response as oversized and leaves the held validated publication and acceptance floors unchanged.
+
 #### Scenario: Invalid publication
 
 - **WHEN** the HTTPS publication fails schema or content validation
