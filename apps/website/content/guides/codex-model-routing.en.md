@@ -82,6 +82,8 @@ Codex can keep using subscription models to run tasks while the OpenAI API conne
 
 Decision calls can draw on the API credits in the OpenAI organization linked to this connection. Even if an execution candidate uses the same key, decision calls do not consume HiRoute's [local key spending allowance](/en/docs/models/#api-key-allowance). [Learn about stage scoring and low-score protection](/en/docs/model-routing/#difficulty-routing)
 
+After a task, [ask your Agent to review model switches and tune decision prompts and trust](/en/docs/optimize-model-routing/) to check whether the primary allowance went to stages that needed it.
+
 <h3 id="credit-candidates">Add the subscription and API credits as same-model candidates</h3>
 
 To use one model across the two sources, create a **Fixed model** route. Open **Models → General models** and switch to the **Models** view. Open the model from the source you want to use first. Click **Create routing**, then **Add together as candidates** in **Matching models found**. Check that the list contains the subscription and API sources you want. Set their order and enable the route. For an existing fixed route, new candidates are appended. Reorder them in the editor and publish the changes. Select the published route in Codex in the next step.

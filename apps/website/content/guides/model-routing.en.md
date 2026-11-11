@@ -170,6 +170,8 @@ Open View assessment evidence or Stage details, then locate the session evidence
 
 New drafts cannot rewrite past selection or thresholds. Read missing and partial scores with their coverage; HiRoute never rewrites a plan automatically because of one low score.
 
+To turn these records into better routing, see [Review and optimize model routing](/en/docs/optimize-model-routing/): extract engineering cases, tune decision prompts and trust, then validate quality, time and cost on new tasks.
+
 ## Advanced configuration and runtime rules
 
 <details>

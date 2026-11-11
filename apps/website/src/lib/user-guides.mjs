@@ -76,6 +76,14 @@ export const guidePages = {
       en: 'Configure a set of models for your Agent. Fixed model and Free first follow candidate order, difficulty routing keeps hard parts on your primary model, and custom branches pick by task category.',
     },
   },
+  'optimize-model-routing': {
+    zh: '复盘与优化模型路由', en: 'Review and optimize model routing',
+    title: { zh: 'Codex token 成本优化：让 Agent 复盘路由、调整决策提示词与信任度', en: 'Optimize Codex token costs: review routing, decision prompts and trust' },
+    description: {
+      zh: 'Codex 额度不够用？让 Agent 用 HiRoute CLI 分析模型切换、阶段评分和费用，提炼工程案例，优化难度提示词与信任度，再用测试和新任务验证。附可复制指引与提示词示例。',
+      en: 'Review model switches, stage scores and costs with the HiRoute CLI. Let your Agent tune decision prompts and trust, then validate on new tasks. Includes copyable prompts.',
+    },
+  },
   'task-routing': {
     zh: 'Agent 智能路由', en: 'Smart Agent routing',
     title: { zh: 'Agent 智能路由：跨 Harness 委派任务', en: 'Smart Agent routing: delegate across harnesses' },
