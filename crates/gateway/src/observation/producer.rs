@@ -27,7 +27,7 @@ use bounded::{
 };
 pub(super) use bounded::{ContentQueueLimits, ContentSpool};
 pub use bounded::{
-    ContentResourceSnapshot, ObservationAck, ObservationNack, ObservationRecord,
+    ContentResourceSnapshot, ObservationAck, ObservationError, ObservationNack, ObservationRecord,
     ObservationRecordSink,
 };
 pub use feedback::accounted_acknowledgement;
@@ -44,6 +44,12 @@ pub(super) struct ChannelProducer {
 }
 
 impl ChannelProducer {
+    pub(super) fn drain(&self, timeout: Duration) -> Result<(), ObservationError> {
+        self.inner
+            .as_ref()
+            .map_or(Ok(()), |inner| inner.drain(timeout))
+    }
+
     #[cfg(test)]
     pub(super) fn flush(&self, timeout: Duration) {
         self.inner.as_ref().unwrap().flush(timeout).unwrap();
