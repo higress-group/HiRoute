@@ -62,6 +62,7 @@ INTEGRATION_SHARDS = {
         ("hiroute-integrations", "model_connections"),
         ("hiroute-integrations", "pre_gateway_compute"),
         ("hiroute-integrations", "release_facts"),
+        ("hiroute-integrations", "release_facts_size"),
         ("hiroute-local-storage", "canonical_compat"),
         ("hiroute-host-runtime", "release_catalog_compatibility"),
     },

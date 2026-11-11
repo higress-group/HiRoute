@@ -72,6 +72,7 @@ jobs:
         run: |
           python3 tools/model-metadata/close_model_metadata.py --check
           python3 tools/model-metadata/validate_catalog.py
+          python3 assets/model-data/current/test_generate.py
           python3 assets/model-data/current/generate.py --check
           python3 assets/release-facts/current/prepare-bundle.py --check
       - name: Validate model feed with the client admission code
