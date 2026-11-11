@@ -82,7 +82,7 @@ CLI 参考：https://hiroute.ai/zh/docs/cli/
   <figcaption>从首页“新模型”卡片进入试用；是否需要接入，取决于你已有的模型连接。</figcaption>
 </figure>
 
-继续阅读：[试用新模型](/zh/docs/model-trial/) · [配置智能模型路由](/zh/docs/model-routing/)。实际节省取决于模型价格、任务分布和兜底频率，以你的执行记录为准。
+继续阅读：[试用新模型](/zh/docs/model-trial/) · [配置智能模型路由](/zh/docs/model-routing/) · [让 Agent 复盘与优化路由](/zh/docs/optimize-model-routing/)。实际节省取决于模型价格、任务分布和兜底频率，以你的执行记录为准。
 
 ## 路径二：把任务交给另一种 Agent
 
