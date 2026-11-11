@@ -63,6 +63,13 @@ spellings, are rejected. Integer literals retain signed/unsigned 64-bit precisio
 decimal rates and descriptive decimal quantities use strings. Rust and Node share
 [canonical identity goldens](../../contracts/model-feed/canonical-data.v1.json).
 
+The feed request advertises `Accept-Encoding: gzip` and also accepts plain JSON.
+Gzip is decoded as a bounded stream, including concatenated members. The 16 MiB
+limit applies to decoded JSON. A separate 32 MiB encoded-body limit bounds gzip
+headers and empty members; compressed `Content-Length` is not decoded size. The exact
+decoded bytes remain the publication digest and private cache representation;
+HTTP compression does not change the publication or semantic data identity.
+
 HTTPS certificate validation and the production website pipeline establish trust.
 There is no signing key or signature envelope. Production refuses redirects and
 caller-supplied URLs. Requests carry no account, credential, session or usage data.
