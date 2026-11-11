@@ -32,19 +32,26 @@ def configure_ubuntu_sources(apt_root):
             print(f'Using official Ubuntu HTTPS sources in {source.name}', flush=True)
 
 
+def run_apt_stage(name, limit, command):
+    print(f'Native prerequisites: {name} (limit {limit})', flush=True)
+    # GNU timeout bounds the entire apt process group, including downloads.
+    subprocess.run(['timeout', '--kill-after=10s', limit, *command],
+                   check=True, env={**os.environ, 'DEBIAN_FRONTEND': 'noninteractive'})
+
+
 def install_prerequisites(apt_root=Path('/etc/apt')):
     configure_ubuntu_sources(apt_root)
     apt = ['apt-get', '-o', 'Acquire::Retries=2', '-o', 'Acquire::http::Timeout=30',
            '-o', 'Acquire::https::Timeout=30', '-o', 'DPkg::Lock::Timeout=60']
-    stages = (
-        ('update', '180s', ['-o', 'APT::Update::Error-Mode=any', 'update']),
-        ('install', '300s', ['install', '--yes', 'cmake', 'clang', 'pkg-config', 'libssl-dev']),
-    )
-    for name, limit, arguments in stages:
-        print(f'Native prerequisites: {name} (limit {limit})', flush=True)
-        # GNU timeout bounds the entire apt process group, including downloads.
-        subprocess.run(['timeout', '--kill-after=10s', limit, *apt, *arguments],
-                       check=True, env={**os.environ, 'DEBIAN_FRONTEND': 'noninteractive'})
+    update = [*apt, '-o', 'APT::Update::Error-Mode=any', '-o', 'Acquire::Languages=none', 'update']
+    try:
+        run_apt_stage('update', '180s', update)
+    except subprocess.CalledProcessError as error:
+        if error.returncode not in (100, 124):  # apt-get error or GNU timeout
+            raise
+        print(f'Native prerequisite update failed (exit {error.returncode}). Retrying once.', flush=True)
+        run_apt_stage('update retry', '180s', update)
+    run_apt_stage('install', '300s', [*apt, 'install', '--yes', 'cmake', 'clang', 'pkg-config', 'libssl-dev'])
 
 
 if __name__ == '__main__':

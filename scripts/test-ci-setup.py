@@ -89,6 +89,7 @@ class PrerequisiteTests(unittest.TestCase):
         self.assertEqual(update[:3], ['timeout', '--kill-after=10s', '180s'])
         self.assertEqual(install[:3], ['timeout', '--kill-after=10s', '300s'])
         self.assertIn('APT::Update::Error-Mode=any', update)
+        self.assertIn('Acquire::Languages=none', update)
         self.assertEqual(install[-6:], ['install', '--yes', 'cmake', 'clang', 'pkg-config', 'libssl-dev'])
         for call in run.call_args_list:
             self.assertTrue(call.kwargs['check'])
@@ -98,20 +99,33 @@ class PrerequisiteTests(unittest.TestCase):
             self.assertEqual(call.kwargs['env']['DEBIAN_FRONTEND'], 'noninteractive')
             self.assertEqual(call.kwargs['env']['PATH'], os.environ['PATH'])
 
-    def test_failed_update_including_timeout_does_not_install_or_succeed(self):
+    def test_failed_update_retries_before_installing(self):
+        for exit_code in (100, 124):
+            with self.subTest(exit_code=exit_code):
+                failure = subprocess.CalledProcessError(exit_code, 'apt-get')
+                with patch.object(self.ci.subprocess, 'run', side_effect=[failure, None, None]) as run:
+                    self.ci.install_prerequisites(self.apt)
+                first, retry, install = [call.args[0] for call in run.call_args_list]
+                self.assertEqual(first[-1], 'update')
+                self.assertEqual(retry, first)
+                self.assertIn('install', install)
+
+    def test_persistent_update_failure_does_not_install_or_succeed(self):
         for exit_code in (100, 124):
             with self.subTest(exit_code=exit_code):
                 failure = subprocess.CalledProcessError(exit_code, 'apt-get')
                 with patch.object(self.ci.subprocess, 'run', side_effect=failure) as run:
                     with self.assertRaises(subprocess.CalledProcessError):
                         self.ci.install_prerequisites(self.apt)
-                self.assertEqual(run.call_count, 1)
+                self.assertEqual(run.call_count, 2)
+                self.assertTrue(all(call.args[0][-1] == 'update' for call in run.call_args_list))
 
     def test_failed_install_is_not_waived(self):
         failure = subprocess.CalledProcessError(100, 'apt-get')
-        with patch.object(self.ci.subprocess, 'run', side_effect=[None, failure]):
+        with patch.object(self.ci.subprocess, 'run', side_effect=[None, failure]) as run:
             with self.assertRaises(subprocess.CalledProcessError):
                 self.ci.install_prerequisites(self.apt)
+        self.assertEqual(run.call_count, 2)
 
 
 if __name__ == '__main__':
