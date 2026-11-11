@@ -723,7 +723,21 @@ of HTTP entity completion. The [socket regressions](../gateway-core/tests/gatewa
 and [full listener cases](../../tools/e2e-harness/tests/p0_gateway_commit_boundary.rs)
 cover completion, deadline and disconnect delivery without another attempt.
 
-### Candidate preparation errors
+### Execution facts at shutdown
+
+Role-all shutdown stops Control/Worker/request producers before waiting for the
+execution-fact sink's admitted sequence prefix. Its ACK frontier advances only
+after per-record feedback or an acknowledged declared-loss watermark. The wait
+uses the remaining component-join deadline and does not require a free event-queue
+slot. A missed deadline remains a shutdown error; an enqueued or dequeued record
+alone is not proof of persistence.
+
+This barrier belongs to shutdown, separate from optional Content capture. Active
+request publishing remains nonblocking, and existing NACK/loss semantics cannot
+be interpreted as complete receipts. Receipt envelopes, stored representations and
+reopen readers retain their current contracts.
+
+## Candidate preparation errors
 
 A published plan freezes candidate selection, while the exact credential authority
 still checks current source and Key permission before decryption. A managed source

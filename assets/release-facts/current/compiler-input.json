@@ -713,7 +713,7 @@
         "entitlement_id": "api-key",
         "inventory_protocol_endpoint_id": "endpoint.google.gemini-api.global.v1.chat",
         "inventory_strategy": "remote_models",
-        "last_verified_at": 1789257600,
+        "last_verified_at": 1794355200,
         "logical_endpoint_group": "google-gemini-api",
         "protocol_endpoints": [
           {
@@ -735,7 +735,7 @@
         "revision": 1,
         "service_offering_id": "gemini-api-paid",
         "usage_scope": "project",
-        "verification_evidence": "sha256:8022f0ca2975f0255dea41c5408e4b8db4aef1abd072f2f8a1de8764665c38fb"
+        "verification_evidence": "sha256:0f584cc63b346cba988813bfb3234c673b5a243f8ddb9a7938aef7af39325aaf"
       },
       {
         "endpoint_profile_id": "endpoint.groq.free-plan.global.v1",
@@ -1027,7 +1027,7 @@
         "endpoint_profile_id": "endpoint.zai.coding-plan.global.v1",
         "entitlement_id": "api-key",
         "inventory_strategy": "bundled_catalog",
-        "last_verified_at": 1789257600,
+        "last_verified_at": 1794355200,
         "logical_endpoint_group": "zai-coding-plan",
         "protocol_endpoints": [
           {
@@ -1066,7 +1066,7 @@
         "revision": 1,
         "service_offering_id": "coding-plan",
         "usage_scope": "account",
-        "verification_evidence": "sha256:6560d925acd10bd33a4dfb30506c5e91a0ffd3b1911c2188145509483666f30c"
+        "verification_evidence": "sha256:7c1bccbb65aa8c9a9dfeeffd9a78528851d2c5a8a2a323bcf9c31e506c52e08f"
       },
       {
         "connector_id": "connector.zai.p0",
@@ -1074,7 +1074,7 @@
         "endpoint_profile_id": "endpoint.zai.general.global.v1",
         "entitlement_id": "api-key",
         "inventory_strategy": "bundled_catalog",
-        "last_verified_at": 1789257600,
+        "last_verified_at": 1794355200,
         "logical_endpoint_group": "zai-general",
         "protocol_endpoints": [
           {
@@ -1095,7 +1095,7 @@
         "revision": 1,
         "service_offering_id": "general",
         "usage_scope": "account",
-        "verification_evidence": "sha256:3b5e30780af253304d215c20ac1254a3f9ebecb898b7cc27948c25203492f302"
+        "verification_evidence": "sha256:84b692bf7f8848e452e41e897c92a8fa78315490b0da7eab689e2b4cf91d313f"
       },
       {
         "connector_id": "connector.zhipu.p0",
@@ -2669,10 +2669,10 @@
             "offer-only-until-price-contract-converges"
           ],
           "documented_upstream_model_ids": [
+            "MiniMax-M2.5",
             "glm-4.7",
             "glm-5",
             "kimi-k2.5",
-            "MiniMax-M2.5",
             "qwen3-coder-next",
             "qwen3-coder-plus",
             "qwen3-max-2026-01-23",
@@ -2755,6 +2755,7 @@
             "deepseek-v4-pro",
             "deepseek-v4-pro-0813",
             "deepseek-v4.1-flash",
+            "deepseek-v4.1-flash-1017",
             "glm-5",
             "glm-5.1",
             "glm-5.2",
@@ -2767,7 +2768,9 @@
             "qwen3.7-max",
             "qwen3.7-plus",
             "qwen3.8-flash",
-            "qwen3.8-max"
+            "qwen3.8-max",
+            "qwen3.8-max-0902",
+            "qwen3.8-max-2026-09-02"
           ],
           "evidence_refs": [
             "source-038",
@@ -2776,13 +2779,24 @@
             "source-138",
             "source-139",
             "source-195",
-            "source-196"
+            "source-196",
+            "source-bailian-deepseek-current",
+            "source-bailian-release-current",
+            "source-qwen38-current"
           ],
           "interfaces": [
             {
               "base_url": "https://dashscope.aliyuncs.com/apps/anthropic",
               "base_url_template": null,
               "interface_key": "bailian-payg-cn/anthropic-messages",
+              "protocol": "anthropic-messages",
+              "request_path": "/v1/messages",
+              "request_path_template": null
+            },
+            {
+              "base_url": null,
+              "base_url_template": "https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/apps/anthropic",
+              "interface_key": "bailian-payg-cn/anthropic-messages-workspace-beijing",
               "protocol": "anthropic-messages",
               "request_path": "/v1/messages",
               "request_path_template": null
@@ -2796,9 +2810,25 @@
               "request_path_template": null
             },
             {
+              "base_url": null,
+              "base_url_template": "https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+              "interface_key": "bailian-payg-cn/openai-chat-workspace-beijing",
+              "protocol": "openai-chat",
+              "request_path": "/chat/completions",
+              "request_path_template": null
+            },
+            {
               "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
               "base_url_template": null,
               "interface_key": "bailian-payg-cn/openai-responses",
+              "protocol": "openai-responses",
+              "request_path": "/responses",
+              "request_path_template": null
+            },
+            {
+              "base_url": null,
+              "base_url_template": "https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+              "interface_key": "bailian-payg-cn/openai-responses-workspace-beijing",
               "protocol": "openai-responses",
               "request_path": "/responses",
               "request_path_template": null
@@ -2833,20 +2863,25 @@
             "deepseek-v4-pro",
             "deepseek-v4-pro-0813",
             "deepseek-v4.1-flash",
+            "deepseek-v4.1-flash-1017",
             "glm-5.2",
             "glm-5.3",
             "qwen3.6-flash",
             "qwen3.7-max",
             "qwen3.7-plus",
             "qwen3.8-flash",
-            "qwen3.8-max"
+            "qwen3.8-max",
+            "qwen4-max-preview",
+            "qwen4.0-max-preview"
           ],
           "evidence_refs": [
             "source-044",
             "source-045",
             "source-136",
             "source-170",
-            "source-211"
+            "source-211",
+            "source-qwen4-personal",
+            "source-qwen4-preview"
           ],
           "interfaces": [
             {
@@ -2905,6 +2940,7 @@
             "deepseek-v4-pro",
             "deepseek-v4-pro-0813",
             "deepseek-v4.1-flash",
+            "deepseek-v4.1-flash-1017",
             "glm-5",
             "glm-5.1",
             "glm-5.2",
@@ -2917,12 +2953,16 @@
             "qwen3.7-max",
             "qwen3.7-plus",
             "qwen3.8-flash",
-            "qwen3.8-max"
+            "qwen3.8-max",
+            "qwen4-max-preview",
+            "qwen4.0-max-preview"
           ],
           "evidence_refs": [
             "source-044",
             "source-137",
-            "source-170"
+            "source-170",
+            "source-qwen4-preview",
+            "source-qwen4-team"
           ],
           "interfaces": [
             {
@@ -3117,12 +3157,20 @@
             "needs-runtime-qualification",
             "needs-schema-or-adapter"
           ],
-          "documented_upstream_model_ids": [],
+          "documented_upstream_model_ids": [
+            "gemini-4-argon",
+            "gemini-4-carbon"
+          ],
           "evidence_refs": [
             "source-001",
             "source-002",
             "source-005",
-            "source-006"
+            "source-006",
+            "source-gemini4-argon",
+            "source-gemini4-carbon",
+            "source-gemini4-decode",
+            "source-gemini4-openai",
+            "source-gemini4-pricing"
           ],
           "interfaces": [
             {
@@ -3394,12 +3442,18 @@
             "needs-runtime-qualification"
           ],
           "documented_upstream_model_ids": [
-            "MiniMax-M2.7"
+            "MiniMax-M2.7",
+            "MiniMax-M3",
+            "MiniMax-M3.1-Flash"
           ],
           "evidence_refs": [
             "source-065",
             "source-066",
-            "source-067"
+            "source-067",
+            "source-minimax-chat-current",
+            "source-minimax-messages-current",
+            "source-minimax-responses-current",
+            "source-minimax-text-current"
           ],
           "interfaces": [
             {
@@ -3416,6 +3470,14 @@
               "interface_key": "minimax-payg-global/openai-chat",
               "protocol": "openai-chat",
               "request_path": "/chat/completions",
+              "request_path_template": null
+            },
+            {
+              "base_url": "https://api.minimax.io/v1",
+              "base_url_template": null,
+              "interface_key": "minimax-payg-global/openai-responses",
+              "protocol": "openai-responses",
+              "request_path": "/responses",
               "request_path_template": null
             }
           ],
@@ -3458,13 +3520,15 @@
             "needs-runtime-qualification"
           ],
           "documented_upstream_model_ids": [
-            "mistral-large-3-25-12",
+            "mistral-large-2512",
             "mistral-small-2603"
           ],
           "evidence_refs": [
             "source-028",
             "source-029",
-            "source-030"
+            "source-030",
+            "source-mistral-models-current",
+            "source-mistral3-lifecycle"
           ],
           "interfaces": [
             {
@@ -3843,12 +3907,15 @@
             "offer-only-until-price-contract-converges"
           ],
           "documented_upstream_model_ids": [
-            "grok-4.6"
+            "grok-4.6",
+            "grok-4.7"
           ],
           "evidence_refs": [
             "source-031",
             "source-032",
-            "source-033"
+            "source-033",
+            "source-grok47",
+            "source-grok47-streaming"
           ],
           "interfaces": [
             {
@@ -3887,7 +3954,8 @@
           "documented_upstream_model_ids": [],
           "evidence_refs": [
             "source-034",
-            "source-037"
+            "source-037",
+            "source-zai-codex-current"
           ],
           "interfaces": [
             {
@@ -3904,6 +3972,14 @@
               "interface_key": "zai-devpack-global/openai-chat",
               "protocol": "openai-chat",
               "request_path": "/chat/completions",
+              "request_path_template": null
+            },
+            {
+              "base_url": "https://api.z.ai/api/v1",
+              "base_url_template": null,
+              "interface_key": "zai-devpack-global/openai-responses",
+              "protocol": "openai-responses",
+              "request_path": "/responses",
               "request_path_template": null
             }
           ],
@@ -3924,10 +4000,13 @@
           ],
           "documented_upstream_model_ids": [
             "glm-5.3",
-            "glm-5.3-flash"
+            "glm-5.3-flash",
+            "glm-5.3-flashx"
           ],
           "evidence_refs": [
-            "source-034"
+            "source-034",
+            "source-zai-flashx-current",
+            "source-zai-pricing-current"
           ],
           "interfaces": [
             {
@@ -4036,7 +4115,7 @@
           "restriction": "General platform credentials"
         }
       ],
-      "as_of": "2026-11-10",
+      "as_of": "2026-11-11",
       "canonical_models": [
         {
           "canonical_identity": "claude-fable-5-1",
@@ -4670,6 +4749,53 @@
           ]
         },
         {
+          "canonical_identity": "deepseek-v4-1-flash-1017",
+          "capabilities": {
+            "json": "supported",
+            "streaming": "conditional",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "unknown",
+            "value": null
+          },
+          "context_variants": [],
+          "data_note": "Alibaba lists this revision separately. Release notes say 1M context and 384K output; exact conversion is unresolved. max_tokens=393216 is a documented API default, not an independently established hard output ceiling. JSON Object is supported, not JSON Schema; no Batch or fine-tuning. Do not copy older rolling-ID effort defaults.",
+          "display_name": "DeepSeek V4.1 Flash 1017",
+          "evidence_refs": [
+            "source-bailian-deepseek-current",
+            "source-bailian-release-current"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "unknown",
+            "value": null
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported"
+          },
+          "model_key": "deepseek-v4-1-flash-1017",
+          "publisher": "DeepSeek",
+          "reasoning": {
+            "default": null,
+            "kind": "model-documented",
+            "note": null,
+            "profiles": []
+          },
+          "source_stability_note": "current-provider-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "deepseek-v4.1-flash-1017"
+          ]
+        },
+        {
           "canonical_identity": "deepseek-v4-flash",
           "capabilities": {
             "json": "supported",
@@ -5078,6 +5204,114 @@
           ]
         },
         {
+          "canonical_identity": "gemini-4-argon",
+          "capabilities": {
+            "streaming": "supported",
+            "structured_output": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1048576
+          },
+          "context_variants": [],
+          "data_note": "Input, thinking and output share 1048576 tokens. 65536 is a synchronous default, not an independent output maximum. Long decode requires Interactions continuation or background execution; do not apply its behavior to OpenAI compatibility. No Free tier.",
+          "display_name": "Gemini 4 Argon",
+          "evidence_refs": [
+            "source-gemini4-argon",
+            "source-gemini4-decode",
+            "source-gemini4-openai"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "shared_total_budget",
+            "value": null
+          },
+          "modalities": {
+            "audio_input": "supported",
+            "image_input": "supported",
+            "pdf_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported",
+            "video_input": "supported"
+          },
+          "model_key": "gemini-4-argon",
+          "publisher": "Google",
+          "reasoning": {
+            "default": null,
+            "kind": "discrete-fixed-on",
+            "note": null,
+            "profiles": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "source_stability_note": "current-provider-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "gemini-4-argon"
+          ]
+        },
+        {
+          "canonical_identity": "gemini-4-carbon",
+          "capabilities": {
+            "streaming": "supported",
+            "structured_output": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1048576
+          },
+          "context_variants": [],
+          "data_note": "Input, thinking and output share 1048576 tokens. 65536 is a synchronous default, not an independent output maximum. Long decode requires Interactions continuation or background execution; do not apply its behavior to OpenAI compatibility. No Free tier.",
+          "display_name": "Gemini 4 Carbon",
+          "evidence_refs": [
+            "source-gemini4-carbon",
+            "source-gemini4-decode",
+            "source-gemini4-openai"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "shared_total_budget",
+            "value": null
+          },
+          "modalities": {
+            "audio_input": "supported",
+            "image_input": "supported",
+            "pdf_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported",
+            "video_input": "supported"
+          },
+          "model_key": "gemini-4-carbon",
+          "publisher": "Google",
+          "reasoning": {
+            "default": null,
+            "kind": "discrete-fixed-on",
+            "note": null,
+            "profiles": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "source_stability_note": "current-provider-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "gemini-4-carbon"
+          ]
+        },
+        {
           "canonical_identity": "glm-4-7",
           "capabilities": {
             "streaming": "supported",
@@ -5307,6 +5541,54 @@
           "upstream_id_state": null,
           "upstream_ids": [
             "glm-5.3-flash"
+          ]
+        },
+        {
+          "canonical_identity": "glm-5-3-flashx-global",
+          "capabilities": {
+            "streaming": "supported",
+            "structured_output": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "unknown",
+            "value": null
+          },
+          "context_variants": [],
+          "data_note": "The overview labels context 1M and output 128K; no exact integer conversion is assumed. FlashX is not on Coding Plan. Legal is a separately priced text model; its limits and visual capabilities are not inherited from FlashX.",
+          "display_name": "GLM-5.3 FlashX",
+          "evidence_refs": [
+            "source-zai-flashx-current",
+            "source-zai-pricing-current"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "unknown",
+            "value": null
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported",
+            "video_input": "supported"
+          },
+          "model_key": "glm-5-3-flashx-global",
+          "publisher": "Z.ai",
+          "reasoning": {
+            "default": null,
+            "kind": "discrete-fixed-on",
+            "note": "thinking.type only accepts enabled. reasoning_effort=max is recommended, not established as a default.",
+            "profiles": []
+          },
+          "source_stability_note": "current-provider-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "glm-5.3-flashx"
           ]
         },
         {
@@ -5783,6 +6065,57 @@
           "upstream_id_state": null,
           "upstream_ids": [
             "grok-4.6"
+          ]
+        },
+        {
+          "canonical_identity": "grok-4-7",
+          "capabilities": {
+            "streaming": "supported",
+            "structured_output": "supported",
+            "tool": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 500000
+          },
+          "context_variants": [],
+          "data_note": "The independent output maximum is unpublished. Regions: us-east-1, us-west-2, us-central-1. No public Grok 4.7 Fast ID is established. Pricing thresholds retain the provider label 200k/200K without an assumed integer conversion.",
+          "display_name": "Grok 4.7",
+          "evidence_refs": [
+            "source-grok47",
+            "source-grok47-streaming"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "unknown",
+            "value": null
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported"
+          },
+          "model_key": "grok-4-7",
+          "publisher": "xAI",
+          "reasoning": {
+            "default": "high",
+            "kind": "discrete",
+            "note": null,
+            "profiles": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "source_stability_note": "current-provider-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "grok-4.7"
           ]
         },
         {
@@ -6486,6 +6819,110 @@
           ]
         },
         {
+          "canonical_identity": "minimax-m3",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1000000
+          },
+          "context_variants": [],
+          "data_note": "Context is 1,000,000 tokens. Input and generation must fit the context. Chat maximum generated content is 524288 and recommended value 131072; no universal output cap is established for Messages/Responses. Thinking consumes output budget.",
+          "display_name": "MiniMax M3",
+          "evidence_refs": [
+            "source-minimax-chat-current",
+            "source-minimax-messages-current",
+            "source-minimax-responses-current",
+            "source-minimax-text-current"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "unknown",
+            "value": null
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported",
+            "video_input": "supported"
+          },
+          "model_key": "minimax-m3",
+          "publisher": "MiniMax",
+          "reasoning": {
+            "default": null,
+            "kind": "adaptive",
+            "note": "Chat defaults adaptive; Messages and Responses default off. Responses non-none effort enables thinking without depth tuning.",
+            "profiles": []
+          },
+          "source_stability_note": "current-provider-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "MiniMax-M3"
+          ]
+        },
+        {
+          "canonical_identity": "minimax-m3-1-flash",
+          "capabilities": {
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1000000
+          },
+          "context_variants": [],
+          "data_note": "Context is 1,000,000 tokens. Input and generation must fit the context. Chat maximum generated content is 524288 and recommended value 131072; no universal output cap is established for Messages/Responses. Thinking consumes output budget.",
+          "display_name": "MiniMax M3.1 Flash",
+          "evidence_refs": [
+            "source-minimax-chat-current",
+            "source-minimax-messages-current",
+            "source-minimax-responses-current",
+            "source-minimax-text-current"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "active",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "unknown",
+            "value": null
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported",
+            "video_input": "supported"
+          },
+          "model_key": "minimax-m3-1-flash",
+          "publisher": "MiniMax",
+          "reasoning": {
+            "default": "max",
+            "kind": "discrete-fixed-on",
+            "note": "Thinking cannot be disabled. Chat: reasoning_effort; Messages: output_config.effort; Responses: reasoning.effort. service_tier is unsupported.",
+            "profiles": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "source_stability_note": "current-provider-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "MiniMax-M3.1-Flash"
+          ]
+        },
+        {
           "canonical_identity": "mistral-large-3-2512",
           "capabilities": {
             "streaming": "supported",
@@ -6497,13 +6934,15 @@
             "value": 256000
           },
           "context_variants": [],
-          "data_note": "Input and output share the documented total budget; no independent output integer is invented",
+          "data_note": "Deprecated 2026-10-31; planned shutdown 2027-04-30 in the lifecycle table. Callable ID is mistral-large-2512, not documentation slug mistral-large-3-25-12. Large 4 is a separate replacement, not an alias.",
           "display_name": "Mistral Large 3",
           "evidence_refs": [
-            "source-029"
+            "source-029",
+            "source-mistral-models-current",
+            "source-mistral3-lifecycle"
           ],
           "identity_stability": "immutable-or-provider-stable",
-          "lifecycle": "active",
+          "lifecycle": "deprecated",
           "max_input_tokens": null,
           "max_output_note": null,
           "max_output_scope": null,
@@ -6524,10 +6963,10 @@
             "note": null,
             "profiles": []
           },
-          "source_stability_note": "current",
+          "source_stability_note": "deprecated",
           "upstream_id_state": null,
           "upstream_ids": [
-            "mistral-large-3-25-12"
+            "mistral-large-2512"
           ]
         },
         {
@@ -6860,18 +7299,19 @@
             "streaming": "supported",
             "structured_output": "supported",
             "tool": "supported",
-            "web_search": "supported"
+            "web_search": "conditional"
           },
           "context_tokens": {
             "state": "known",
             "value": 1000000
           },
           "context_variants": [],
-          "data_note": null,
+          "data_note": "qwen3.8-max-0902 is the snapshot, qwen3.8-max-2026-09-02 its alias. Input maximum is 991808 without thinking, 983616 with thinking; no universal input cap is inferred. Web search and Batch depend on region and snapshot; the stable ID capability matrix cannot qualify its snapshot.",
           "display_name": "Qwen 3.8 Max",
           "evidence_refs": [
             "source-041",
-            "source-042"
+            "source-042",
+            "source-qwen38-current"
           ],
           "identity_stability": "immutable-or-provider-stable",
           "lifecycle": "active",
@@ -6904,6 +7344,7 @@
           "upstream_id_state": null,
           "upstream_ids": [
             "qwen3.8-max",
+            "qwen3.8-max-0902",
             "qwen3.8-max-2026-09-02"
           ]
         },
@@ -7042,6 +7483,63 @@
           "upstream_id_state": null,
           "upstream_ids": [
             "qwen3-max-2026-01-23"
+          ]
+        },
+        {
+          "canonical_identity": "qwen-4-max-preview",
+          "capabilities": {
+            "streaming": "conditional",
+            "structured_output": "supported",
+            "tool": "supported",
+            "vision": "supported",
+            "web_search": "supported"
+          },
+          "context_tokens": {
+            "state": "unknown",
+            "value": null
+          },
+          "context_variants": [],
+          "data_note": "Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG. Context is documented as 1M without an exact integer. Output maximum 393216 includes thinking and answer. Chat max_tokens equals max_completion_tokens, and preserve_thinking defaults true: retain all historical reasoning_content separately from content. Responses max_output_tokens also includes thinking and answer; its approximately 80% input window is not an exact input cap. Domestic alias bills as qwen4.0-max-preview. No per-token price is inferred.",
+          "display_name": "Qwen4 Max Preview",
+          "evidence_refs": [
+            "source-qwen4-chat",
+            "source-qwen4-global",
+            "source-qwen4-preview",
+            "source-qwen4-responses"
+          ],
+          "identity_stability": "immutable-or-provider-stable",
+          "lifecycle": "preview",
+          "max_input_tokens": null,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 393216
+          },
+          "modalities": {
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported",
+            "video_input": "supported"
+          },
+          "model_key": "qwen-4-max-preview",
+          "publisher": "Alibaba Cloud / Qwen",
+          "reasoning": {
+            "default": "xhigh",
+            "kind": "discrete-or-budget",
+            "note": "Chat uses reasoning_effort; Responses uses reasoning.effort. minimal maps to low; high/max map to xhigh; none disables thinking. Chat effort and thinking_budget cannot coexist.",
+            "profiles": [
+              "none",
+              "low",
+              "medium",
+              "xhigh"
+            ]
+          },
+          "source_stability_note": "current-provider-documented",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "qwen4-max-preview",
+            "qwen4.0-max-preview"
           ]
         }
       ],
@@ -7538,6 +8036,30 @@
         },
         {
           "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Alibaba-hosted model, Beijing workspace endpoint; not a direct DeepSeek account or shared entitlement.",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/deepseek-v4-1-flash-1017/deepseek-v4.1-flash-1017",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-bailian-deepseek-current",
+            "source-bailian-release-current"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages-workspace-beijing",
+            "bailian-payg-cn/openai-chat-workspace-beijing",
+            "bailian-payg-cn/openai-responses-workspace-beijing"
+          ],
+          "lifecycle": null,
+          "model_key": "deepseek-v4-1-flash-1017",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "deepseek-v4.1-flash-1017"
+        },
+        {
+          "availability": {
             "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
             "state": "conditional"
           },
@@ -7978,6 +8500,74 @@
         },
         {
           "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Snapshot and alias are separately documented; regional model capabilities still require qualification.",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/qwen-3-8-max/qwen3.8-max-0902",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-qwen38-current"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/openai-chat-workspace-beijing",
+            "bailian-payg-cn/openai-responses-workspace-beijing"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-8-max",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "versioned-id",
+          "upstream_model_id": "qwen3.8-max-0902"
+        },
+        {
+          "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Snapshot and alias are separately documented; regional model capabilities still require qualification.",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/qwen-3-8-max/qwen3.8-max-2026-09-02",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-qwen38-current"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/openai-chat-workspace-beijing",
+            "bailian-payg-cn/openai-responses-workspace-beijing"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-3-8-max",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "provider-stable-id",
+          "upstream_model_id": "qwen3.8-max-2026-09-02"
+        },
+        {
+          "availability": {
+            "condition": "Listed for this Beijing Token Plan. Subscription, account, region and protocol eligibility require qualification; this dated revision does not inherit rolling-ID reasoning defaults.",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-personal-cn-beijing/deepseek-v4-1-flash-1017/deepseek-v4.1-flash-1017",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-bailian-deepseek-current",
+            "source-qwen4-personal"
+          ],
+          "interface_candidates": [
+            "bailian-token-personal-cn-beijing/anthropic-messages",
+            "bailian-token-personal-cn-beijing/openai-chat",
+            "bailian-token-personal-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "deepseek-v4-1-flash-1017",
+          "product_key": "bailian-token-personal-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "deepseek-v4.1-flash-1017"
+        },
+        {
+          "availability": {
             "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
             "state": "conditional"
           },
@@ -8250,6 +8840,98 @@
         },
         {
           "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG. reasoning_effort; max_tokens/max_completion_tokens includes thinking plus answer. preserve_thinking defaults true; retain historical reasoning_content.",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-personal-cn-beijing/qwen-4-max-preview/qwen4-max-preview/openai-chat",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-qwen4-chat",
+            "source-qwen4-personal",
+            "source-qwen4-preview"
+          ],
+          "interface_candidates": [
+            "bailian-token-personal-cn-beijing/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-4-max-preview",
+          "product_key": "bailian-token-personal-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "qwen4-max-preview"
+        },
+        {
+          "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG. reasoning.effort; max_output_tokens includes thinking plus answer. Approximately 80% input window with automatic truncation.",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-personal-cn-beijing/qwen-4-max-preview/qwen4-max-preview/openai-responses",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-qwen4-personal",
+            "source-qwen4-preview",
+            "source-qwen4-responses"
+          ],
+          "interface_candidates": [
+            "bailian-token-personal-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-4-max-preview",
+          "product_key": "bailian-token-personal-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "qwen4-max-preview"
+        },
+        {
+          "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG. reasoning_effort; max_tokens/max_completion_tokens includes thinking plus answer. preserve_thinking defaults true; retain historical reasoning_content.",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-personal-cn-beijing/qwen-4-max-preview/qwen4.0-max-preview/openai-chat",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-qwen4-chat",
+            "source-qwen4-personal",
+            "source-qwen4-preview"
+          ],
+          "interface_candidates": [
+            "bailian-token-personal-cn-beijing/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-4-max-preview",
+          "product_key": "bailian-token-personal-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "qwen4.0-max-preview"
+        },
+        {
+          "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG. reasoning.effort; max_output_tokens includes thinking plus answer. Approximately 80% input window with automatic truncation.",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-personal-cn-beijing/qwen-4-max-preview/qwen4.0-max-preview/openai-responses",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-qwen4-personal",
+            "source-qwen4-preview",
+            "source-qwen4-responses"
+          ],
+          "interface_candidates": [
+            "bailian-token-personal-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-4-max-preview",
+          "product_key": "bailian-token-personal-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "qwen4.0-max-preview"
+        },
+        {
+          "availability": {
             "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
             "state": "conditional"
           },
@@ -8270,6 +8952,30 @@
           "replaced_by_upstream_id": null,
           "upstream_identity_role": null,
           "upstream_model_id": "deepseek-v3.2"
+        },
+        {
+          "availability": {
+            "condition": "Listed for this Beijing Token Plan. Subscription, account, region and protocol eligibility require qualification; this dated revision does not inherit rolling-ID reasoning defaults.",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/deepseek-v4-1-flash-1017/deepseek-v4.1-flash-1017",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-bailian-deepseek-current",
+            "source-qwen4-team"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/anthropic-messages",
+            "bailian-token-team-cn-beijing/openai-chat",
+            "bailian-token-team-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "deepseek-v4-1-flash-1017",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "deepseek-v4.1-flash-1017"
         },
         {
           "availability": {
@@ -8737,6 +9443,98 @@
         },
         {
           "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG. reasoning_effort; max_tokens/max_completion_tokens includes thinking plus answer. preserve_thinking defaults true; retain historical reasoning_content.",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/qwen-4-max-preview/qwen4-max-preview/openai-chat",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-qwen4-chat",
+            "source-qwen4-preview",
+            "source-qwen4-team"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-4-max-preview",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "qwen4-max-preview"
+        },
+        {
+          "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG. reasoning.effort; max_output_tokens includes thinking plus answer. Approximately 80% input window with automatic truncation.",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/qwen-4-max-preview/qwen4-max-preview/openai-responses",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-qwen4-preview",
+            "source-qwen4-responses",
+            "source-qwen4-team"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-4-max-preview",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "qwen4-max-preview"
+        },
+        {
+          "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG. reasoning_effort; max_tokens/max_completion_tokens includes thinking plus answer. preserve_thinking defaults true; retain historical reasoning_content.",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/qwen-4-max-preview/qwen4.0-max-preview/openai-chat",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-qwen4-chat",
+            "source-qwen4-preview",
+            "source-qwen4-team"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-4-max-preview",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "qwen4.0-max-preview"
+        },
+        {
+          "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG. reasoning.effort; max_output_tokens includes thinking plus answer. Approximately 80% input window with automatic truncation.",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-token-team-cn-beijing/qwen-4-max-preview/qwen4.0-max-preview/openai-responses",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-qwen4-preview",
+            "source-qwen4-responses",
+            "source-qwen4-team"
+          ],
+          "interface_candidates": [
+            "bailian-token-team-cn-beijing/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-4-max-preview",
+          "product_key": "bailian-token-team-cn-beijing",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "qwen4.0-max-preview"
+        },
+        {
+          "availability": {
             "condition": "Static documented model ceilings and the reviewed Messages thinking subset; the selected account must still expose this exact ID through CPA Check. Registration does not prove account entitlement, full-context acceptance or measured protocol fidelity.",
             "state": "conditional"
           },
@@ -9051,6 +9849,54 @@
           "replaced_by_upstream_id": null,
           "upstream_identity_role": null,
           "upstream_model_id": "gemini-3.8-flash"
+        },
+        {
+          "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Input, thinking and output share 1048576 tokens. 65536 is a synchronous default, not an independent output maximum. Long decode requires Interactions continuation or background execution; do not apply its behavior to OpenAI compatibility. No Free tier.",
+            "state": "conditional"
+          },
+          "binding_key": "gemini-api/gemini-4-argon/gemini-4-argon",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-gemini4-argon",
+            "source-gemini4-decode",
+            "source-gemini4-openai"
+          ],
+          "interface_candidates": [
+            "gemini-api/gemini-interactions",
+            "gemini-api/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "gemini-4-argon",
+          "product_key": "gemini-api",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "gemini-4-argon"
+        },
+        {
+          "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Input, thinking and output share 1048576 tokens. 65536 is a synchronous default, not an independent output maximum. Long decode requires Interactions continuation or background execution; do not apply its behavior to OpenAI compatibility. No Free tier.",
+            "state": "conditional"
+          },
+          "binding_key": "gemini-api/gemini-4-carbon/gemini-4-carbon",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-gemini4-carbon",
+            "source-gemini4-decode",
+            "source-gemini4-openai"
+          ],
+          "interface_candidates": [
+            "gemini-api/gemini-interactions",
+            "gemini-api/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "gemini-4-carbon",
+          "product_key": "gemini-api",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "gemini-4-carbon"
         },
         {
           "availability": {
@@ -9573,26 +10419,154 @@
         },
         {
           "availability": {
-            "condition": "documented for the product; account, region, entitlement, and protocol still require qualification",
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. M3 thinking defaults off; adaptive enables it. Flash always thinks and uses output_config.effort, default max.",
             "state": "conditional"
           },
-          "binding_key": "mistral-platform/mistral-large-3/mistral-large-3-25-12",
+          "binding_key": "minimax-payg-global/minimax-m3-1-flash/MiniMax-M3.1-Flash/anthropic-messages",
           "capability_overrides": {},
           "evidence_refs": [
-            "source-028",
-            "source-029",
-            "source-030"
+            "source-minimax-messages-current"
+          ],
+          "interface_candidates": [
+            "minimax-payg-global/anthropic-messages"
+          ],
+          "lifecycle": null,
+          "model_key": "minimax-m3-1-flash",
+          "product_key": "minimax-payg-global",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "MiniMax-M3.1-Flash"
+        },
+        {
+          "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Thinking defaults adaptive; M3 accepts disabled, Flash rejects disabled. reasoning_effort tunes Flash only. max_tokens/max_completion_tokens include thinking.",
+            "state": "conditional"
+          },
+          "binding_key": "minimax-payg-global/minimax-m3-1-flash/MiniMax-M3.1-Flash/openai-chat",
+          "capability_overrides": {
+            "max_output_tokens": 524288
+          },
+          "evidence_refs": [
+            "source-minimax-chat-current"
+          ],
+          "interface_candidates": [
+            "minimax-payg-global/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "minimax-m3-1-flash",
+          "product_key": "minimax-payg-global",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "MiniMax-M3.1-Flash"
+        },
+        {
+          "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. M3 thinking defaults off; non-none reasoning.effort enables it without depth tuning. Flash always thinks, defaults max and rejects none. max_output_tokens includes reasoning.",
+            "state": "conditional"
+          },
+          "binding_key": "minimax-payg-global/minimax-m3-1-flash/MiniMax-M3.1-Flash/openai-responses",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-minimax-responses-current"
+          ],
+          "interface_candidates": [
+            "minimax-payg-global/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "minimax-m3-1-flash",
+          "product_key": "minimax-payg-global",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "MiniMax-M3.1-Flash"
+        },
+        {
+          "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. M3 thinking defaults off; adaptive enables it. Flash always thinks and uses output_config.effort, default max.",
+            "state": "conditional"
+          },
+          "binding_key": "minimax-payg-global/minimax-m3/MiniMax-M3/anthropic-messages",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-minimax-messages-current"
+          ],
+          "interface_candidates": [
+            "minimax-payg-global/anthropic-messages"
+          ],
+          "lifecycle": null,
+          "model_key": "minimax-m3",
+          "product_key": "minimax-payg-global",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "MiniMax-M3"
+        },
+        {
+          "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Thinking defaults adaptive; M3 accepts disabled, Flash rejects disabled. reasoning_effort tunes Flash only. max_tokens/max_completion_tokens include thinking.",
+            "state": "conditional"
+          },
+          "binding_key": "minimax-payg-global/minimax-m3/MiniMax-M3/openai-chat",
+          "capability_overrides": {
+            "max_output_tokens": 524288
+          },
+          "evidence_refs": [
+            "source-minimax-chat-current"
+          ],
+          "interface_candidates": [
+            "minimax-payg-global/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "minimax-m3",
+          "product_key": "minimax-payg-global",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "MiniMax-M3"
+        },
+        {
+          "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. M3 thinking defaults off; non-none reasoning.effort enables it without depth tuning. Flash always thinks, defaults max and rejects none. max_output_tokens includes reasoning.",
+            "state": "conditional"
+          },
+          "binding_key": "minimax-payg-global/minimax-m3/MiniMax-M3/openai-responses",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-minimax-responses-current"
+          ],
+          "interface_candidates": [
+            "minimax-payg-global/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "minimax-m3",
+          "product_key": "minimax-payg-global",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "MiniMax-M3"
+        },
+        {
+          "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Deprecated 2026-10-31; planned shutdown 2027-04-30 in the lifecycle table. Callable ID is mistral-large-2512, not documentation slug mistral-large-3-25-12. Large 4 is a separate replacement, not an alias.",
+            "state": "conditional"
+          },
+          "binding_key": "mistral-platform/mistral-large-3/mistral-large-2512",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-mistral3-lifecycle"
           ],
           "interface_candidates": [
             "mistral-platform/openai-chat"
           ],
-          "lifecycle": null,
+          "lifecycle": "deprecated",
           "model_key": "mistral-large-3",
           "product_key": "mistral-platform",
           "protocol_qualification": "runtime-required",
           "replaced_by_upstream_id": null,
-          "upstream_identity_role": null,
-          "upstream_model_id": "mistral-large-3-25-12"
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "mistral-large-2512"
         },
         {
           "availability": {
@@ -10263,6 +11237,29 @@
         },
         {
           "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. The independent output maximum is unpublished. Regions: us-east-1, us-west-2, us-central-1. No public Grok 4.7 Fast ID is established.",
+            "state": "conditional"
+          },
+          "binding_key": "xai-api/grok-4-7/grok-4.7",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-grok47",
+            "source-grok47-streaming"
+          ],
+          "interface_candidates": [
+            "xai-api/openai-chat",
+            "xai-api/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "grok-4-7",
+          "product_key": "xai-api",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "grok-4.7"
+        },
+        {
+          "availability": {
             "condition": "documented for this product; account, region, entitlement, and protocol still require qualification",
             "state": "conditional"
           },
@@ -10282,6 +11279,27 @@
           "replaced_by_upstream_id": null,
           "upstream_identity_role": null,
           "upstream_model_id": "glm-5.3-flash"
+        },
+        {
+          "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Dedicated Coding Plan key; distinct from the general API key. The Codex guide documents glm-5.3 and max effort.",
+            "state": "conditional"
+          },
+          "binding_key": "zai-devpack-global/glm-5-3-global/glm-5.3",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-zai-codex-current"
+          ],
+          "interface_candidates": [
+            "zai-devpack-global/openai-responses"
+          ],
+          "lifecycle": null,
+          "model_key": "glm-5-3-global",
+          "product_key": "zai-devpack-global",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "glm-5.3"
         },
         {
           "availability": {
@@ -10305,6 +11323,28 @@
           "replaced_by_upstream_id": null,
           "upstream_identity_role": null,
           "upstream_model_id": "glm-5.3-flash"
+        },
+        {
+          "availability": {
+            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. General API only; no FlashX Coding Plan entitlement is inferred.",
+            "state": "conditional"
+          },
+          "binding_key": "zai-general-global/glm-5-3-flashx-global/glm-5.3-flashx",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-zai-flashx-current",
+            "source-zai-pricing-current"
+          ],
+          "interface_candidates": [
+            "zai-general-global/openai-chat"
+          ],
+          "lifecycle": null,
+          "model_key": "glm-5-3-flashx-global",
+          "product_key": "zai-general-global",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "glm-5.3-flashx"
         },
         {
           "availability": {
@@ -12435,6 +13475,240 @@
           "digest_state": "not-captured",
           "locator": "https://www.kimi.com/code/docs/en/kimi-code/models.html",
           "source_key": "source-219",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": "sha256:a16f3c42bb1f9b36f86543351265f69136a527c3acccc85cf8a208da3641af5e",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/deepseek-api",
+          "source_key": "source-bailian-deepseek-current",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": "sha256:4de6e81508e6e83e4ad126c21014f24fbc0001b89e15950e8969644caf9f37bf",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/newly-released-models",
+          "source_key": "source-bailian-release-current",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "aistudio.google.com",
+          "bytes_digest": "sha256:daae9ace438f871d46f1a7509bac670e7530217f19ab1cab53a7cc774d3203ef",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://aistudio.google.com/docs/models/gemini-4-argon",
+          "source_key": "source-gemini4-argon",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "aistudio.google.com",
+          "bytes_digest": "sha256:eaec9eeec2cc6762b304ef3e1e023c6fa3c719fbbab65667aae40ae0594d953b",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://aistudio.google.com/docs/models/gemini-4-carbon",
+          "source_key": "source-gemini4-carbon",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "aistudio.google.com",
+          "bytes_digest": "sha256:501a679d1acda0295e5df0b261b5779629153c3a30cd43d15eb0156e0658069a",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://aistudio.google.com/docs/long-decode",
+          "source_key": "source-gemini4-decode",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "aistudio.google.com",
+          "bytes_digest": "sha256:530867daaaacbb28b1430a53324595d170020f86eb9451e303d24147b57f7e20",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://aistudio.google.com/docs/openai",
+          "source_key": "source-gemini4-openai",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "aistudio.google.com",
+          "bytes_digest": "sha256:9170bacb40a6a16d05d650d6627829d5439f50f65a1692c7782ea7b3e3c3911d",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://aistudio.google.com/docs/pricing",
+          "source_key": "source-gemini4-pricing",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "docs.x.ai",
+          "bytes_digest": "sha256:cf323be0bbc5ccf47c3b50b9f5f4cbcf481584f446cdc79d677d3beaf483c440",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://docs.x.ai/developers/models/grok-4.7.md",
+          "source_key": "source-grok47",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "docs.x.ai",
+          "bytes_digest": "sha256:60ac88b073e6504620f146673bdb2bc656ec548a23ac853dc6f66448c6c6a47e",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://docs.x.ai/developers/model-capabilities/text/streaming",
+          "source_key": "source-grok47-streaming",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.minimax.io",
+          "bytes_digest": "sha256:4b0180b75055dbdff081b0fae3abb486e6c1fbe9259bec1e6b35c86b4b2e57c1",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://platform.minimax.io/docs/api-reference/text-chat-openai",
+          "source_key": "source-minimax-chat-current",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.minimax.io",
+          "bytes_digest": "sha256:c9d82923e1d18e045429a4347a5602deac12db990d52f76fff6561f9b5b1d901",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://platform.minimax.io/docs/api-reference/text-anthropic-api",
+          "source_key": "source-minimax-messages-current",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.minimax.io",
+          "bytes_digest": "sha256:78c2ea71ecb6f5297de8a0deb2759cd3b4b40fdc7b37395d4458af4fc410e598",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://platform.minimax.io/docs/pricing/overview",
+          "source_key": "source-minimax-pricing-current",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.minimax.io",
+          "bytes_digest": "sha256:b90d976ddf393aa36ebc4bba6a43d5823084c31665669901096a736f191fc109",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://platform.minimax.io/docs/api-reference/responses-create",
+          "source_key": "source-minimax-responses-current",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "platform.minimax.io",
+          "bytes_digest": "sha256:6fee3fabc8b8505d36d09944b12ce9a3c3ee79911847cd144b13061a77de585c",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://platform.minimax.io/docs/guides/text-generation",
+          "source_key": "source-minimax-text-current",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "docs.mistral.ai",
+          "bytes_digest": "sha256:0faaab77e662a1bb336b3a535b3cd3426858db924d59ad0b7a241c09c7b44a18",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://docs.mistral.ai/models",
+          "source_key": "source-mistral-models-current",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "docs.mistral.ai",
+          "bytes_digest": "sha256:da2a970162f690fa604abce60bba3dc34d5145ba6dfe91a109bf0ac269370676",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://docs.mistral.ai/models/mistral-large-3-25-12",
+          "source_key": "source-mistral3-lifecycle",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": "sha256:02ed6adbf4355a866a73d48805bc18d648c5861a10c825087223c0ae5083f523",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/qwen3-8-max",
+          "source_key": "source-qwen38-current",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": "sha256:9dd28dfccaabb4963b3d8b2291ff1deb45d28a59c1b021883075ccefbb08e0ac",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions",
+          "source_key": "source-qwen4-chat",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "docs.qwencloud.com",
+          "bytes_digest": "sha256:9335c22f22c8b636644ab682d20c37171f8c61a2c4740206514b115036007022",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://docs.qwencloud.com/developer-guides/getting-started/latest-model",
+          "source_key": "source-qwen4-global",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": "sha256:445a7df8daf85df52b816205d4ac9e9f1922af2ca154acb20404c7ea623ff200",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/token-plan-personal-overview",
+          "source_key": "source-qwen4-personal",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "docs.bailian.console.aliyun.com",
+          "bytes_digest": "sha256:194abf70ce617e48a2862faae722c98cab18bfca158717b5ac278a11d7a5fd21",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://docs.bailian.console.aliyun.com/en/model-studio/qwen4-max-preview",
+          "source_key": "source-qwen4-preview",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": "sha256:9ebf14dba514131df0cbcb667b737e7a6ddd54dedcc417371851a889ffd7a068",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://help.aliyun.com/en/model-studio/qwen-api-via-openai-responses",
+          "source_key": "source-qwen4-responses",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": "sha256:44079a86b642fd539b165a9f11ea80a9ba3d05af1fc5b66410f4031be5ab461b",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/token-plan-team-overview",
+          "source_key": "source-qwen4-team",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "docs.z.ai",
+          "bytes_digest": "sha256:2a0c13fec53cc2059c840568db79a8d1511dcc71e77a8b13ab6cf3c2c5128201",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://docs.z.ai/devpack/tool/codex",
+          "source_key": "source-zai-codex-current",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "docs.z.ai",
+          "bytes_digest": "sha256:3cefadacf4e4040d2782bb0fdcbf279f0fcedb4c08760d89f9e0e90cf3d8d0a1",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://docs.z.ai/guides/vlm/glm-5.3-flash",
+          "source_key": "source-zai-flashx-current",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "docs.z.ai",
+          "bytes_digest": "sha256:437d0333db0d9e5cb37646cb05e184c518e9a027e0bb8ab0b1e6f4d45cbd75a7",
+          "collected_on": "2026-11-11",
+          "digest_state": "captured",
+          "locator": "https://docs.z.ai/guides/overview/pricing",
+          "source_key": "source-zai-pricing-current",
           "source_kind": "provider-documentation"
         }
       ],
@@ -68826,6 +70100,546 @@
         {
           "capability_hints": {
             "reasoning": "supported",
+            "streaming": "conditional",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "runtime_required",
+            "value": null
+          },
+          "cost_hint_state": "not_recorded",
+          "cost_hints": [],
+          "display_name": "Qwen4 Max Preview",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "image",
+            "text",
+            "video"
+          ],
+          "lifecycle": "preview",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 393216
+          },
+          "metadata_completeness": {
+            "capabilities": "partial",
+            "cost": "missing",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "partial",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/bailian-token-personal-cn-beijing/qwen4-max-preview",
+          "normalized_model_matches": [
+            "qwen-4-max-preview"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-chat"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-global"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-personal"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-preview"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-responses"
+            }
+          ],
+          "provider_id": "bailian-token-personal-cn-beijing",
+          "provider_record_key": "official/bailian-token-personal-cn-beijing",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "minimal",
+              "none",
+              "xhigh"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "qwen4-max-preview",
+          "usable_for": [
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "output-limit-prefill",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "conditional",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "runtime_required",
+            "value": null
+          },
+          "cost_hint_state": "not_recorded",
+          "cost_hints": [],
+          "display_name": "Qwen4 Max Preview",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "image",
+            "text",
+            "video"
+          ],
+          "lifecycle": "preview",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 393216
+          },
+          "metadata_completeness": {
+            "capabilities": "partial",
+            "cost": "missing",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "partial",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/bailian-token-personal-cn-beijing/qwen4.0-max-preview",
+          "normalized_model_matches": [
+            "qwen-4-max-preview"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-chat"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-global"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-personal"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-preview"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-responses"
+            }
+          ],
+          "provider_id": "bailian-token-personal-cn-beijing",
+          "provider_record_key": "official/bailian-token-personal-cn-beijing",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "minimal",
+              "none",
+              "xhigh"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "qwen4.0-max-preview",
+          "usable_for": [
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "output-limit-prefill",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "conditional",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "runtime_required",
+            "value": null
+          },
+          "cost_hint_state": "not_recorded",
+          "cost_hints": [],
+          "display_name": "Qwen4 Max Preview",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "image",
+            "text",
+            "video"
+          ],
+          "lifecycle": "preview",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 393216
+          },
+          "metadata_completeness": {
+            "capabilities": "partial",
+            "cost": "missing",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "partial",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/bailian-token-team-cn-beijing/qwen4-max-preview",
+          "normalized_model_matches": [
+            "qwen-4-max-preview"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-chat"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-global"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-preview"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-responses"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-team"
+            }
+          ],
+          "provider_id": "bailian-token-team-cn-beijing",
+          "provider_record_key": "official/bailian-token-team-cn-beijing",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "minimal",
+              "none",
+              "xhigh"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "qwen4-max-preview",
+          "usable_for": [
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "output-limit-prefill",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "conditional",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "runtime_required",
+            "value": null
+          },
+          "cost_hint_state": "not_recorded",
+          "cost_hints": [],
+          "display_name": "Qwen4 Max Preview",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "image",
+            "text",
+            "video"
+          ],
+          "lifecycle": "preview",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 393216
+          },
+          "metadata_completeness": {
+            "capabilities": "partial",
+            "cost": "missing",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "partial",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/bailian-token-team-cn-beijing/qwen4.0-max-preview",
+          "normalized_model_matches": [
+            "qwen-4-max-preview"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-chat"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-global"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-preview"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-responses"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-team"
+            }
+          ],
+          "provider_id": "bailian-token-team-cn-beijing",
+          "provider_record_key": "official/bailian-token-team-cn-beijing",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "minimal",
+              "none",
+              "xhigh"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "qwen4.0-max-preview",
+          "usable_for": [
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "output-limit-prefill",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1048576
+          },
+          "cost_hint_state": "not_recorded",
+          "cost_hints": [],
+          "display_name": "Gemini 4 Argon",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "audio",
+            "image",
+            "pdf",
+            "text",
+            "video"
+          ],
+          "lifecycle": "active",
+          "max_output_tokens": {
+            "state": "shared_total_budget",
+            "value": null
+          },
+          "metadata_completeness": {
+            "capabilities": "complete",
+            "cost": "missing",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "partial",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/gemini-api/gemini-4-argon",
+          "normalized_model_matches": [
+            "gemini-4-argon"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-gemini4-argon"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-gemini4-decode"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-gemini4-openai"
+            }
+          ],
+          "provider_id": "gemini-api",
+          "provider_record_key": "official/gemini-api",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "medium",
+              "minimal"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "gemini-4-argon",
+          "usable_for": [
+            "context-limit-prefill",
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1048576
+          },
+          "cost_hint_state": "not_recorded",
+          "cost_hints": [],
+          "display_name": "Gemini 4 Carbon",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "audio",
+            "image",
+            "pdf",
+            "text",
+            "video"
+          ],
+          "lifecycle": "active",
+          "max_output_tokens": {
+            "state": "shared_total_budget",
+            "value": null
+          },
+          "metadata_completeness": {
+            "capabilities": "complete",
+            "cost": "missing",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "partial",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/gemini-api/gemini-4-carbon",
+          "normalized_model_matches": [
+            "gemini-4-carbon"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-gemini4-carbon"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-gemini4-decode"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-gemini4-openai"
+            }
+          ],
+          "provider_id": "gemini-api",
+          "provider_record_key": "official/gemini-api",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "medium",
+              "minimal"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "gemini-4-carbon",
+          "usable_for": [
+            "context-limit-prefill",
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
             "streaming": "supported",
             "tool": "supported",
             "vision": "supported"
@@ -69321,6 +71135,184 @@
           "usable_for": [
             "context-limit-prefill",
             "cost-hint-display",
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "output-limit-prefill",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "request-limit-prefill",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1000000
+          },
+          "cost_hint_state": "not_recorded",
+          "cost_hints": [],
+          "display_name": "MiniMax M3",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "field_provenance": {
+            "reasoning_rendering_hints": {
+              "basis": "inferred",
+              "rule_key": "rule.minimax.m3/v1"
+            }
+          },
+          "input_modalities": [
+            "image",
+            "text",
+            "video"
+          ],
+          "lifecycle": "active",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 524288
+          },
+          "metadata_completeness": {
+            "capabilities": "complete",
+            "cost": "missing",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "complete",
+            "modalities": "complete",
+            "reasoning_rendering": "not_applicable"
+          },
+          "model_record_key": "official/minimax-payg-global/MiniMax-M3",
+          "normalized_model_matches": [
+            "minimax-m3"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-minimax-chat-current"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-minimax-messages-current"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-minimax-responses-current"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-minimax-text-current"
+            }
+          ],
+          "provider_id": "minimax-payg-global",
+          "provider_record_key": "official/minimax-payg-global",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [],
+            "thinking_level_maps": []
+          },
+          "reasoning_rendering_state": "not_applicable",
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "MiniMax-M3",
+          "usable_for": [
+            "context-limit-prefill",
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "output-limit-prefill",
+            "reasoning-capability-prefill",
+            "request-limit-prefill",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1000000
+          },
+          "cost_hint_state": "not_recorded",
+          "cost_hints": [],
+          "display_name": "MiniMax M3.1 Flash",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "image",
+            "text",
+            "video"
+          ],
+          "lifecycle": "active",
+          "max_output_tokens": {
+            "state": "known",
+            "value": 524288
+          },
+          "metadata_completeness": {
+            "capabilities": "complete",
+            "cost": "missing",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "complete",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/minimax-payg-global/MiniMax-M3.1-Flash",
+          "normalized_model_matches": [
+            "minimax-m3-1-flash"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-minimax-chat-current"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-minimax-messages-current"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-minimax-responses-current"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-minimax-text-current"
+            }
+          ],
+          "provider_id": "minimax-payg-global",
+          "provider_record_key": "official/minimax-payg-global",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "max",
+              "medium",
+              "xhigh"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "MiniMax-M3.1-Flash",
+          "usable_for": [
+            "context-limit-prefill",
             "custom-api-model-prefill",
             "lifecycle-warning",
             "model-directory",
@@ -69924,6 +71916,83 @@
             "reasoning-capability-prefill",
             "reasoning-rendering-hint",
             "request-limit-prefill",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "supported",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 500000
+          },
+          "cost_hint_state": "not_recorded",
+          "cost_hints": [],
+          "display_name": "Grok 4.7",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "image",
+            "text"
+          ],
+          "lifecycle": "active",
+          "max_output_tokens": {
+            "state": "runtime_required",
+            "value": null
+          },
+          "metadata_completeness": {
+            "capabilities": "complete",
+            "cost": "missing",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "partial",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/xai-api/grok-4.7",
+          "normalized_model_matches": [
+            "grok-4-7"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-grok47"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-grok47-streaming"
+            }
+          ],
+          "provider_id": "xai-api",
+          "provider_record_key": "official/xai-api",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "medium",
+              "xhigh"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "grok-4.7",
+          "usable_for": [
+            "context-limit-prefill",
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
             "vision-capability-prefill"
           ]
         },
@@ -101245,6 +103314,134 @@
             "api_key"
           ],
           "base_url_candidates": [
+            "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+          ],
+          "default_model_ids": [],
+          "description_candidates": [],
+          "discovery_modes": [],
+          "display_name": "Bailian Token Plan Personal Beijing (Chat Completions)",
+          "environment_variable_names": [],
+          "metadata_completeness": {
+            "authentication": "complete",
+            "discovery": "missing",
+            "endpoint": "complete",
+            "identity": "complete"
+          },
+          "models_url_candidates": [],
+          "protocol_candidates": [
+            "chat_completions"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-personal"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-preview"
+            }
+          ],
+          "provider_id": "bailian-token-personal-cn-beijing",
+          "provider_record_key": "official/bailian-token-personal-cn-beijing",
+          "signup_url_candidates": [],
+          "unsupported_api_styles": [],
+          "unsupported_transport_locators": [],
+          "usable_for": [
+            "credential-setup-hint",
+            "custom-api-endpoint-prefill",
+            "provider-directory"
+          ]
+        },
+        {
+          "aliases": [],
+          "authentication_candidates": [
+            "api_key"
+          ],
+          "base_url_candidates": [
+            "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+          ],
+          "default_model_ids": [],
+          "description_candidates": [],
+          "discovery_modes": [],
+          "display_name": "Bailian Token Plan Team Beijing (Chat Completions)",
+          "environment_variable_names": [],
+          "metadata_completeness": {
+            "authentication": "complete",
+            "discovery": "missing",
+            "endpoint": "complete",
+            "identity": "complete"
+          },
+          "models_url_candidates": [],
+          "protocol_candidates": [
+            "chat_completions"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-preview"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-team"
+            }
+          ],
+          "provider_id": "bailian-token-team-cn-beijing",
+          "provider_record_key": "official/bailian-token-team-cn-beijing",
+          "signup_url_candidates": [],
+          "unsupported_api_styles": [],
+          "unsupported_transport_locators": [],
+          "usable_for": [
+            "credential-setup-hint",
+            "custom-api-endpoint-prefill",
+            "provider-directory"
+          ]
+        },
+        {
+          "aliases": [],
+          "authentication_candidates": [
+            "api_key"
+          ],
+          "base_url_candidates": [
+            "https://generativelanguage.googleapis.com/v1beta/openai"
+          ],
+          "default_model_ids": [],
+          "description_candidates": [],
+          "discovery_modes": [],
+          "display_name": "Google Gemini API (OpenAI compatibility)",
+          "environment_variable_names": [],
+          "metadata_completeness": {
+            "authentication": "complete",
+            "discovery": "missing",
+            "endpoint": "complete",
+            "identity": "complete"
+          },
+          "models_url_candidates": [],
+          "protocol_candidates": [
+            "chat_completions"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-gemini4-openai"
+            }
+          ],
+          "provider_id": "gemini-api",
+          "provider_record_key": "official/gemini-api",
+          "signup_url_candidates": [],
+          "unsupported_api_styles": [],
+          "unsupported_transport_locators": [],
+          "usable_for": [
+            "credential-setup-hint",
+            "custom-api-endpoint-prefill",
+            "provider-directory"
+          ]
+        },
+        {
+          "aliases": [],
+          "authentication_candidates": [
+            "api_key"
+          ],
+          "base_url_candidates": [
             "https://api.kimi.com/coding",
             "https://api.kimi.com/coding/v1"
           ],
@@ -101375,6 +103572,58 @@
             "api_key"
           ],
           "base_url_candidates": [
+            "https://api.minimax.io/v1"
+          ],
+          "default_model_ids": [],
+          "description_candidates": [],
+          "discovery_modes": [],
+          "display_name": "MiniMax global Chat Completions",
+          "environment_variable_names": [],
+          "metadata_completeness": {
+            "authentication": "complete",
+            "discovery": "missing",
+            "endpoint": "complete",
+            "identity": "complete"
+          },
+          "models_url_candidates": [],
+          "protocol_candidates": [
+            "chat_completions"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-minimax-chat-current"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-minimax-messages-current"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-minimax-responses-current"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-minimax-text-current"
+            }
+          ],
+          "provider_id": "minimax-payg-global",
+          "provider_record_key": "official/minimax-payg-global",
+          "signup_url_candidates": [],
+          "unsupported_api_styles": [],
+          "unsupported_transport_locators": [],
+          "usable_for": [
+            "credential-setup-hint",
+            "custom-api-endpoint-prefill",
+            "provider-directory"
+          ]
+        },
+        {
+          "aliases": [],
+          "authentication_candidates": [
+            "api_key"
+          ],
+          "base_url_candidates": [
             "https://api.openai.com/v1"
           ],
           "default_model_ids": [],
@@ -101410,6 +103659,50 @@
           "unsupported_transport_locators": [],
           "usable_for": [
             "credential-setup-hint",
+            "provider-directory"
+          ]
+        },
+        {
+          "aliases": [],
+          "authentication_candidates": [
+            "api_key"
+          ],
+          "base_url_candidates": [
+            "https://api.x.ai/v1"
+          ],
+          "default_model_ids": [],
+          "description_candidates": [],
+          "discovery_modes": [],
+          "display_name": "xAI API Chat Completions",
+          "environment_variable_names": [],
+          "metadata_completeness": {
+            "authentication": "complete",
+            "discovery": "missing",
+            "endpoint": "complete",
+            "identity": "complete"
+          },
+          "models_url_candidates": [],
+          "protocol_candidates": [
+            "chat_completions"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-grok47"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-grok47-streaming"
+            }
+          ],
+          "provider_id": "xai-api",
+          "provider_record_key": "official/xai-api",
+          "signup_url_candidates": [],
+          "unsupported_api_styles": [],
+          "unsupported_transport_locators": [],
+          "usable_for": [
+            "credential-setup-hint",
+            "custom-api-endpoint-prefill",
             "provider-directory"
           ]
         },
@@ -104074,7 +106367,7 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:1f69329375bd72a1d98c7e2b49560f9154272614836c68c2880dd2838bd2f281"
+      "source_catalog_digest": "sha256:52358d8a1ce88fa63cf59e757bc0cc39be986bb703145511f6c4b8773ec355c7"
     },
     "rating_snapshot": {
       "digest": "sha256:5fa20fef854989fc3c1a6106af04121e5b934ad1f391ab93a414958ec570aadf",
@@ -106183,7 +108476,7 @@
     "schema": "hiroute.release-model-data/v2"
   },
   "official_model_data": {
-    "data_revision": 10,
+    "data_revision": 13,
     "pricing_facts": [
       {
         "pricing_key": "anthropic-platform/claude-fable-5-2/claude-fable-5-2",
@@ -106516,6 +108809,98 @@
         ]
       },
       {
+        "pricing_key": "gemini-api/gemini-4-argon/gemini-4-argon",
+        "product_key": "gemini-api",
+        "model_key": "gemini-4-argon",
+        "upstream_model_id": "gemini-4-argon",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "standard-from-2026-12-01",
+            "condition": {
+              "kind": "time-window",
+              "start_date_inclusive": "2026-12-01",
+              "timezone_state": "not-published",
+              "service_tier": "standard",
+              "cache_mode": "implicit-only"
+            },
+            "application": "provider-defined",
+            "rates": {
+              "input": "4",
+              "output": "20",
+              "cache-read": "0.20"
+            }
+          },
+          {
+            "schedule_key": "standard-through-2026-11-30",
+            "condition": {
+              "kind": "time-window",
+              "end_date_inclusive": "2026-11-30",
+              "timezone_state": "not-published",
+              "service_tier": "standard",
+              "cache_mode": "implicit-only"
+            },
+            "application": "provider-defined",
+            "rates": {
+              "input": "2",
+              "output": "10",
+              "cache-read": "0.10"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-gemini4-pricing"
+        ]
+      },
+      {
+        "pricing_key": "gemini-api/gemini-4-carbon/gemini-4-carbon",
+        "product_key": "gemini-api",
+        "model_key": "gemini-4-carbon",
+        "upstream_model_id": "gemini-4-carbon",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "standard-from-2026-12-01",
+            "condition": {
+              "kind": "time-window",
+              "start_date_inclusive": "2026-12-01",
+              "timezone_state": "not-published",
+              "service_tier": "standard",
+              "cache_mode": "implicit-only"
+            },
+            "application": "provider-defined",
+            "rates": {
+              "input": "4",
+              "output": "20",
+              "cache-read": "0.20"
+            }
+          },
+          {
+            "schedule_key": "standard-through-2026-11-30",
+            "condition": {
+              "kind": "time-window",
+              "end_date_inclusive": "2026-11-30",
+              "timezone_state": "not-published",
+              "service_tier": "standard",
+              "cache_mode": "implicit-only"
+            },
+            "application": "provider-defined",
+            "rates": {
+              "input": "2",
+              "output": "10",
+              "cache-read": "0.10"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-gemini4-pricing"
+        ]
+      },
+      {
         "pricing_key": "kimi-platform-cn/kimi-k3-1-pro/kimi-k3.1-pro",
         "product_key": "kimi-platform-cn",
         "model_key": "kimi-k3-1-pro",
@@ -106717,6 +109102,107 @@
         ],
         "evidence_refs": [
           "source-218"
+        ]
+      },
+      {
+        "pricing_key": "minimax-payg-global/minimax-m3-1-flash/MiniMax-M3.1-Flash",
+        "product_key": "minimax-payg-global",
+        "model_key": "minimax-m3-1-flash",
+        "upstream_model_id": "MiniMax-M3.1-Flash",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "standard",
+            "condition": {
+              "kind": "service-tier",
+              "service_tier": "standard"
+            },
+            "application": "provider-defined",
+            "rates": {
+              "input": "0.15",
+              "output": "0.60",
+              "cache-read": "0.015"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-minimax-pricing-current"
+        ]
+      },
+      {
+        "pricing_key": "minimax-payg-global/minimax-m3/MiniMax-M3",
+        "product_key": "minimax-payg-global",
+        "model_key": "minimax-m3",
+        "upstream_model_id": "MiniMax-M3",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "priority-long",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "service_tier": "priority",
+              "provider_threshold": "> 512k",
+              "threshold_token_unit": "unresolved"
+            },
+            "application": "provider-defined",
+            "rates": {
+              "input": "0.90",
+              "output": "3.60",
+              "cache-read": "0.18"
+            }
+          },
+          {
+            "schedule_key": "priority-short",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "service_tier": "priority",
+              "provider_threshold": "<= 512k",
+              "threshold_token_unit": "unresolved"
+            },
+            "application": "provider-defined",
+            "rates": {
+              "input": "0.45",
+              "output": "1.80",
+              "cache-read": "0.09"
+            }
+          },
+          {
+            "schedule_key": "standard-long",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "service_tier": "standard",
+              "provider_threshold": "> 512k",
+              "threshold_token_unit": "unresolved"
+            },
+            "application": "provider-defined",
+            "rates": {
+              "input": "0.60",
+              "output": "2.40",
+              "cache-read": "0.12"
+            }
+          },
+          {
+            "schedule_key": "standard-short",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "service_tier": "standard",
+              "provider_threshold": "<= 512k",
+              "threshold_token_unit": "unresolved"
+            },
+            "application": "provider-defined",
+            "rates": {
+              "input": "0.30",
+              "output": "1.20",
+              "cache-read": "0.06"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-minimax-pricing-current"
         ]
       },
       {
@@ -106958,6 +109444,76 @@
         ],
         "evidence_refs": [
           "source-214"
+        ]
+      },
+      {
+        "pricing_key": "xai-api/grok-4-7/grok-4.7",
+        "product_key": "xai-api",
+        "model_key": "grok-4-7",
+        "upstream_model_id": "grok-4.7",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "standard-long-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "service_tier": "standard",
+              "provider_threshold": ">= 200k",
+              "threshold_token_unit": "unresolved"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "4",
+              "cache-read": "1",
+              "output": "12"
+            }
+          },
+          {
+            "schedule_key": "standard-short-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "service_tier": "standard",
+              "provider_threshold": "< 200k",
+              "threshold_token_unit": "unresolved"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "2",
+              "cache-read": "0.50",
+              "output": "6"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-grok47"
+        ]
+      },
+      {
+        "pricing_key": "zai-general-global/glm-5-3-flashx-global/glm-5.3-flashx",
+        "product_key": "zai-general-global",
+        "model_key": "glm-5-3-flashx-global",
+        "upstream_model_id": "glm-5.3-flashx",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "standard",
+            "condition": {
+              "kind": "always"
+            },
+            "application": "provider-defined",
+            "rates": {
+              "input": "0.37",
+              "cache-read": "0.075",
+              "output": "1.25"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-zai-pricing-current"
         ]
       }
     ],

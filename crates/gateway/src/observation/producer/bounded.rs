@@ -92,6 +92,8 @@ pub struct ObservationRecord {
 
 #[path = "bounded/credit.rs"]
 mod credit;
+#[path = "bounded/drain.rs"]
+mod drain;
 pub use credit::ObservationWorkReservation;
 use credit::RecordCredit;
 
@@ -181,6 +183,7 @@ impl fmt::Debug for ByteBoundedObservationProducer {
 }
 
 struct ProducerShared {
+    drain: drain::DrainProgress,
     capacity_bytes: usize,
     content: Option<Arc<ContentResources>>,
     credit_gate: Mutex<()>,
@@ -340,6 +343,7 @@ impl ByteBoundedObservationProducer {
         }
         let (sender, receiver) = sync_channel(capacity_events);
         let shared = Arc::new(ProducerShared {
+            drain: drain::DrainProgress::default(),
             capacity_bytes,
             content,
             credit_gate: Mutex::new(()),
@@ -820,6 +824,7 @@ fn producer_worker(
             );
         }
 
+        shared.drain.settled(expected_sequence.saturating_sub(1));
         flushes.retain(|(through_sequence, acknowledge)| {
             if expected_sequence > *through_sequence {
                 let _ = acknowledge.try_send(());
