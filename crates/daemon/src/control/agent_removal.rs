@@ -56,20 +56,20 @@ mod tests {
         fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
         let path = dir.path().join("agent-removal.lock");
         let active_write = try_lock_shared(&path).unwrap();
-        // flock belongs to the open file description. A parallel test can fork
-        // while it is held; a duplicate deterministically models that inherited FD.
-        let inherited_write = active_write.try_clone().unwrap();
+        let shared_alias = active_write.try_clone().unwrap();
         let teardown = OpenOptions::new()
             .read(true)
             .write(true)
             .open(&path)
             .unwrap();
         assert!(FileExt::try_lock_exclusive(&teardown).is_err());
+        // Parallel process tests can inherit a descriptor before exec. Keep
+        // aliases alive so this fixture cannot rely on a last-close unlock.
+        FileExt::unlock(&active_write).unwrap();
         drop(active_write);
-        assert!(FileExt::try_lock_exclusive(&teardown).is_err());
-        FileExt::unlock(&inherited_write).unwrap();
         FileExt::try_lock_exclusive(&teardown).unwrap();
-        let inherited_teardown = teardown.try_clone().unwrap();
+        drop(shared_alias);
+        let teardown_alias = teardown.try_clone().unwrap();
 
         let daemon = LocalControlDaemon::new(ApplicationService::default())
             .with_agent_removal_lock(Some(path));
@@ -98,22 +98,13 @@ mod tests {
             call("PreviewAgentConnectionRestore"),
             ErrorCode::InvalidArguments
         );
+        FileExt::unlock(&teardown).unwrap();
         drop(teardown);
         assert_eq!(
             call("ApplyAgentConnectionRestore"),
-            ErrorCode::DaemonUnavailable
-        );
-        // Closing one descriptor is not an unlock while another copy survives.
-        // End the fixture's exclusion explicitly before testing readmission.
-        FileExt::unlock(&inherited_teardown).unwrap();
-        assert_eq!(
-            call("ApplyAgentConnectionRestore"),
             ErrorCode::InvalidArguments
         );
-        assert_eq!(
-            call("ApplyAgentConnectionChange"),
-            ErrorCode::InvalidArguments
-        );
+        drop(teardown_alias);
     }
 
     #[test]

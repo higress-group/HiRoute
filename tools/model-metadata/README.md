@@ -50,3 +50,10 @@ source-level tool availability includes its qualified saved interfaces, while
 candidate materialization resolves each emitted wire profile's own tool support
 before compiling request/response fidelity. Manual tool values retain precedence
 across the saved interfaces; metadata aggregation never authorizes another target.
+
+Generated model JSON remains one JSON document, with deterministic whitespace after
+commas outside strings once a line reaches 64 KiB. This keeps complete large
+catalogs readable by line-oriented review and credential scanners. Strings and
+canonical semantic digests are unchanged; byte digests and bundle manifests bind
+the exact emitted bytes. Python preparation and the Rust producer use the same
+format. Existing artifact-size and structural validation still apply.

@@ -40,7 +40,7 @@ mod selection;
 use std::future::Future;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use hiroute_diagnostics::event::ObservationChannel;
 use hiroute_diagnostics::runtime::DiagnosticsPort;
@@ -63,8 +63,8 @@ pub use otel::{
 pub use ports::{ObservedCredentialResolver, ObservedRuntimeStateStore};
 pub use pricing::{RequestPriceSnapshot, RequestPriceSource};
 pub use producer::{
-    ContentResourceSnapshot, GatewayObservationSinks, ObservationAck, ObservationNack,
-    ObservationRecord, ObservationRecordSink, accounted_acknowledgement,
+    ContentResourceSnapshot, GatewayObservationSinks, ObservationAck, ObservationError,
+    ObservationNack, ObservationRecord, ObservationRecordSink, accounted_acknowledgement,
 };
 pub use provider::ObservedProductionProvider;
 pub use request::{RequestObservation, RequestObservationMetadata};
@@ -282,6 +282,13 @@ fn reliable_observation_session_id(
 }
 
 impl GatewayObservation {
+    /// After request producers have stopped, wait for admitted execution facts
+    /// to reach their sink ACK or existing declared-loss disposition. Request
+    /// handling remains nonblocking; a missed shutdown deadline is an error.
+    pub fn drain_execution_facts(&self, timeout: Duration) -> Result<(), ObservationError> {
+        self.channels.execution.drain(timeout)
+    }
+
     pub(super) fn diagnostic_context(&self) -> hiroute_diagnostics::context::DiagnosticContext {
         self.diagnostics
             .lock()

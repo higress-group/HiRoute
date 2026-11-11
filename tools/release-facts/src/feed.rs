@@ -78,7 +78,7 @@ pub fn build_against(root: &Path, check: bool, base: Option<&str>) -> Result<(),
     );
     candidate.validate().map_err(|e| e.to_string())?;
     let candidate_bytes =
-        super::canonical_sorted_json_line(&candidate).map_err(|e| e.to_string())?;
+        super::canonical_sorted_json_document(&candidate).map_err(|e| e.to_string())?;
     parse_feed(&candidate_bytes).map_err(|e| e.to_string())?;
     validate_embedded_history(root, &current.official_snapshot(), base)?;
     let mut clients = Vec::new();
@@ -232,7 +232,7 @@ pub fn build_against(root: &Path, check: bool, base: Option<&str>) -> Result<(),
             }
         }
     }
-    let bytes = super::canonical_sorted_json_line(&payload).map_err(|e| e.to_string())?;
+    let bytes = super::canonical_sorted_json_document(&payload).map_err(|e| e.to_string())?;
     if bytes.len() > MAX_MODEL_FEED_BYTES {
         return Err("generated payload cannot fit the bounded envelope".into());
     }
