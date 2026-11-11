@@ -2,8 +2,8 @@
 
 use hiroute_domain::{
     AGENT_PROFILES_ARTIFACT_SCHEMA_V1, AgentProfilesArtifactV1, CanonicalDigest,
-    ConnectorRegistryBundleV1, MAX_RELEASE_BUNDLE_BYTES, RELEASE_FACTS_TOOL_VERSION_V2,
-    ReleaseFactsManifestV2,
+    ConnectorRegistryBundleV1, MAX_RELEASE_BUNDLE_BYTES, MAX_RELEASE_MODEL_DATA_BYTES,
+    RELEASE_FACTS_TOOL_VERSION_V2, ReleaseFactsManifestV2,
 };
 
 use crate::{ReleaseVerificationError, TrustedReleaseCatalog, builtin_agent_profiles};
@@ -44,7 +44,7 @@ impl TrustedReleaseCatalog {
     ) -> Result<Self, ReleaseVerificationError> {
         if manifest_bytes.len() > MAX_RELEASE_FACTS_MANIFEST_BYTES
             || registry_bytes.len() > MAX_RELEASE_BUNDLE_BYTES
-            || model_data_bytes.len() > MAX_RELEASE_BUNDLE_BYTES
+            || model_data_bytes.len() > MAX_RELEASE_MODEL_DATA_BYTES
         {
             return Err(ReleaseVerificationError::BundleTooLarge);
         }
