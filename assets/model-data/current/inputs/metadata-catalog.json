@@ -5619,7 +5619,7 @@
         "source-grok47",
         "source-grok47-streaming"
       ],
-      "data_note": "The independent output maximum is unpublished. Regions: us-east-1, us-west-2, us-central-1. No public Grok 4.7 Fast ID is established.",
+      "data_note": "The independent output maximum is unpublished. Regions: us-east-1, us-west-2, us-central-1. No public Grok 4.7 Fast ID is established. Pricing thresholds retain the provider label 200k/200K without an assumed integer conversion.",
       "max_output_state": "unknown"
     },
     {
@@ -6413,7 +6413,7 @@
         "source-muse-reasoning-current",
         "source-muse-responses-current"
       ],
-      "data_note": "Reasoning and answer share the output budget, which must fit with input within the context. Maximum output is 524288."
+      "data_note": "Reasoning and answer share the output budget, which must fit with input within the context. Maximum output is 524288. Pricing thresholds retain the provider label 200k/200K without an assumed integer conversion."
     },
     {
       "model_key": "muse-spark-1-3",
@@ -11233,9 +11233,10 @@
           "schedule_key": "standard-long-context",
           "condition": {
             "kind": "prompt-token-threshold",
-            "minimum_input_tokens": 200001,
             "includes_cached_tokens": true,
-            "includes_stored_conversation": true
+            "includes_stored_conversation": true,
+            "provider_threshold": "> 200K",
+            "threshold_token_unit": "unresolved"
           },
           "application": "whole-request",
           "rates": {
@@ -11248,9 +11249,10 @@
           "schedule_key": "standard-short-context",
           "condition": {
             "kind": "prompt-token-threshold",
-            "maximum_input_tokens": 200000,
             "includes_cached_tokens": true,
-            "includes_stored_conversation": true
+            "includes_stored_conversation": true,
+            "provider_threshold": "<= 200K",
+            "threshold_token_unit": "unresolved"
           },
           "application": "whole-request",
           "rates": {
@@ -11698,8 +11700,9 @@
           "schedule_key": "standard-long-context",
           "condition": {
             "kind": "prompt-token-threshold",
-            "minimum_input_tokens": 200000,
-            "service_tier": "standard"
+            "service_tier": "standard",
+            "provider_threshold": ">= 200k",
+            "threshold_token_unit": "unresolved"
           },
           "application": "whole-request",
           "rates": {
@@ -11712,8 +11715,9 @@
           "schedule_key": "standard-short-context",
           "condition": {
             "kind": "prompt-token-threshold",
-            "maximum_input_tokens": 199999,
-            "service_tier": "standard"
+            "service_tier": "standard",
+            "provider_threshold": "< 200k",
+            "threshold_token_unit": "unresolved"
           },
           "application": "whole-request",
           "rates": {
@@ -11930,6 +11934,12 @@
       "status": "runtime_required",
       "subject": "GPT-6 Sol/Luna Batch, Flex, Fast, and regional pricing and Claude Opus 5.5 cache-write duration, Batch, and Fast pricing are outside the recorded standard price schedules",
       "decision": "Treat absent components and schedules as unpriced, never free. Require matching product, service tier, region, prompt length, and cache duration before calculating a bill."
+    },
+    {
+      "decision_key": "november-pricing-threshold-units",
+      "status": "runtime_required",
+      "subject": "Abbreviated Grok and Muse Ember price thresholds do not establish integer token cutoffs",
+      "decision": "Keep Grok < 200k versus >= 200k, and Ember <= 200K versus > 200K, with whole-request charging. Exact integer conversion remains unresolved; do not select a numeric billing tier from an assumed conversion."
     },
     {
       "decision_key": "november-public-documentation-boundary",

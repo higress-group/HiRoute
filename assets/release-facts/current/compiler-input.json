@@ -6296,7 +6296,7 @@
             "value": 500000
           },
           "context_variants": [],
-          "data_note": "The independent output maximum is unpublished. Regions: us-east-1, us-west-2, us-central-1. No public Grok 4.7 Fast ID is established.",
+          "data_note": "The independent output maximum is unpublished. Regions: us-east-1, us-west-2, us-central-1. No public Grok 4.7 Fast ID is established. Pricing thresholds retain the provider label 200k/200K without an assumed integer conversion.",
           "display_name": "Grok 4.7",
           "evidence_refs": [
             "source-grok47",
@@ -7335,7 +7335,7 @@
             "value": 1048576
           },
           "context_variants": [],
-          "data_note": "Reasoning and answer share the output budget, which must fit with input within the context. Maximum output is 524288.",
+          "data_note": "Reasoning and answer share the output budget, which must fit with input within the context. Maximum output is 524288. Pricing thresholds retain the provider label 200k/200K without an assumed integer conversion.",
           "display_name": "Muse Ember 1.0",
           "evidence_refs": [
             "source-muse-ember-current",
@@ -107606,7 +107606,7 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:9fafad419061e61b443a5f50092b0425a262683329c75f9cf257ef194b4e57ac"
+      "source_catalog_digest": "sha256:4bb742a3e6265f59acc745075a67c252b97ad4d788898bf436eb93c18f6388f1"
     },
     "rating_snapshot": {
       "digest": "sha256:5fa20fef854989fc3c1a6106af04121e5b934ad1f391ab93a414958ec570aadf",
@@ -109715,7 +109715,7 @@
     "schema": "hiroute.release-model-data/v2"
   },
   "official_model_data": {
-    "data_revision": 11,
+    "data_revision": 12,
     "pricing_facts": [
       {
         "pricing_key": "anthropic-platform/claude-fable-5-2/claude-fable-5-2",
@@ -110382,9 +110382,10 @@
             "schedule_key": "standard-long-context",
             "condition": {
               "kind": "prompt-token-threshold",
-              "minimum_input_tokens": 200001,
               "includes_cached_tokens": true,
-              "includes_stored_conversation": true
+              "includes_stored_conversation": true,
+              "provider_threshold": "> 200K",
+              "threshold_token_unit": "unresolved"
             },
             "application": "whole-request",
             "rates": {
@@ -110397,9 +110398,10 @@
             "schedule_key": "standard-short-context",
             "condition": {
               "kind": "prompt-token-threshold",
-              "maximum_input_tokens": 200000,
               "includes_cached_tokens": true,
-              "includes_stored_conversation": true
+              "includes_stored_conversation": true,
+              "provider_threshold": "<= 200K",
+              "threshold_token_unit": "unresolved"
             },
             "application": "whole-request",
             "rates": {
@@ -110847,8 +110849,9 @@
             "schedule_key": "standard-long-context",
             "condition": {
               "kind": "prompt-token-threshold",
-              "minimum_input_tokens": 200000,
-              "service_tier": "standard"
+              "service_tier": "standard",
+              "provider_threshold": ">= 200k",
+              "threshold_token_unit": "unresolved"
             },
             "application": "whole-request",
             "rates": {
@@ -110861,8 +110864,9 @@
             "schedule_key": "standard-short-context",
             "condition": {
               "kind": "prompt-token-threshold",
-              "maximum_input_tokens": 199999,
-              "service_tier": "standard"
+              "service_tier": "standard",
+              "provider_threshold": "< 200k",
+              "threshold_token_unit": "unresolved"
             },
             "application": "whole-request",
             "rates": {

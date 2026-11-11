@@ -1004,8 +1004,8 @@ fn november_provider_limits_and_price_boundaries_survive_official_snapshot_loadi
     let snapshot = serde_json::to_value(catalog.official_snapshot()).unwrap();
     let prices = snapshot["data"]["pricing_facts"].as_array().unwrap();
     for (key, low, high) in [
-        ("grok-4-7", 199_999, 200_000),
-        ("muse-ember-1-0", 200_000, 200_001),
+        ("grok-4-7", "< 200k", ">= 200k"),
+        ("muse-ember-1-0", "<= 200K", "> 200K"),
     ] {
         let price = prices.iter().find(|p| p["model_key"] == key).unwrap();
         let schedules = price["schedules"].as_array().unwrap();
@@ -1017,9 +1017,13 @@ fn november_provider_limits_and_price_boundaries_survive_official_snapshot_loadi
             .iter()
             .find(|s| s["schedule_key"] == "standard-long-context")
             .unwrap();
-        assert_eq!(short["condition"]["maximum_input_tokens"], low);
-        assert_eq!(long["condition"]["minimum_input_tokens"], high);
-        assert_eq!(short["application"], "whole-request");
-        assert_eq!(long["application"], "whole-request");
+        assert_eq!(short["condition"]["provider_threshold"], low);
+        assert_eq!(long["condition"]["provider_threshold"], high);
+        for schedule in schedules {
+            assert_eq!(schedule["application"], "whole-request");
+            assert_eq!(schedule["condition"]["threshold_token_unit"], "unresolved");
+            assert!(schedule["condition"].get("maximum_input_tokens").is_none());
+            assert!(schedule["condition"].get("minimum_input_tokens").is_none());
+        }
     }
 }

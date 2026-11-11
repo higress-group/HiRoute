@@ -125,13 +125,17 @@ class November11ModelProjectionTests(unittest.TestCase):
                 self.assertEqual(s['condition']['cache_mode'], 'implicit-only')
                 self.assertNotIn('cache-write', s['rates'])
 
-    def test_grok_and_ember_have_different_whole_request_price_boundaries(self):
-        for key, low_max, high_min in [('grok-4-7', 199999, 200000), ('muse-ember-1-0', 200000, 200001)]:
+    def test_grok_and_ember_keep_published_thresholds_without_assumed_integer_units(self):
+        for key, low, high in [('grok-4-7', '< 200k', '>= 200k'), ('muse-ember-1-0', '<= 200K', '> 200K')]:
             price, = self.prices(key)
             schedules = {s['schedule_key']: s for s in price['schedules']}
-            self.assertEqual(schedules['standard-short-context']['condition']['maximum_input_tokens'], low_max)
-            self.assertEqual(schedules['standard-long-context']['condition']['minimum_input_tokens'], high_min)
-            self.assertTrue(all(s['application'] == 'whole-request' for s in schedules.values()))
+            self.assertEqual(schedules['standard-short-context']['condition']['provider_threshold'], low)
+            self.assertEqual(schedules['standard-long-context']['condition']['provider_threshold'], high)
+            for schedule in schedules.values():
+                self.assertEqual(schedule['condition']['threshold_token_unit'], 'unresolved')
+                self.assertEqual(schedule['application'], 'whole-request')
+                self.assertNotIn('maximum_input_tokens', schedule['condition'])
+                self.assertNotIn('minimum_input_tokens', schedule['condition'])
 
     def test_muse_contributor_requires_distinct_product_and_effort(self):
         standard = self.records['official/meta-model-api-standard/muse-spark-1.3']
