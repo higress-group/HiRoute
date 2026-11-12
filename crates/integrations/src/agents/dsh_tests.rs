@@ -6,6 +6,41 @@ use hiroute_domain::{
 const OWNER: &str = "hiroute-main-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 #[test]
+fn dsh_desktop_restore_preserves_comments_after_removing_the_only_patch_row() {
+    use super::additional_native::configure_dsh_desktop;
+    let directory = tempfile::tempdir().unwrap();
+    let edit = configure_dsh_desktop(
+        &directory.path().join("cordis.patch.yml"),
+        None,
+        OWNER,
+        "http://127.0.0.1:4321/v1",
+        &[AdditionalAgentModelV1 {
+            alias: "hiroute-plan".into(),
+            protocol: AgentIngressProtocolV1::Responses,
+            context_window_tokens: 32768,
+            max_output_tokens: 4096,
+        }],
+        &AgentAccessGrantMaterial::from_csprng_entropy([5; 32]),
+        None,
+    )
+    .unwrap();
+    let restore = Restore::decode(&edit.restore.encode().unwrap()).unwrap();
+    assert!(restore.restore(Some(&edit.bytes)).unwrap().is_none());
+
+    let changed = [
+        b"# note before the route\n".as_slice(),
+        edit.bytes.as_slice(),
+        b"  # note after the route\n",
+    ]
+    .concat();
+    let restored = restore.restore(Some(&changed)).unwrap().unwrap();
+    assert_eq!(
+        restored.as_slice(),
+        b"# note before the route\n[]\n  # note after the route\n"
+    );
+}
+
+#[test]
 fn dsh_desktop_save_moves_only_released_owned_providers_and_restores_the_profile() {
     use super::additional_native::{attach_routing_adapter, configure_dsh_desktop};
     let root = tempfile::tempdir().unwrap();

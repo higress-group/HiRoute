@@ -9,11 +9,13 @@ use hiroute_integrations::{
 };
 use serde_json::{Value, json};
 use std::ffi::OsString;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const ANSWER: &str = "native Desktop model routing receipt";
+const USER_NOTE: &[u8] = b"# user note added after Save\n";
 const PROMPTS: [&str; 5] = [
     "original-before-save",
     "original-after-save",
@@ -28,12 +30,14 @@ pub(super) fn run(product: &InstalledProduct) {
     let dsh_home = home.join(".dsh");
     let profile = dsh_home.join("profiles/desktop");
     let bundle = profile.join("node_modules/hiroute-fixture-provider");
+    let profile_pi = profile.join("node_modules/@earendil-works/pi-ai");
     std::fs::create_dir_all(&bundle).unwrap();
+    std::fs::create_dir_all(&profile_pi).unwrap();
     let manifest = profile.join("package.json");
     write_json(
         &manifest,
         &json!({"name":"desktop","private":true,
-        "dependencies":{"hiroute-fixture-provider":"1.0.0"},
+        "dependencies":{"hiroute-fixture-provider":"1.0.0","@earendil-works/pi-ai":"0.74.0"},
         "dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","@deepseek-ai/dsh-web-app","hiroute-fixture-provider"]}}}),
     );
     write_json(
@@ -41,6 +45,14 @@ pub(super) fn run(product: &InstalledProduct) {
         &json!({"name":"hiroute-fixture-provider","version":"1.0.0",
         "dsh":{"bundle":{"patch":"./cordis.patch.yml"}}}),
     );
+    // A valid profile-local dependency with the old package's export boundary.
+    // The bundle already has a working model without using these local exports.
+    let pi_manifest = profile_pi.join("package.json");
+    write_json(
+        &pi_manifest,
+        &json!({"name":"@earendil-works/pi-ai","version":"0.74.0","type":"module","exports":"./index.js"}),
+    );
+    std::fs::write(profile_pi.join("index.js"), b"export {};\n").unwrap();
     let observed = Arc::new(Mutex::new(Vec::new()));
     let requests = Arc::clone(&observed);
     let upstream = http::Server::start(move |request| {
@@ -66,22 +78,21 @@ pub(super) fn run(product: &InstalledProduct) {
         response()
     });
     let bundle_patch = bundle.join("cordis.patch.yml");
+    let probe = bundle.join("test-probe.mjs");
+    std::fs::write(&probe, include_str!("dsh_desktop_native_probe.mjs")).unwrap();
+    let probe_uri = hiroute_integrations::native_routing_adapter_uri(&probe).unwrap();
     write_json(
         &bundle_patch,
         &json!([{"id":"llm-pi-ai","config":{"providers":{"fixture-original":{
             "api":"openai-responses","baseURL":format!("http://{}/v1",upstream.address),
             "headers":{"Authorization":format!("Bearer {SECRET}")},
             "models":[{"id":MODEL,"name":"Original model","contextWindow":32768,"maxTokens":512,"input":["text"]}]
-        }}}}]),
+        }}}}, {"insert":[{"id":"test-probe","name":probe_uri}]}]),
     );
-    let probe = profile.join("test-probe.mjs");
-    std::fs::write(&probe, include_str!("dsh_desktop_native_probe.mjs")).unwrap();
     let patch = profile.join("cordis.patch.yml");
-    let row = json!({"insert":[{"id":"test-probe","name":hiroute_integrations::native_routing_adapter_uri(&probe).unwrap()}]});
-    let baseline = format!("# Desktop fixture\n- {row}\n");
-    std::fs::write(&patch, &baseline).unwrap();
     let manifest_before = std::fs::read(&manifest).unwrap();
     let bundle_before = std::fs::read(&bundle_patch).unwrap();
+    let pi_manifest_before = std::fs::read(&pi_manifest).unwrap();
 
     let vars = [("DSH_HOME".into(), dsh_home.as_os_str().to_owned())];
     let mut running = product.start_with_environment(false, &vars);
@@ -149,9 +160,8 @@ pub(super) fn run(product: &InstalledProduct) {
     apply(product, "connect", &spec, "desktop-plugin-configure");
     let configured = zeroize::Zeroizing::new(std::fs::read(&patch).unwrap());
     let appended = configured
-        .strip_prefix(baseline.as_bytes())
-        .and_then(|bytes| bytes.strip_prefix(b"- "))
-        .expect("Save appends one independent insert to the original profile");
+        .strip_prefix(b"- ")
+        .expect("Save writes one independent insert to the empty profile patch");
     let row: Value = serde_json::from_slice(appended).unwrap();
     let providers = row["insert"]
         .as_array()
@@ -179,6 +189,12 @@ pub(super) fn run(product: &InstalledProduct) {
     );
     let current = cli(product, &["agents", "connect", "status", context], None);
     assert_eq!(current["data"]["state"], "configured");
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&patch)
+        .unwrap()
+        .write_all(USER_NOTE)
+        .unwrap();
     apply(
         product,
         "restore",
@@ -191,9 +207,13 @@ pub(super) fn run(product: &InstalledProduct) {
         vec![original(PROMPTS[4])],
         providers.keys().cloned().collect(),
     );
-    assert!(std::fs::read(&patch).unwrap() == baseline.as_bytes());
+    assert!(
+        std::fs::read(&patch).unwrap() == [b"[]\n".as_slice(), USER_NOTE].concat(),
+        "Restore must preserve the user comment and remove the only managed entry"
+    );
     assert!(std::fs::read(&manifest).unwrap() == manifest_before);
     assert!(std::fs::read(&bundle_patch).unwrap() == bundle_before);
+    assert!(std::fs::read(&pi_manifest).unwrap() == pi_manifest_before);
     assert_eq!(observed.lock().unwrap().as_slice(), PROMPTS);
     lifecycle::stop(
         &product.layout.lifecycle_endpoint(),

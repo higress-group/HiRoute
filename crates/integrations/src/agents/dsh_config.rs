@@ -251,7 +251,7 @@ impl Patch {
             let mut offset = span.start;
             for line in text.split_inclusive('\n') {
                 offset += line.len();
-                if !line.trim().is_empty() && !line.starts_with('#') {
+                if !line.trim().is_empty() && !line.trim_start().starts_with('#') {
                     end = offset;
                 }
             }
@@ -262,6 +262,9 @@ impl Patch {
             output.extend_from_slice(&self.bytes[..span.start]);
             if let Some(rendered) = rendered {
                 output.extend_from_slice(rendered.as_bytes());
+            } else if self.rows.len() == 1 {
+                // A comment-only YAML document would read as null, not a patch sequence.
+                output.extend_from_slice(b"[]\n");
             }
             output.extend_from_slice(&self.bytes[end..]);
         } else {

@@ -321,13 +321,15 @@ impl FilesystemAgentScannerV1 {
             .env("ELECTRON_RUN_AS_NODE", "1")
             .args([
                 "--expose-internals",
-                "--experimental-import-meta-resolve",
                 "--input-type=module",
                 "--eval",
-                include_str!("../../../../assets/agents/dsh/probe-desktop-provider.mjs"),
-                "--",
-            ])
-            .arg(&archive);
+                concat!(
+                    include_str!("../../../../assets/agents/dsh/hiroute-routing.mjs"),
+                    "\n",
+                    "await loadDesktopProviderApi();\n",
+                    "console.log('HIRoute Desktop provider ready');\n",
+                ),
+            ]);
         let independent_provider =
             super::dsh_native::dsh_public_probe(command, false).is_ok_and(|output| {
                 std::str::from_utf8(&output)

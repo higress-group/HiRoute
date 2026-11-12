@@ -616,6 +616,8 @@ A runtime exposing the packaged pi-ai adapter and Responses and Messages
 protocol factories SHALL allow additional bundles and dependencies. HiRoute SHALL
 register its own provider routes through the owned routing adapter entry. This
 preserves the effective provider configuration supplied by other bundles.
+The capability probe and the owned adapter SHALL resolve these exports from the
+same running app's bundled resources, independent of profile dependencies.
 A factory profile on a carrier without this capability MAY use the existing
 bundled Web composition check and legacy provider placement. Existing settings
 and restore records SHALL remain usable. A subsequent save on a capable carrier

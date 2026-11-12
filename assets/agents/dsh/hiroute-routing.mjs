@@ -1,6 +1,8 @@
 // Cordis llm/stream middleware: immutable per-call metadata, independent of pi-ai caching.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 export const inject = ["sessions"];
 const symbol = Symbol.for("hiroute.dsh.routing-context.v2");
 const id = (value) => typeof value === "string" && value.length > 0 && value.length <= 128 &&
@@ -186,12 +188,35 @@ function requestContext(ctx, options) {
   return Object.freeze({ minimum, wire: Object.freeze(wire), parent, users });
 }
 
-async function registerDesktopProviders(ctx, providers) {
-  const [{ PiAiAdapter }, { openAIResponsesApi }, { anthropicMessagesApi }] = await Promise.all([
-    import("@deepseek-ai/dsh-llm-pi-ai"),
-    import("@earendil-works/pi-ai/api/openai-responses.lazy"),
-    import("@earendil-works/pi-ai/api/anthropic-messages.lazy"),
+async function loadDesktopProviderApi() {
+  const { registerHooks } = await import("node:module");
+  const anchor = pathToFileURL(join(process.resourcesPath, "app.asar", "dsh", "package.json")).href;
+  const exports = new Map([
+    ["@deepseek-ai/dsh-llm-pi-ai", "PiAiAdapter"],
+    ["@earendil-works/pi-ai/api/openai-responses.lazy", "openAIResponsesApi"],
+    ["@earendil-works/pi-ai/api/anthropic-messages.lazy", "anthropicMessagesApi"],
   ]);
+  // Use the bundled ESM exports for these synchronous lookups, even when the
+  // current profile installs another version of pi-ai. Release the hook before importing.
+  const hook = registerHooks({
+    resolve(specifier, context, nextResolve) {
+      return nextResolve(specifier, exports.has(specifier) ? { ...context, parentURL: anchor } : context);
+    },
+  });
+  let resolved;
+  try {
+    resolved = Array.from(exports.keys(), specifier => import.meta.resolve(specifier));
+  } finally {
+    hook.deregister();
+  }
+  const modules = await Promise.all(resolved.map(url => import(url)));
+  const api = Array.from(exports.values(), (name, index) => modules[index][name]);
+  if (!api.every(value => typeof value === "function")) throw new Error("DSH Desktop provider API unavailable");
+  return api;
+}
+
+async function registerDesktopProviders(ctx, providers) {
+  const [PiAiAdapter, openAIResponsesApi, anthropicMessagesApi] = await loadDesktopProviderApi();
   const protocols = { "openai-responses": openAIResponsesApi, "anthropic-messages": anthropicMessagesApi };
   const profiles = new Map();
   for (const [id, { api, baseURL, headers, models }] of Object.entries(providers)) {

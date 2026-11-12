@@ -329,7 +329,10 @@ selection retain the ordinary fresh-profile admission.
 uses the official installed Desktop carrier and its bundled Host, a dedicated DSH
 home, and the measured HiRoute CLI and daemon. It covers public Save and Restore,
 native Responses and Messages model requests through the Gateway, and preservation
-of an existing model from an additional bundle. Run it with `--ignored` in the
+of an existing model from an additional bundle. The profile installs a local
+pi-ai dependency without the app's bundled API exports. Restore preserves a user
+comment added after Save when the managed row was the only patch entry.
+Run it with `--ignored` in the
 fresh standard-user profile. Its native Host model calls do not exercise the
 Electron window or installer.
 

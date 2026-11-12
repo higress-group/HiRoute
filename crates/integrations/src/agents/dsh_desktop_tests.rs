@@ -142,7 +142,7 @@ fn desktop_plugin_profile_requires_the_bundled_independent_provider_api() {
         scanner.check_dsh_desktop_model_configuration(),
         Err(DshDesktopModelCheckError::MissingAdapter)
     );
-    fs::write(&executable, b"#!/bin/sh\n[ \"$2\" = --experimental-import-meta-resolve ] || exit 1\nprintf '%s\\n' 'HIRoute Desktop provider ready'\n").unwrap();
+    fs::write(&executable, b"#!/bin/sh\n[ \"$2\" = --input-type=module ] || exit 1\ncase \"$4\" in *'await loadDesktopProviderApi();'*) ;; *) exit 2;; esac\nprintf '%s\\n' 'HIRoute Desktop provider ready'\n").unwrap();
     let (proof, independent) = scanner.check_dsh_desktop_model_configuration().unwrap();
     assert!(independent);
     assert!(
