@@ -465,6 +465,7 @@ if ($Scope -eq 'components') {
   }
 } else {
   Invoke-RequiredTests 'agent-acp-notifications' @('-p','hiroute-daemon','--lib','delegation::acp::notification_tests::') @(
+    'delegation::acp::notification_tests::legacy_claude_image_update_preserves_prompt_response',
     'delegation::acp::notification_tests::startup_and_loaded_history_notifications_do_not_make_current_output_incomplete',
     'delegation::acp::notification_tests::wrong_session_notification_during_prompt_still_marks_output_incomplete')
   Invoke-RequiredTests 'agent-live-history' @('-p','hiroute-daemon','--lib','delegation::lifecycle::tests::terminal::') @(Get-WindowsLiveHistoryCases)
