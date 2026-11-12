@@ -239,6 +239,7 @@
     "hiroute.dsh-additional-model/v1",
     "hiroute.dsh-composition-facts/v1",
     "hiroute.dsh-native-restore/v2",
+    "hiroute.dsh-native-restore/v3",
     "hiroute.dsh-public-native-resources/v1",
     "hiroute.empty-request/v1",
     "hiroute.fixed-local-id/v2",
@@ -550,6 +551,20 @@
     "hiroute.worker-wait-request/v1"
   ],
   "subjects": [
+    {
+      "subject": "dsh_native_provider_restore",
+      "audited_prefixes": [
+        "hiroute.dsh-native-restore"
+      ],
+      "current_contracts": [
+        "hiroute.dsh-native-restore/v2",
+        "hiroute.dsh-native-restore/v3"
+      ],
+      "legacy_support": [],
+      "owner": "agent-connections",
+      "reason": "V2 owns provider entries on the bundled llm-pi-ai patch for DSH Web and factory Desktop apps without the public adapter exports. V3 owns the independent Desktop adapter insert. On a supported Desktop, Save can move a V2 registration to V3 and Restore can remove either layout.",
+      "removal_condition": "Retire V2 only when no current producer or supported saved DSH configuration requires it."
+    },
     {
       "subject": "decision_service_lists",
       "audited_prefixes": [

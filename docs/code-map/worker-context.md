@@ -322,7 +322,12 @@ not replace real native compaction, Continue or concurrent-route journeys.
 ### DeepSeek Harness
 
 [Official Desktop admission](../../crates/integrations/src/agents/dsh_desktop.rs)
-uses the app's bundled public CLI and independent `profiles/desktop` settings.
+checks the bundled provider API for independent `profiles/desktop` settings.
+The [owned routing entry](../../assets/agents/dsh/hiroute-routing.mjs) registers
+HiRoute's provider routes alongside user plugins. Admission and the Host resolve
+the same provider exports from the running Electron app's bundled resources.
+[Native restore](../../crates/integrations/src/agents/additional_native.rs)
+recognizes both released provider placement and the independent Desktop entry.
 Windows rescans check Programs directories and read-only uninstall hints
 through [native registration inspection](../../crates/platform/src/windows/installed_apps.rs).
 The [scan response](../../crates/application/src/control_plane/agent_discovery.rs)

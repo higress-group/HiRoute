@@ -55,7 +55,7 @@ In **Agent**, select **DeepSeek Harness Web** or **DeepSeek Harness Desktop**, m
 
 Restart that client, select the route in its model picker and try a log-analysis or code-reading task. See the models used in HiRoute's **Sessions → Routing timeline**. Web and Desktop have separate route settings.
 
-If saving reports a custom Desktop profile, check the plugins in that profile's `package.json`. HiRoute model routing requires the default bundles and no extra dependencies. If the bundled CLI cannot check the default configuration, verify the DeepSeek Harness Desktop installation and try saving again.
+Desktop profiles can keep additional plugins when the installed DeepSeek Harness Desktop supports independent provider registration. Keep the default base and Web bundles in the profile. If saving reports a missing model adapter, update DeepSeek Harness Desktop and try again.
 
 <h2 id="task-delegation">4. Explore task delegation</h2>
 

@@ -174,53 +174,99 @@ impl Patch {
         uri: &str,
         original: Option<&Self>,
     ) -> Result<Zeroizing<Vec<u8>>, QoderNativeError> {
-        let id = "hiroute-routing";
-        let declared = json!({"insert":[{"id":id,"name":uri}]});
-        let index = self.rows.iter().position(|r| {
-            r["insert"]
-                .as_array()
-                .is_some_and(|entries| entries.iter().any(|entry| entry["id"] == id))
-        });
-        if index.is_some_and(|i| self.rows[i] != declared) {
+        let declared = json!({"insert":[{"id":"hiroute-routing","name":uri}]});
+        if self.routing_adapter()?.is_some_and(|row| row != &declared) {
             return Err(qoder_error("DSH routing adapter conflict"));
         }
         let desired = match original {
-            None => Some(declared.clone()),
-            Some(original) => original
-                .rows
-                .iter()
-                .find(|r| {
-                    r["insert"]
-                        .as_array()
-                        .is_some_and(|entries| entries.iter().any(|entry| entry["id"] == id))
-                })
-                .cloned(),
+            None => Some(&declared),
+            Some(original) => original.routing_adapter()?,
         };
-        if desired.as_ref().is_some_and(|value| value != &declared) {
+        if desired.is_some_and(|value| value != &declared) {
             return Err(qoder_error("DSH routing adapter original"));
         }
+        self.replace_routing_adapter(desired)
+    }
+
+    fn routing_adapter_index(&self) -> Result<Option<usize>, QoderNativeError> {
+        let mut matches = self.rows.iter().enumerate().filter(|(_, row)| {
+            row["id"] == "hiroute-routing"
+                || row["insert"].as_array().is_some_and(|entries| {
+                    entries.iter().any(|entry| entry["id"] == "hiroute-routing")
+                })
+        });
+        let first = matches.next();
+        if matches.next().is_some() || first.is_some_and(|(_, row)| row.get("id").is_some()) {
+            return Err(qoder_error("DSH routing adapter conflict"));
+        }
+        Ok(first.map(|(index, _)| index))
+    }
+
+    pub fn routing_adapter(&self) -> Result<Option<&Value>, QoderNativeError> {
+        Ok(self.routing_adapter_index()?.map(|i| &self.rows[i]))
+    }
+
+    /// The caller verifies ownership of the complete insert before replacing it.
+    pub fn replace_routing_adapter(
+        &self,
+        desired: Option<&Value>,
+    ) -> Result<Zeroizing<Vec<u8>>, QoderNativeError> {
+        self.replace_row(self.routing_adapter_index()?, desired)
+    }
+
+    pub fn remove_empty_legacy_provider_row(
+        &self,
+        original: &Self,
+    ) -> Result<Zeroizing<Vec<u8>>, QoderNativeError> {
+        let empty = json!({"id":"llm-pi-ai","config":{"providers":{}}});
+        if !original.rows.iter().any(|row| row["id"] == "llm-pi-ai")
+            && let Some(index) = self.rows.iter().position(|row| row == &empty)
+        {
+            return self.replace_row(Some(index), None);
+        }
+        Ok(Zeroizing::new(self.bytes.to_vec()))
+    }
+
+    fn replace_row(
+        &self,
+        index: Option<usize>,
+        desired: Option<&Value>,
+    ) -> Result<Zeroizing<Vec<u8>>, QoderNativeError> {
         if self.rows.len() != self.spans.len() {
             return Err(qoder_error("DSH block patch required"));
         }
         let mut output = Zeroizing::new(Vec::new());
         let rendered = desired
             .map(|row| {
-                serde_json::to_string_pretty(&row)
+                serde_json::to_string_pretty(row)
                     .map(|s| format!("- {}\n", s.replace('\n', "\n  ")))
             })
             .transpose()
             .map_err(|_| qoder_error("DSH patch encoding"))?;
         if let Some(index) = index {
             let span = &self.spans[index];
-            let fragment = Self::parse(Some(&self.bytes[span.clone()]))?;
+            let text = std::str::from_utf8(&self.bytes[span.clone()])
+                .map_err(|_| qoder_error("DSH patch encoding"))?;
+            let mut end = span.start;
+            let mut offset = span.start;
+            for line in text.split_inclusive('\n') {
+                offset += line.len();
+                if !line.trim().is_empty() && !line.trim_start().starts_with('#') {
+                    end = offset;
+                }
+            }
+            let fragment = Self::parse(Some(&self.bytes[span.start..end]))?;
             if fragment.rows.as_slice() != std::slice::from_ref(&self.rows[index]) {
                 return Err(qoder_error("DSH adapter span"));
             }
             output.extend_from_slice(&self.bytes[..span.start]);
             if let Some(rendered) = rendered {
                 output.extend_from_slice(rendered.as_bytes());
+            } else if self.rows.len() == 1 {
+                // A comment-only YAML document would read as null, not a patch sequence.
+                output.extend_from_slice(b"[]\n");
             }
-            output.extend_from_slice(&self.bytes[span.end..]);
+            output.extend_from_slice(&self.bytes[end..]);
         } else {
             output.extend_from_slice(&self.bytes);
             if let Some(rendered) = rendered {
@@ -333,7 +379,16 @@ fn bundled_routing_insert(row: &Value) -> bool {
         return false;
     }
     let entry = &entries[0];
-    if entry["id"] != "hiroute-routing" || entry.as_object().is_none_or(|v| v.len() != 2) {
+    let providers = entry.get("config").and_then(Value::as_object);
+    let owned_layout = match providers {
+        None => entry.as_object().is_some_and(|v| v.len() == 2),
+        Some(config) => {
+            entry.as_object().is_some_and(|v| v.len() == 3)
+                && config.len() == 1
+                && entry["config"]["providers"].is_object()
+        }
+    };
+    if entry["id"] != "hiroute-routing" || !owned_layout {
         return false;
     }
     let Some(uri) = entry["name"]
@@ -350,5 +405,10 @@ fn bundled_routing_insert(row: &Value) -> bool {
         && super::filesystem_config::read_system_config_bytes(&path)
             .ok()
             .flatten()
-            .is_some_and(|(bytes, _)| bytes.as_slice() == super::DSH_ROUTING_ADAPTER.as_bytes())
+            .is_some_and(|(bytes, _)| {
+                bytes.as_slice() == super::DSH_ROUTING_ADAPTER.as_bytes()
+                    // Released Web and Desktop registrations used these exact bundled bytes.
+                    || hiroute_domain::CanonicalDigest::of_bytes(&bytes).as_str()
+                        == "sha256:ba5702a9b547d8e8587b62014232fda095625963a1b178e423beb7972c2a5cf6"
+            })
 }

@@ -52,8 +52,8 @@ test('stable Codex merge conflicts explain the file problem instead of asking fo
 
 test('DSH Desktop profile and bundled CLI failures explain different recovery actions', () => {
   const reason = message_key => ({ source: 'backend', envelope: { error: { code: 'ACTION_REQUIRED', message_key } } });
-  assert.match(agentSettingsFailureMessage(reason('error.dsh_desktop_custom_profile'), 'zh'), /默认组合包/);
-  assert.match(agentSettingsFailureMessage(reason('error.dsh_desktop_custom_profile'), 'en'), /extra dependencies/);
+  assert.match(agentSettingsFailureMessage(reason('error.dsh_desktop_custom_profile'), 'zh'), /基础组合包和 Web 组合包/);
+  assert.match(agentSettingsFailureMessage(reason('error.dsh_desktop_custom_profile'), 'en'), /default base and Web bundles/);
   assert.match(agentSettingsFailureMessage(reason('error.dsh_desktop_probe_failed'), 'zh'), /内置 CLI/);
   assert.match(agentSettingsFailureMessage(reason('error.dsh_desktop_probe_failed'), 'en'), /bundled .* CLI/);
   assert.equal(agentSettingsFailureMessage(reason('error.dsh_desktop_unknown'), 'en'), null);

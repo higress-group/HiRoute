@@ -1,6 +1,8 @@
 // Cordis llm/stream middleware: immutable per-call metadata, independent of pi-ai caching.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash } from "node:crypto";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 export const inject = ["sessions"];
 const symbol = Symbol.for("hiroute.dsh.routing-context.v2");
 const id = (value) => typeof value === "string" && value.length > 0 && value.length <= 128 &&
@@ -186,7 +188,71 @@ function requestContext(ctx, options) {
   return Object.freeze({ minimum, wire: Object.freeze(wire), parent, users });
 }
 
-export function apply(ctx) {
+async function loadDesktopProviderApi() {
+  const { registerHooks } = await import("node:module");
+  const anchor = pathToFileURL(join(process.resourcesPath, "app.asar", "dsh", "package.json")).href;
+  const exports = new Map([
+    ["@deepseek-ai/dsh-llm-pi-ai", "PiAiAdapter"],
+    ["@earendil-works/pi-ai/api/openai-responses.lazy", "openAIResponsesApi"],
+    ["@earendil-works/pi-ai/api/anthropic-messages.lazy", "anthropicMessagesApi"],
+  ]);
+  // Use the bundled ESM exports for these synchronous lookups, even when the
+  // current profile installs another version of pi-ai. Release the hook before importing.
+  const hook = registerHooks({
+    resolve(specifier, context, nextResolve) {
+      return nextResolve(specifier, exports.has(specifier) ? { ...context, parentURL: anchor } : context);
+    },
+  });
+  let resolved;
+  try {
+    resolved = Array.from(exports.keys(), specifier => import.meta.resolve(specifier));
+  } finally {
+    hook.deregister();
+  }
+  const modules = await Promise.all(resolved.map(url => import(url)));
+  const api = Array.from(exports.values(), (name, index) => modules[index][name]);
+  if (!api.every(value => typeof value === "function")) throw new Error("DSH Desktop provider API unavailable");
+  return api;
+}
+
+async function registerDesktopProviders(ctx, providers) {
+  const [PiAiAdapter, openAIResponsesApi, anthropicMessagesApi] = await loadDesktopProviderApi();
+  const protocols = { "openai-responses": openAIResponsesApi, "anthropic-messages": anthropicMessagesApi };
+  const profiles = new Map();
+  for (const [id, { api, baseURL, headers, models }] of Object.entries(providers)) {
+    const protocol = protocols[api]();
+    const catalog = models.map(model => ({ ...model, provider: id, api, baseUrl: baseURL }));
+    profiles.set(id, {
+      provider: id,
+      displayName: id,
+      headers,
+      streamIdleTimeoutMs: 300_000,
+      modelErrors: new Map(),
+      configuredMaxTokens: new Map(models.map(model => [model.id, model.maxTokens])),
+      piProvider: {
+        id,
+        name: id,
+        baseUrl: baseURL,
+        // The managed route authenticates with its explicit protected Gateway headers.
+        auth: { apiKey: { name: id, resolve: async () => ({ auth: {}, source: id }) } },
+        getModels: () => catalog,
+        stream: (model, context, options) => protocol.stream(model, context, options),
+        streamSimple: (model, context, options) => protocol.streamSimple(model, context, options),
+      },
+    });
+  }
+  ctx.inject(["llm"], (scope) => {
+    const adapter = new PiAiAdapter({
+      profiles: () => profiles,
+      resolveApiKey: async () => undefined,
+      auth: {},
+      prepareHeaders: (request, headers) => scope.waterfall("llm-pi-ai/request-headers", request, headers, () => headers),
+    });
+    scope.llm.registerAdapter([...profiles.keys()], adapter);
+  });
+}
+
+export function apply(ctx, config) {
   const storage = transport();
   // Web sessions can own an isolated LLM service. Cordis otherwise filters this
   // root-loaded listener before it can bind main or auxiliary call metadata.
@@ -204,4 +270,5 @@ export function apply(ctx) {
       throw(error) { return storage.run(context, () => iterator.throw ? iterator.throw(error) : Promise.reject(error)); },
     };
   }, { global: true });
+  if (config?.providers) return registerDesktopProviders(ctx, config.providers);
 }

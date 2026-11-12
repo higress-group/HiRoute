@@ -96,8 +96,8 @@ export function agentSettingsFailureMessage(error: unknown, language: 'zh' | 'en
         : 'DeepSeek Harness Desktop could not verify the profile manifest. Check the format and permissions of package.json in the Desktop profile.';
     case 'error.dsh_desktop_custom_profile':
       return zh
-        ? '模型路由接入要求 DeepSeek Harness Desktop 使用默认组合包，且没有额外依赖。请检查 Desktop profile 的插件配置。'
-        : 'Model routing requires the default DeepSeek Harness Desktop bundles with no extra dependencies. Check the plugins configured in the Desktop profile.';
+        ? '请在 DeepSeek Harness Desktop 的 profile 清单中恢复默认的基础组合包和 Web 组合包，然后重新保存模型路由。'
+        : 'Restore the default base and Web bundles in the DeepSeek Harness Desktop profile, then save model routing again.';
     case 'error.dsh_desktop_runtime_unavailable':
       return zh
         ? 'DeepSeek Harness Desktop 的安装文件无法验证。请检查安装后重新扫描。'
@@ -108,8 +108,8 @@ export function agentSettingsFailureMessage(error: unknown, language: 'zh' | 'en
         : 'The bundled DeepSeek Harness Desktop CLI could not check the default configuration. Check the installation and try again.';
     case 'error.dsh_desktop_model_adapter_missing':
       return zh
-        ? 'DeepSeek Harness Desktop 的默认配置缺少模型适配器 llm-pi-ai。请检查客户端版本。'
-        : 'The default DeepSeek Harness Desktop configuration is missing the llm-pi-ai model adapter. Check the client version.';
+        ? 'DeepSeek Harness Desktop 缺少此 profile 所需的模型适配器。请更新客户端后重新保存模型路由。'
+        : 'The installed DeepSeek Harness Desktop lacks the model adapter required for this profile. Update the app, then save model routing again.';
     default:
       return null;
   }

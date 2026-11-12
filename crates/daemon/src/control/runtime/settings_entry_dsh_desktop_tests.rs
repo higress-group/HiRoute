@@ -31,7 +31,7 @@ fn desktop_preview_and_apply_distinguish_custom_profile_from_failed_probe() {
     let manifest = fixture.native_config.with_file_name("package.json");
     private_file(
         &manifest,
-        br#"{"dependencies":{"test-plugin":"1.0.0"},"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","@deepseek-ai/dsh-web-app"]}}}"#,
+        br#"{"dependencies":{"test-plugin":"1.0.0"},"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","test-plugin"]}}}"#,
     );
 
     let apply = fixture.service.dispatch_wire(request(

@@ -71,13 +71,14 @@ impl LocalControlAdapter {
         &self,
         spec: &AgentSettingsSpecV2,
         class: SettingsAgentClass,
+        independent_dsh_provider: bool,
     ) -> Result<AgentSettingsPlanningInput, ControlReadError> {
         let mut input = if matches!(spec.model, AgentFacetIntent::Keep) {
             self.skill_only_settings_snapshot(spec, class)?
         } else if class == SettingsAgentClass::Hermes {
             self.attach_hermes_model_facts(spec, self.hermes_settings_snapshot(spec)?)?
         } else {
-            self.settings_snapshot(spec, class)?
+            self.settings_snapshot(spec, class, independent_dsh_provider)?
         };
         let facet = if spec.skill_facet() == AgentSettingsFacet::ManagementSkill {
             AgentSettingsFacet::Collaboration

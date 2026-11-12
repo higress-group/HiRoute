@@ -268,6 +268,8 @@ Quickstart 只读当前服务、准确的配置目标、可复用的模型来源
 
 Apply 文件为新建的私有文件，不会覆盖已有文件，包含准确请求和稳定幂等键。保留 `submission.operation_lookup`，响应不确定时用 `operations find` 查找，或原样重放同一个文件；不要重新生成 Preview 和新键来重试可能已接受的工作。再次运行 Quickstart 可复用已完成步骤。只恢复一项能力时，用 `agents restore preview --context CONTEXT_ID --facet management_skill --apply-file restore-apply.json`，再执行 `agents restore apply --request-file restore-apply.json`；`model`、`collaboration` 分别选择其他能力。恢复保留无关数据，运行中的原生会话可能仍需重新加载或选择模型。
 
+DeepSeek Harness Desktop 的 `agent_dsh_desktop` 入口支持保留默认基础 bundle 与 Web App bundle 的 profile。应用提供独立模型适配器接口时，HiRoute 只注册自己的模型，保留用户额外安装的插件。若 Preview 提示适配器不可用，请先更新 DeepSeek Harness Desktop。
+
 通过命令族和子命令的 `--help` 查看分支，用 `schema show --command-id routing.preview --include-schema` 获取完整的已安装请求/响应定义；不加该参数仍返回命令描述。JSON 输入与简化参数二选一，受支持的 Preview 两种形式均可加 `--apply-file`。Desktop 的驻留服务前置条件需由 Desktop 完成，不能在 CLI 中伪造。
 
 业务命令在 stdout 输出一个完整 JSON 文档。应单独保存 stderr 和实际退出码；Operation 被接受不代表执行完成。若 Agent 终端工具合并输出：

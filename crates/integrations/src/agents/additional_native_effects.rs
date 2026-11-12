@@ -18,6 +18,7 @@ pub struct AdditionalFileConfiguration<'a> {
     pub endpoint: &'a str,
     pub models: &'a [AdditionalAgentModelV1],
     pub local_grant: &'a AgentAccessGrantMaterial,
+    pub independent_dsh_provider: bool,
 }
 
 /// Preview is read-only and never requires bearer bytes. The protected previous intent proves
@@ -44,7 +45,11 @@ pub fn validate_additional_configuration(
     } else {
         port.read_native_target(target)?
     };
-    if kind == AgentKindV1::DeepseekHarness {
+    if kind == AgentKindV1::DeepseekHarness
+        && !previous
+            .as_ref()
+            .is_some_and(Restore::independent_dsh_provider)
+    {
         let path = port.native_target_path(target)?;
         additional_native::attach_routing_adapter(
             current.as_deref().map_or(b"[]\n", Vec::as_slice),
@@ -157,17 +162,33 @@ fn stage(
         Some("agent_opencode_default") => AgentKindV1::OpenCode,
         _ => return Err(error(PortErrorCode::InvalidData, "additional.native.kind")),
     };
-    let mut edit = additional_native::configure(
-        kind,
-        current.as_deref().map(Vec::as_slice),
-        configuration.provider_id,
-        configuration.endpoint,
-        configuration.models,
-        configuration.local_grant,
-        previous,
-    )
+    let current = current.as_deref().map(Vec::as_slice);
+    let mut edit = if configuration.independent_dsh_provider {
+        if intent.desired()["subject"]["agent_id"] != "agent_dsh_desktop" {
+            return Err(error(PortErrorCode::InvalidData, "additional.native.kind"));
+        }
+        additional_native::configure_dsh_desktop(
+            &port.native_target_path(intent.target())?,
+            current,
+            configuration.provider_id,
+            configuration.endpoint,
+            configuration.models,
+            configuration.local_grant,
+            previous,
+        )
+    } else {
+        additional_native::configure(
+            kind,
+            current,
+            configuration.provider_id,
+            configuration.endpoint,
+            configuration.models,
+            configuration.local_grant,
+            previous,
+        )
+    }
     .map_err(fields_error)?;
-    if kind == AgentKindV1::DeepseekHarness {
+    if kind == AgentKindV1::DeepseekHarness && !configuration.independent_dsh_provider {
         let path = port.native_target_path(intent.target())?;
         if let Some(previous) = previous {
             // Provider-only removal preserves unrelated user edits, including
@@ -213,6 +234,7 @@ pub fn stage_additional_restoration(
         .restore(current.as_deref().map(Vec::as_slice))
         .map_err(fields_error)?;
     if restore.kind().map_err(fields_error)? == AgentKindV1::DeepseekHarness
+        && !restore.independent_dsh_provider()
         && let Some(bytes) = &restored
     {
         let path = port.native_target_path(intent.target())?;

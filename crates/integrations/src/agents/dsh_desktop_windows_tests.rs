@@ -155,7 +155,7 @@ fn windows_installed_dsh_desktop_discovers_and_checks_the_bundled_cli_without_ch
     let proof = scanner.check_dsh_desktop_model_configuration().unwrap();
     assert!(
         scanner
-            .dsh_desktop_model_configuration_is_current(&proof)
+            .dsh_desktop_model_configuration_is_current(&proof.0)
             .unwrap()
     );
     assert!(

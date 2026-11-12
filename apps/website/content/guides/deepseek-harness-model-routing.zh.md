@@ -56,7 +56,7 @@
 
 重启所选客户端，从模型选择器选中这条路由，再试一次日志分析或代码阅读。打开 HiRoute“会话 → 路由时间线”查看实际模型。Web 和 Desktop 的路由配置分别保存。
 
-如果保存时提示 Desktop profile 使用了自定义组合包或依赖，请检查其 `package.json` 里的插件配置。HiRoute 的模型路由接入要求默认组合包且没有额外依赖。如果提示内置 CLI 的默认配置检查失败，请检查 DeepSeek Harness Desktop 的安装后重试。
+支持独立 provider 注册的 DeepSeek Harness Desktop 可以保留额外插件。请保留 Desktop profile 中的默认基础组合包和 Web 组合包。如果保存时提示缺少模型适配器，请更新 DeepSeek Harness Desktop 后重试。
 
 <h2 id="task-delegation">4. 了解任务委派</h2>
 

@@ -6,6 +6,103 @@ use hiroute_domain::{
 const OWNER: &str = "hiroute-main-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 #[test]
+fn dsh_desktop_restore_preserves_comments_after_removing_the_only_patch_row() {
+    use super::additional_native::configure_dsh_desktop;
+    let directory = tempfile::tempdir().unwrap();
+    let edit = configure_dsh_desktop(
+        &directory.path().join("cordis.patch.yml"),
+        None,
+        OWNER,
+        "http://127.0.0.1:4321/v1",
+        &[AdditionalAgentModelV1 {
+            alias: "hiroute-plan".into(),
+            protocol: AgentIngressProtocolV1::Responses,
+            context_window_tokens: 32768,
+            max_output_tokens: 4096,
+        }],
+        &AgentAccessGrantMaterial::from_csprng_entropy([5; 32]),
+        None,
+    )
+    .unwrap();
+    let restore = Restore::decode(&edit.restore.encode().unwrap()).unwrap();
+    assert!(restore.restore(Some(&edit.bytes)).unwrap().is_none());
+
+    let changed = [
+        b"# note before the route\n".as_slice(),
+        edit.bytes.as_slice(),
+        b"  # note after the route\n",
+    ]
+    .concat();
+    let restored = restore.restore(Some(&changed)).unwrap().unwrap();
+    assert_eq!(
+        restored.as_slice(),
+        b"# note before the route\n[]\n  # note after the route\n"
+    );
+}
+
+#[test]
+fn dsh_desktop_save_moves_only_released_owned_providers_and_restores_the_profile() {
+    use super::additional_native::{attach_routing_adapter, configure_dsh_desktop};
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("cordis.patch.yml");
+    let baseline = b"# baseline\n- id: original\n  config: {keep: true}\n";
+    let user_edit = b"- id: user-plugin\n  config: {new: true}\n";
+    let models = [AdditionalAgentModelV1 {
+        alias: "hiroute-plan".into(),
+        protocol: AgentIngressProtocolV1::Responses,
+        context_window_tokens: 32768,
+        max_output_tokens: 4096,
+    }];
+    let grant = AgentAccessGrantMaterial::from_csprng_entropy([5; 32]);
+    let endpoint = "http://127.0.0.1:4321/v1";
+    let mut legacy = configure(
+        AgentKindV1::DeepseekHarness,
+        Some(baseline),
+        OWNER,
+        endpoint,
+        &models,
+        &grant,
+        None,
+    )
+    .unwrap();
+    legacy.bytes = attach_routing_adapter(&legacy.bytes, &path, None).unwrap();
+    legacy.restore.rendered_digest = hiroute_domain::CanonicalDigest::of_bytes(&legacy.bytes);
+    let old = Restore::decode(&legacy.restore.encode().unwrap()).unwrap();
+    let current = [legacy.bytes.as_slice(), user_edit.as_slice()].concat();
+    let new = configure_dsh_desktop(
+        &path,
+        Some(&current),
+        OWNER,
+        endpoint,
+        &models,
+        &grant,
+        Some(&old),
+    )
+    .unwrap();
+    let patch = Patch::parse(Some(&new.bytes)).unwrap();
+    assert!(patch.providers().unwrap().as_object().unwrap().is_empty());
+    let id = hiroute_domain::additional_model_provider_for(OWNER, &models, &models[0]);
+    let insert = patch.routing_adapter().unwrap().unwrap();
+    assert_eq!(
+        insert["insert"][0]["config"]["providers"][id]["models"][0]["id"],
+        models[0].alias
+    );
+    let restore = Restore::decode(&new.restore.encode().unwrap()).unwrap();
+    assert!(restore.applied(Some(&new.bytes)).unwrap());
+    let additional = b"\n# keep this comment\n- id: another-user-plugin\n  config: {keep: later}\n";
+    let drift = [new.bytes.as_slice(), additional.as_slice()].concat();
+    assert_eq!(
+        restore.restore(Some(&drift)).unwrap().unwrap().as_slice(),
+        [
+            baseline.as_slice(),
+            user_edit.as_slice(),
+            additional.as_slice()
+        ]
+        .concat()
+    );
+}
+
+#[test]
 fn dsh_routing_adapter_insert_is_idempotent_restorable_and_rejects_foreign_ownership() {
     let original = b"# keep this\n- id: other\n  config: {keep: true}\n";
     let original_patch = Patch::parse(Some(original)).unwrap();

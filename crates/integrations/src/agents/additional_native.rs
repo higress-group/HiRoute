@@ -14,6 +14,8 @@ mod jsonc;
 use jsonc::Document;
 use jsonc::LIMIT;
 
+const DSH_DESKTOP_RESTORE: &str = "hiroute.dsh-native-restore/v3";
+
 pub(super) fn parse_native_jsonc(bytes: &[u8]) -> Result<Value, QoderNativeError> {
     Ok(Document::parse(bytes)?.root.value)
 }
@@ -35,6 +37,8 @@ pub(super) struct Restore {
     provider_digest: Option<CanonicalDigest>,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     providers: std::collections::BTreeMap<String, CanonicalDigest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    routing_insert_digest: Option<CanonicalDigest>,
     pub(super) rendered_digest: CanonicalDigest,
     original_exists: bool,
     #[serde(skip)]
@@ -202,7 +206,9 @@ pub(super) fn validate_configuration(
     }
     for id in desired {
         if owned(&document, &id)?.is_some()
-            && !previous.is_some_and(|p| p.owned_providers().contains_key(&id))
+            && !previous.is_some_and(|p| {
+                !p.independent_dsh_provider() && p.owned_providers().contains_key(&id)
+            })
         {
             return Err(qoder_error("provider already exists"));
         }
@@ -258,19 +264,6 @@ pub(super) fn configure(
         Some(previous) => previous.remove_owned(current, false)?,
         None => current.map(|bytes| Zeroizing::new(bytes.to_vec())),
     };
-    let credential =
-        std::str::from_utf8(material.expose()).map_err(|_| qoder_error("local grant encoding"))?;
-    let mut groups = std::collections::BTreeMap::<String, Vec<AdditionalAgentModelV1>>::new();
-    for model in models {
-        groups
-            .entry(hiroute_domain::additional_model_provider_for(
-                provider_id,
-                models,
-                model,
-            ))
-            .or_default()
-            .push(model.clone());
-    }
     let mut bytes = base.as_deref().map_or_else(
         || {
             Zeroizing::new(if kind == AgentKindV1::DeepseekHarness {
@@ -284,8 +277,7 @@ pub(super) fn configure(
         |b| Zeroizing::new(b.to_vec()),
     );
     let mut digests = std::collections::BTreeMap::new();
-    for (id, models) in groups {
-        let provider = render_provider(kind, endpoint, credential, &models)?;
+    for (id, provider) in render_providers(kind, provider_id, endpoint, models, material)? {
         digests.insert(id.clone(), digest(&provider)?);
         bytes = edit_provider(kind, &bytes, &id, Some(&provider))?;
     }
@@ -303,11 +295,95 @@ pub(super) fn configure(
         provider_id: provider_id.into(),
         provider_digest: None,
         providers: digests,
+        routing_insert_digest: None,
         rendered_digest: CanonicalDigest::of_bytes(&bytes),
         original_exists: base.is_some(),
         original: base.map_or_else(Vec::new, |bytes| bytes.to_vec()),
     };
     Ok(Edit { bytes, restore })
+}
+
+pub(super) fn configure_dsh_desktop(
+    path: &std::path::Path,
+    current: Option<&[u8]>,
+    provider_id: &str,
+    endpoint: &str,
+    models: &[AdditionalAgentModelV1],
+    material: &AgentAccessGrantMaterial,
+    previous: Option<&Restore>,
+) -> Result<Edit, QoderNativeError> {
+    let kind = AgentKindV1::DeepseekHarness;
+    validate_configuration(kind, current, provider_id, endpoint, models, previous)?;
+    let base = match previous {
+        Some(previous) => {
+            let base = previous.remove_owned(current, false)?;
+            if previous.independent_dsh_provider() {
+                base
+            } else {
+                base.map(|bytes| {
+                    let bytes = attach_routing_adapter(&bytes, path, Some(&previous.original))?;
+                    let original = super::dsh_config::Patch::parse(Some(&previous.original))?;
+                    super::dsh_config::Patch::parse(Some(&bytes))?
+                        .remove_empty_legacy_provider_row(&original)
+                })
+                .transpose()?
+            }
+        }
+        None => current.map(|bytes| Zeroizing::new(bytes.to_vec())),
+    };
+    let patch = super::dsh_config::Patch::parse(base.as_deref().map(Vec::as_slice))?;
+    let uri = dsh_routing_adapter_uri(path)?;
+    let uri = uri.as_str();
+    let existing = serde_json::json!({"insert":[{"id":"hiroute-routing","name":uri}]});
+    if patch.routing_adapter()?.is_some_and(|row| row != &existing) {
+        return Err(qoder_error("DSH routing adapter conflict"));
+    }
+    let providers = render_providers(kind, provider_id, endpoint, models, material)?;
+    let digests = providers
+        .iter()
+        .map(|(id, provider)| Ok((id.clone(), digest(provider)?)))
+        .collect::<Result<_, QoderNativeError>>()?;
+    let insert = serde_json::json!({
+        "insert":[{"id":"hiroute-routing","name":uri,"config":{"providers":providers}}]
+    });
+    let bytes = patch.replace_routing_adapter(Some(&insert))?;
+    let restore = Restore {
+        schema: DSH_DESKTOP_RESTORE.into(),
+        provider_id: provider_id.into(),
+        provider_digest: None,
+        providers: digests,
+        routing_insert_digest: Some(digest(&insert)?),
+        rendered_digest: CanonicalDigest::of_bytes(&bytes),
+        original_exists: base.is_some(),
+        original: base.map_or_else(Vec::new, |bytes| bytes.to_vec()),
+    };
+    Ok(Edit { bytes, restore })
+}
+
+fn render_providers(
+    kind: AgentKindV1,
+    provider_id: &str,
+    endpoint: &str,
+    models: &[AdditionalAgentModelV1],
+    material: &AgentAccessGrantMaterial,
+) -> Result<serde_json::Map<String, Value>, QoderNativeError> {
+    let credential =
+        std::str::from_utf8(material.expose()).map_err(|_| qoder_error("local grant encoding"))?;
+    let mut groups = std::collections::BTreeMap::<String, Vec<AdditionalAgentModelV1>>::new();
+    for model in models {
+        groups
+            .entry(hiroute_domain::additional_model_provider_for(
+                provider_id,
+                models,
+                model,
+            ))
+            .or_default()
+            .push(model.clone());
+    }
+    groups
+        .into_iter()
+        .map(|(id, models)| Ok((id, render_provider(kind, endpoint, credential, &models)?)))
+        .collect()
 }
 
 fn render_provider(
@@ -368,12 +444,7 @@ pub(super) fn attach_routing_adapter(
     path: &std::path::Path,
     original: Option<&[u8]>,
 ) -> Result<Zeroizing<Vec<u8>>, QoderNativeError> {
-    let uri = reqwest::Url::from_file_path(
-        path.parent()
-            .ok_or_else(|| qoder_error("DSH adapter parent"))?
-            .join("hiroute-routing.mjs"),
-    )
-    .map_err(|_| qoder_error("DSH adapter path"))?;
+    let uri = dsh_routing_adapter_uri(path)?;
     let patch = super::dsh_config::Patch::parse(Some(bytes))?;
     let original = original
         .map(|bytes| super::dsh_config::Patch::parse(Some(bytes)))
@@ -381,14 +452,29 @@ pub(super) fn attach_routing_adapter(
     patch.edit_routing_adapter(uri.as_str(), original.as_ref())
 }
 
+fn dsh_routing_adapter_uri(path: &std::path::Path) -> Result<reqwest::Url, QoderNativeError> {
+    reqwest::Url::from_file_path(
+        path.parent()
+            .ok_or_else(|| qoder_error("DSH adapter parent"))?
+            .join("hiroute-routing.mjs"),
+    )
+    .map_err(|_| qoder_error("DSH adapter path"))
+}
+
 impl Restore {
+    pub(super) fn independent_dsh_provider(&self) -> bool {
+        self.schema == DSH_DESKTOP_RESTORE
+    }
+
     pub fn kind(&self) -> Result<AgentKindV1, QoderNativeError> {
         match self.schema.as_str() {
             "hiroute.qoder-native-restore/v1" | "hiroute.qoder-native-restore/v2" => {
                 Ok(AgentKindV1::Qoder)
             }
             "hiroute.pi-native-restore/v1" | "hiroute.pi-native-restore/v2" => Ok(AgentKindV1::Pi),
-            "hiroute.dsh-native-restore/v2" => Ok(AgentKindV1::DeepseekHarness),
+            "hiroute.dsh-native-restore/v2" | DSH_DESKTOP_RESTORE => {
+                Ok(AgentKindV1::DeepseekHarness)
+            }
             "hiroute.opencode-native-restore/v2" => Ok(AgentKindV1::OpenCode),
             _ => Err(qoder_error("restore schema")),
         }
@@ -436,7 +522,8 @@ impl Restore {
             return Err(qoder_error("restore schema"));
         }
         let legacy = record.schema.ends_with("/v1");
-        if legacy != record.provider_digest.is_some()
+        if record.independent_dsh_provider() != record.routing_insert_digest.is_some()
+            || legacy != record.provider_digest.is_some()
             || (legacy && !record.providers.is_empty())
             || (!legacy && (record.providers.is_empty() || record.providers.len() > 256))
         {
@@ -444,6 +531,9 @@ impl Restore {
         }
         CanonicalDigest::parse(record.rendered_digest.as_str())
             .map_err(|_| qoder_error("restore digest"))?;
+        if let Some(digest) = &record.routing_insert_digest {
+            CanonicalDigest::parse(digest.as_str()).map_err(|_| qoder_error("restore digest"))?;
+        }
         let original = native_root(
             record.kind()?,
             record.original_exists.then_some(record.original.as_slice()),
@@ -478,6 +568,10 @@ impl Restore {
     }
 
     pub fn applied(&self, current: Option<&[u8]>) -> Result<bool, QoderNativeError> {
+        if let Some(expected) = &self.routing_insert_digest {
+            let patch = super::dsh_config::Patch::parse(current)?;
+            return Ok(patch.routing_adapter()?.map(digest).transpose()?.as_ref() == Some(expected));
+        }
         let document = native_root(self.kind()?, current)?;
         for (id, expected) in self.owned_providers() {
             if owned(&document, &id)?.map(digest).transpose()?.as_ref() != Some(&expected) {
@@ -519,6 +613,15 @@ impl Restore {
             return Ok(self
                 .original_exists
                 .then(|| Zeroizing::new(self.original.clone())));
+        }
+        if self.independent_dsh_provider() {
+            let patch = super::dsh_config::Patch::parse(current)?;
+            let original = super::dsh_config::Patch::parse(
+                self.original_exists.then_some(self.original.as_slice()),
+            )?;
+            return patch
+                .replace_routing_adapter(original.routing_adapter()?)
+                .map(Some);
         }
         // Remove only members whose exact ownership was verified; preserve foreign JSONC bytes.
         let mut bytes = Zeroizing::new(
