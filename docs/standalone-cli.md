@@ -637,7 +637,13 @@ hiroute schema show --command-id compute.budgets.preview --include-schema --outp
 ```
 
 Use the installed template and current source, model, Key and revision data to
-prepare `key-budget-preview.json`. Preview with
+prepare `key-budget-preview.json`. To edit an existing allowance, query the
+source for the Key's binding and copy the linked definition's `budget_id`,
+`display_name` and full `policy` into the assignment. Set `expected_revision`
+from the definition's `revision`, omit `initial_remaining_micros`, and change
+only the intended fields.
+
+Preview with
 `hiroute compute budgets preview --request-file key-budget-preview.json --output json`.
 After reviewing the preview, send its exact `spec`, `accept_digest` and
 `expected_revisions` with a stable `idempotency_key` to

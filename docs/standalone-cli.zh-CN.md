@@ -537,7 +537,12 @@ hiroute schema show --command-id compute.budgets.preview --include-schema --outp
 ```
 
 用已安装版本的模板和当前来源、模型、Key 及版本信息填写
-`key-budget-preview.json`，再运行
+`key-budget-preview.json`。编辑已有额度时，按来源查询 Key 绑定的额度，
+将其定义中的 `budget_id`、`display_name` 和完整 `policy` 复制到
+`assignment`。用该定义的 `revision` 填写 `expected_revision`，
+省略 `initial_remaining_micros`，再修改目标字段。
+
+运行
 `hiroute compute budgets preview --request-file key-budget-preview.json --output json`。
 核对预览后，将其中的 `spec`、`accept_digest` 和 `expected_revisions` 原样传给
 `hiroute compute connection apply`，并附上固定的 `idempotency_key`。
