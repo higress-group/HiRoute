@@ -242,14 +242,10 @@ fn finish(path: &Path, record: Handoff) -> Result<(), String> {
 }
 
 fn verify_packages(record: &Handoff) -> Result<(), String> {
-    if hiroute_host_runtime::verify_desktop_app(&record.current, "ai.hiroute.desktop", None, None)?
+    if super::verify_update_package(&record.current, None)?
         != record.old_identity
-        || hiroute_host_runtime::verify_desktop_app(
-            &record.staged,
-            "ai.hiroute.desktop",
-            Some(&record.release),
-            None,
-        )? != record.new_identity
+        || super::verify_update_package(&record.staged, Some(&record.release))?
+            != record.new_identity
     {
         return Err("UPGRADE_PACKAGE_CHANGED".into());
     }
