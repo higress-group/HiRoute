@@ -44,7 +44,7 @@ export function observationCancelled(error: unknown, signal?: AbortSignal): bool
 
 export function observationAccessLost(error: unknown): boolean {
   return [
-    'CAPABILITY_DENIED', 'CAPABILITY_UNAVAILABLE', 'CLIENT_CONTEXT_INVALID', 'CONSOLE_AUTH_REQUIRED',
+    'CAPABILITY_DENIED', 'CAPABILITY_UNAVAILABLE', 'CLIENT_CONTEXT_INVALID', 'CONSOLE_AUTH_REQUIRED', 'peer_rejected',
     'TRUSTED_AUTHORITY_UNAVAILABLE', 'PROTECTED_CHANNEL_TIMEOUT', 'PROTECTED_CHANNEL_CLOSED',
     'PROTECTED_CHANNEL_UNAVAILABLE', 'REGISTRATION_ACK_INVALID', 'REGISTRATION_ACK_MISMATCH',
   ].includes(observationFailureCode(error) ?? '');

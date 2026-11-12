@@ -106,6 +106,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
       inFlight = true;
       let rebuilding = false;
       let replayPages = 1;
+      const priorTurnRequests = new Map<string, string>();
       try {
         const pages = await recoverObservation(async read => {
           const results: TimelinePage[] = [];
@@ -124,6 +125,9 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
           if (!rebuilding) {
             replayPages = pagesLoaded.current + 1;
             rebuilding = true;
+            for (const turn of stored.current.values()) {
+              if (turn.requests[0]) priorTurnRequests.set(turn.turn_id, turn.requests[0].request_id);
+            }
             const pane = scroller.current;
             if (pane) {
               const left = pane.getBoundingClientRect().left;
@@ -182,8 +186,17 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
         if (changed) setTurns([...stored.current.values()].sort((a, b) => a.started_at_ms - b.started_at_ms || a.turn_id.localeCompare(b.turn_id)));
         if (rebuilding) {
           const ids = new Set(stored.current.keys());
-          setSelected(current => current && ids.has(current) ? current : null);
-          setOverviewFocus(current => current && ids.has(current) ? current : null);
+          const restored = (id: string | null) => id && (ids.has(id) ? id : owners.get(priorTurnRequests.get(id) ?? id)) || null;
+          setSelected(restored);
+          setOverviewFocus(restored);
+          if (pendingFocus.current) {
+            const owner = restored(pendingFocus.current.owner);
+            pendingFocus.current = owner ? { ...pendingFocus.current, owner } : null;
+          }
+          if (restoreViewport.current) {
+            const id = restored(restoreViewport.current.id);
+            restoreViewport.current = id ? { ...restoreViewport.current, id } : null;
+          }
         }
         // Empty live polls and updates to known turns do not increase the
         // amount of history we replay on the next rebuild.

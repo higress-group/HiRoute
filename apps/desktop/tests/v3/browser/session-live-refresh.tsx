@@ -73,6 +73,8 @@ mockIPC(async (command, payload: any) => {
     })) : [], complete: true, watermark: 'constant-timeline-digest',
   };
   if (view === 'catalog') {
+    if (fixture.body === 'busy' && query.limit === 20) throw { code: 'OBSERVATION_UNAVAILABLE', retryable: true,
+      details_schema: 'hiroute.observation.read-failure/v1', observation_read: { reason: 'reader_busy', retry_after_ms: 100 } };
     if (fixture.body === 'error') throw { code: 'OBSERVATION_READ_TIMEOUT' };
     // Production cleanup removes catalog rows and transcript roots; it does not
     // leave a synthetic entry whose state is deleted.

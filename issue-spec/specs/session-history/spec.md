@@ -484,6 +484,10 @@ committed. Content invalidation SHALL hide the affected body and prevent pending
 reads from restoring it. A genuine authority, protocol, corruption or capacity
 failure retains its applicable error or recovery action. Unavailable reads
 SHALL NOT become empty success or establish write authority.
+Typed content reads distinguish a missing or expired body from a retained body
+that can still complete. Explicit SQLite corruption is a non-retryable read
+failure. Callers without the failure-detail option retain the released error
+shape for an unavailable body.
 
 Extension scores without a floor MUST NOT be classified as below-floor or meets-floor and MUST NOT be relabelled unscored solely because no floor exists. Their valid complete scores still contribute to mean scores and scoring coverage.
 

@@ -236,6 +236,37 @@ export function homeStartupScenarios({ until, control }) {
         await until(() => health()?.textContent.includes('只读连接') && routeButton().disabled, 'new connection result');
       } finally { c.reset(); for (const resolve of pending) resolve(structuredClone(c.desktop)); await settled(); }
     }),
+    scenario('desktop.home.observation-authority-loss-masks-cached-content', ['home-startup', 'native-recovery'], 'Trusted connection loss hides resolved excerpts and rejects late activity', async () => {
+      const c = control();
+      const history = { sessions: [{ session_id: 'observation-session/authority-test', agent_id: 'codex', request_count: 1, last_request_at_ms: Date.now() - 1000, content_completeness: 'complete' }], next_cursor: null };
+      let lost = false;
+      let release;
+      try {
+        c.reset();
+        c.handlers.desktop_snapshot = () => ({ ...structuredClone(c.desktop), native_connection: lost ? 'recovery_required' : 'ready' });
+        c.handlers.recover_native_connection = () => { lost = false; return {}; };
+        c.handlers.observation_read = payload => {
+          const view = payload.request.intent.view;
+          if (view === 'home_value' && lost) throw { source: 'native', code: 'TRUSTED_AUTHORITY_UNAVAILABLE' };
+          if (view === 'sessions') return lost ? new Promise(resolve => { release = resolve; }) : history;
+          if (view === 'timeline') return { requests: [{ request_id: 'request/authority-test' }], next_cursor: null };
+          if (view === 'catalog') return { contents: [{ content_id: 'authority-test', role: 'user', kind: 'text', state: 'complete', direction: 'request_input', message_occurrence_id: 'prompt' }], next_cursor: null };
+          if (view === 'content') return { state: 'available', chunks: [{ text: 'Synthetic protected prompt', original_byte_offset: 0 }], next_cursor: null };
+          return c.fixtureResponse('observation_read', payload);
+        };
+        c.remount();
+        await until(() => document.querySelector('.v3-recent')?.textContent.includes('Synthetic protected prompt'), 'resolved protected excerpt');
+        lost = true;
+        window.dispatchEvent(new Event('focus'));
+        await until(() => release && document.querySelector('[data-connection-state="recovery_required"]'), 'trusted connection blocked');
+        assert(!document.querySelector('.v3-recent'), 'Resolved observation content stayed visible after authority loss');
+        release(history); release = null;
+        await settled();
+        assert(!document.querySelector('.v3-recent'), 'The old activity read restored protected content');
+        document.querySelector('[data-connection-state="recovery_required"] button').click();
+        await until(() => document.querySelector('.v3-recent')?.textContent.includes('Synthetic protected prompt'), 'current authority restored the excerpt');
+      } finally { c.reset(); release?.(history); await settled(); }
+    }),
     scenario('desktop.home.settings-service-refresh', ['home-startup'], 'Settings and navigation agree while the service display refreshes', async () => {
       const c = control(); let release;
       const badge = () => [...document.querySelectorAll('.settings-group')].find(group => group.querySelector('h2')?.textContent === '服务')?.querySelector('.badge');

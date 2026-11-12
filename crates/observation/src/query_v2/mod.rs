@@ -61,6 +61,10 @@ pub enum ObservationV2Error {
     RelationshipConflict,
     #[error("observation resource is unavailable")]
     Unavailable,
+    #[error("observation resource was not found")]
+    NotFound,
+    #[error("observation database is corrupt or incompatible")]
+    Corrupt,
     #[error("observation cursor is stale")]
     Stale,
     #[error("observation query workers are busy")]
@@ -77,6 +81,9 @@ impl From<rusqlite::Error> for ObservationV2Error {
             Some(rusqlite::ErrorCode::OperationInterrupted) => Self::Timeout,
             Some(rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked) => {
                 Self::Busy
+            }
+            Some(rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase) => {
+                Self::Corrupt
             }
             _ => Self::Unavailable,
         }
@@ -128,7 +135,9 @@ impl From<hiroute_domain::ObservationQueryError> for ObservationV2Error {
 impl ObservationV2Error {
     pub(crate) fn into_legacy_domain(self) -> hiroute_domain::ObservationQueryError {
         match self {
-            Self::Busy | Self::Timeout => hiroute_domain::ObservationQueryError::Unavailable,
+            Self::Busy | Self::Timeout | Self::Corrupt | Self::NotFound => {
+                hiroute_domain::ObservationQueryError::Unavailable
+            }
             other => other.into_domain(),
         }
     }
@@ -142,7 +151,9 @@ impl ObservationV2Error {
             Self::RelationshipConflict => E::RevisionConflict,
             Self::Busy => E::ReaderBusy,
             Self::Timeout => E::ReadTimeout,
-            _ => E::Unavailable,
+            Self::NotFound => E::NotFound,
+            Self::Corrupt => E::Corrupt,
+            Self::Unavailable => E::Unavailable,
         }
     }
 }

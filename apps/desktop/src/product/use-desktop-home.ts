@@ -259,24 +259,28 @@ export function useDesktopHome(observationActive: boolean) {
 
   useEffect(() => { void refreshCatalog(); }, [refreshCatalog]);
 
+  const stopObservations = useCallback(() => {
+    activityRead.current?.abort();
+    valueRead.current?.abort();
+    activityRead.current = valueRead.current = null;
+  }, []);
+  const invalidateObservations = useCallback(() => {
+    stopObservations();
+    setActivity(loading());
+    setValue(loading());
+  }, [stopObservations]);
+
   useLayoutEffect(() => {
-    function stop() {
-      activityRead.current?.abort();
-      valueRead.current?.abort();
-      activityRead.current = valueRead.current = null;
-    }
     function invalidate() {
-      stop();
-      setActivity(loading());
-      setValue(loading());
+      invalidateObservations();
       void refreshActivity();
       void refreshValue();
     }
     void refreshActivity();
     void refreshValue();
     window.addEventListener('hiroute-content-invalidated', invalidate);
-    return () => { stop(); window.removeEventListener('hiroute-content-invalidated', invalidate); };
-  }, [refreshActivity, refreshValue]);
+    return () => { stopObservations(); window.removeEventListener('hiroute-content-invalidated', invalidate); };
+  }, [refreshActivity, refreshValue, stopObservations, invalidateObservations]);
 
   useEffect(() => {
     let cancelled = false;
@@ -313,6 +317,7 @@ export function useDesktopHome(observationActive: boolean) {
     refreshAll,
     refreshDesktop,
     invalidateService,
+    invalidateObservations,
     refreshCompute,
     refreshAgents,
     refreshDomain,

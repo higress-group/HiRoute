@@ -3,6 +3,7 @@ import { TrialQuickStart } from '../features/trial/TrialQuickStart';
 import { NewModels } from '../features/trial/NewModels';
 import { useTrustSuggestions } from '../features/trust/use-trust-suggestions';
 import { NativeConnectionRecovery } from './NativeConnectionRecovery';
+import { nativeConnectionReadText } from '../native-connection';
 import { startupFailureText } from '../storage-recovery';
 import { randomId } from '../random-id.ts';
 import { hostCapabilities } from '../host/index.ts';
@@ -12,6 +13,7 @@ import type { DecisionService } from '../features/decision-services/types';
 import { DecisionServicesPage } from '../features/decision-services/DecisionServicesPage';
 import { requestEditorReplacement } from '../ui/discard-guard';
 import { useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { invoke } from '../host/index.ts';
 import { Agents } from '../agents';
 import type { AgentTask, AgentTaskRead } from '../features/AgentTasks';
@@ -36,6 +38,7 @@ import {
 import type { OperationReference } from '../features/model-connections/types';
 import {
   PresentationRoot,
+  ProductPage,
   TabList,
   UiIcon,
   WebConfirmationHost,
@@ -122,7 +125,9 @@ export function DesktopApp() {
   const [trialModelsOpen, setTrialModelsOpen] = useState(false);
   const trialOpen = Boolean(trialIntent) && !trialModelsOpen;
   const [page, setPage] = useState<Page>('home');
-  const homeObservationActive = page === 'home' && !trialOpen;
+  const [observationConnectionLost, setObservationConnectionLost] = useState(false);
+  const authorityLost = useRef(false);
+  const homeObservationActive = page === 'home' && !trialOpen && !observationConnectionLost;
   const home = useDesktopHome(homeObservationActive);
   const [modelTab, setModelTab] = useState<'general' | 'decisions'>('general');
   // Managing an API connection from a decision draft keeps that draft mounted behind the model page.
@@ -195,10 +200,20 @@ export function DesktopApp() {
   ];
 
   useEffect(() => {
-    const refresh = () => { home.invalidateService(true); void home.refreshDesktop(); };
+    const refresh = () => {
+      if (authorityLost.current) return;
+      authorityLost.current = true;
+      // Cut off the current read owners before a late reply can repaint records.
+      flushSync(() => {
+        setObservationConnectionLost(true);
+        home.invalidateObservations();
+        home.invalidateService(true);
+      });
+      void home.refreshDesktop();
+    };
     window.addEventListener('hiroute-native-connection-unavailable', refresh);
     return () => window.removeEventListener('hiroute-native-connection-unavailable', refresh);
-  }, [home.invalidateService, home.refreshDesktop]);
+  }, [home.invalidateService, home.invalidateObservations, home.refreshDesktop]);
   const startupFailure = home.startup?.state === 'failed' ? home.startup : null;
   const startupMessage = startupFailureText(startupFailure?.code, startupFailure?.storage_recovery, language, 'macos');
   const upgradePhase = home.startup?.state === 'starting' ? home.startup.upgrade_phase : undefined;
@@ -757,7 +772,13 @@ export function DesktopApp() {
         <HostNotices language={language} />
         {notice && <div className="toast-stack" aria-live="polite"><div className="toast" role="status"><UiIcon name="info" /><span>{notice}</span></div></div>}
         {upgradePhaseText && <div className="callout" role="status" aria-live="polite"><UiIcon name="info" /><div><strong>{upgradePhaseText}</strong><p>{language === 'zh' ? '请等待升级完成；请保留原数据与完整安装包。' : 'Wait for the upgrade to finish. Keep the original data and complete installation package.'}</p></div></div>}
-        <NativeConnectionRecovery status={home.desktopSnapshot?.native_connection} language={language} serviceResponsive={home.reads.service.status === 'ready'} onRefresh={home.refreshDesktop} onRecovered={async () => { home.invalidateService(); await home.refreshAll(); setRefreshVersion(value => value + 1); }} />
+        <NativeConnectionRecovery status={home.desktopSnapshot?.native_connection} language={language} serviceResponsive={home.reads.service.status === 'ready'} onRefresh={home.refreshDesktop} onRecovered={async () => {
+          authorityLost.current = false;
+          setObservationConnectionLost(false);
+          home.invalidateService();
+          await home.refreshAll();
+          setRefreshVersion(value => value + 1);
+        }} />
         {startupFailure && <div className="callout bad startup-recovery" role="alert" data-error-code={startupFailure.code}>
           <UiIcon name="warning" />
           <div>
@@ -878,7 +899,9 @@ export function DesktopApp() {
               })();
             }}
           /></div>}
-        {visited.has('sessions') && <div hidden={trialOpen || page !== 'sessions'}><Sessions
+        {visited.has('sessions') && <div hidden={trialOpen || page !== 'sessions'}>{observationConnectionLost
+          ? <ProductPage title={text.pages.sessions}><p className="oc-meta" role="status">{nativeConnectionReadText('TRUSTED_AUTHORITY_UNAVAILABLE', language)}</p></ProductPage>
+          : <Sessions
             key={sessionIntent.key}
             active={!trialOpen && page === 'sessions'}
             initialSession={sessionIntent.sessionId ?? null}
@@ -887,7 +910,7 @@ export function DesktopApp() {
             refreshVersion={refreshVersion}
             language={language}
             onOpenAgents={() => void openPageSafely('agents')}
-          /></div>}
+          />}</div>}
         <div hidden={trialOpen || page !== 'settings'}><SettingsPage
           active={!trialOpen && page === 'settings'}
           language={language}

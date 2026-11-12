@@ -179,7 +179,18 @@ impl ObservationControl {
                 serde_json::to_value(self.service.observed_ancestry(&reader, &q, now)?)
             }
             ObservationReadIntentV2::Content(q) => {
-                serde_json::to_value(self.service.observed_content_page(&reader, &q, now)?)
+                let page = self
+                    .service
+                    .observed_content_page(&reader, &q, now)
+                    .map_err(|error| {
+                        if error == ObservationQueryError::NotFound && !request.read_failure_details
+                        {
+                            ObservationQueryError::Unavailable
+                        } else {
+                            error
+                        }
+                    })?;
+                serde_json::to_value(page)
             }
             ObservationReadIntentV2::Facts(q) => {
                 serde_json::to_value(self.service.observed_facts(&reader, &q, now)?)

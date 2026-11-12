@@ -90,6 +90,7 @@ export const productShellRequired = [
   'desktop.home.observation-superseded-retry',
   'desktop.home.service-refresh-authority',
   'desktop.home.service-disconnect-generation',
+  'desktop.home.observation-authority-loss-masks-cached-content',
   'desktop.home.settings-service-refresh',
   'desktop.home.stale-startup-failure',
   'desktop.home.stale-startup-success',

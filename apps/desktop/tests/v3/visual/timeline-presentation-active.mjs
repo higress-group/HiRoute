@@ -109,6 +109,15 @@ try {
     assert.deepEqual(await evaluate(client, `presentationFixture.reads.slice(0,4).map(read=>read.after)`), [null, 'old-snapshot', null, 'new-snapshot']);
     assert.ok(!await evaluate(client, `!!document.querySelector('.routing-turn[data-turn-id="turn-1"]')`));
   });
+  await check('stale-rebuild-transfers-focus-to-the-absorbing-turn', async () => {
+    await open('stale-absorption');
+    await waitFor(client, `document.querySelectorAll('.routing-turn').length===18`);
+    await select(14);
+    await evaluate(client, `document.querySelector('[data-overview-turn="turn-14"]').focus();true`);
+    await waitFor(client, `!!document.querySelector('[data-observation-recovery="rebuilding"]')`);
+    await waitFor(client, `document.querySelectorAll('.routing-turn').length===17 && document.querySelector('.routing-detail-head > strong')?.textContent==='T13'`);
+    assert.equal(await evaluate(client, `document.activeElement.getAttribute('data-overview-turn')`), 'turn-13');
+  });
   await check('capacity-requires-explicit-retry', async () => {
     await open('scope'); await waitFor(client, `!!document.querySelector('[data-error-code]')`);
     await sleep(4200);

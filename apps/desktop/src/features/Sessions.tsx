@@ -61,6 +61,8 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
   const [sessions, setSessions] = useState<Summary[]>([]);
   const [sessionCursor, setSessionCursor] = useState<string | null>(null);
   const [session, setSession] = useState<string | null>(null);
+  const selectedSession = useRef(session);
+  useLayoutEffect(() => { selectedSession.current = session; }, [session]);
   const [requests, setRequests] = useState<Request[]>([]);
   const [readingRequests, setReadingRequests] = useState<string[]>([]);
   const [requestCursor, setRequestCursor] = useState<string | null>(null);
@@ -154,6 +156,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
   }
   function changeOnlySwitch(value: boolean) {
     if (keywordTimer.current !== null) { window.clearTimeout(keywordTimer.current); keywordTimer.current = null; }
+    if (value !== onlySwitch) setSessions([]);
     setOnlySwitch(value); setHits([]); setPartial(false); clearTimelineSelection();
     void load(null, { onlySwitch: value });
   }
@@ -196,7 +199,8 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
         setHits(current => uniqueBy(cursor && !rebuilt ? [...current, ...matches] : matches, hit => hit.session_id));
         setSearchCursor(pages.at(-1)!.next_cursor);
         setPartial(pages.some(page => page.index_partial));
-        if (!cursor || (rebuilt && session && !matches.some(hit => hit.session_id === session))) clearTimelineSelection();
+        const selected = selectedSession.current;
+        if (!cursor || (rebuilt && selected && !matches.some(hit => hit.session_id === selected))) clearTimelineSelection();
       } else {
         const { pages, rebuilt } = await readObservationPages<Page<{ sessions: Summary[] }>>('sessions', query, loadedPages.current.list, options);
         if (signal.aborted || epoch !== generation.current) return;
@@ -206,7 +210,8 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
         setListLoaded(true);
         setSessions(current => uniqueBy(cursor && !rebuilt ? [...current, ...summaries] : summaries, item => item.session_id));
         setSessionCursor(pages.at(-1)!.next_cursor); setHits([]); setPartial(false);
-        if (rebuilt && session && !summaries.some(item => item.session_id === session)) clearTimelineSelection();
+        const selected = selectedSession.current;
+        if (rebuilt && selected && !summaries.some(item => item.session_id === selected)) clearTimelineSelection();
       }
     } catch (e) {
       if (!observationCancelled(e, signal) && epoch === generation.current) {
@@ -270,6 +275,11 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
           acceptSummaryVisibility([updated]);
           setFocusedSummary(updated);
           setSessions(current => current.map(item => item.session_id === session ? updated : item));
+        } else {
+          blocked = true;
+          setSessions(current => current.filter(item => item.session_id !== session));
+          setHits(current => current.filter(hit => hit.session_id !== session));
+          clearTimelineSelection();
         }
       } catch (error) {
         blocked = true;
@@ -508,7 +518,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
           <div className="session-pane" hidden={pane !== 'timeline'}><RoutingTimeline key={session} session={session} modelLabels={modelLabels} contentCleared={selectedContentCleared} clearedRequestIds={Object.keys(requestContentStates).filter(id => requestContentStates[id] === 'cleared')} language={language} active={active} displayed={pane === 'timeline'} refreshVersion={refreshVersion + reload} requestId={routingRequestId} onOpenPerformance={setQualityPlan} onAvailability={setRouting} onSelectRequest={selectTimelineRequest} onViewConversation={item => { selectTimelineRequest(item); setSessionView('conversation'); }} /></div>
           <section className="routing-conversation" hidden={pane !== 'conversation'} aria-label={text('对话', 'Conversation')}>
           {requests.length > 1 && <Disclosure className="native-details request-timeline" label={text(`请求记录（${requests.length}）`, `Requests (${requests.length})`)} language={language}><nav className="native-list" aria-label={text('请求时间线', 'Request timeline')}>{requests.map((item, index) => <button className={`list-row${request === item.request_id ? ' active' : ''}`} key={item.request_id} aria-current={request === item.request_id ? 'true' : undefined} onClick={() => { setRequestPicked(true); setRequest(item.request_id); setReadingRequests([item.request_id]); setAnchor(null); }}><span className="row-main"><span className="row-title">{text('请求', 'Request')} {index + 1}</span><span className="row-meta">{item.routing_context?.state === 'recorded' && item.routing_context.display_name ? item.routing_context.display_name : item.final_native_model ?? text('路由未记录', 'Route not recorded')}{item.within_request_fallback === true ? text(' · 请求内回退', ' · Request fallback') : item.between_turn_model_change === true ? text(' · 跨轮切换', ' · Turn change') : ''}</span></span></button>)}{requestCursor && <button className="btn" disabled={busy} onClick={() => void timeline(session, requestCursor)}>{text('加载更多请求', 'Load more requests')}</button>}</nav></Disclosure>}
-          {active && !requestsRebuilding && displayedRequestIds.length ? displayedRequestIds.map((id, index) => <div key={id} className="request-chapter">{index > 0 && <h3>{text('后续请求', 'Following request')} {requests.findIndex(item => item.request_id === id) + 1}</h3>}<RequestBody contentCleared={selectedContentCleared || requestContentStates[id] === 'cleared'} request={id} summary={requests.find(item => item.request_id === id)} attemptModels={id === request ? attemptModels : []} anchor={id === request ? anchor : null} language={language} onOpenFacts={openFacts} onContentState={reportRequestContentState} onNextRequest={index === displayedRequestIds.length - 1 && nextRequestId ? () => { setRequestPicked(true); setReadingRequests(current => [...current, nextRequestId]); setRequest(nextRequestId); setAnchor(null); } : undefined} onMoreRequests={index === displayedRequestIds.length - 1 && !nextRequestId && requestCursor && !busy ? () => void timeline(session, requestCursor) : undefined} /></div>) : !busy && <div className="empty-state transcript-empty"><div><p>{text('此会话尚未取得可显示的请求。', 'No displayable request was retrieved for this session.')}</p></div></div>}
+          {active && !requestsRebuilding && displayedRequestIds.length ? displayedRequestIds.map((id, index) => <div key={id} className="request-chapter">{index > 0 && <h3>{text('后续请求', 'Following request')} {requests.findIndex(item => item.request_id === id) + 1}</h3>}<RequestBody active={pane === 'conversation'} contentCleared={selectedContentCleared || requestContentStates[id] === 'cleared'} request={id} summary={requests.find(item => item.request_id === id)} attemptModels={id === request ? attemptModels : []} anchor={id === request ? anchor : null} language={language} onOpenFacts={openFacts} onContentState={reportRequestContentState} onNextRequest={index === displayedRequestIds.length - 1 && nextRequestId ? () => { setRequestPicked(true); setReadingRequests(current => [...current, nextRequestId]); setRequest(nextRequestId); setAnchor(null); } : undefined} onMoreRequests={index === displayedRequestIds.length - 1 && !nextRequestId && requestCursor && !busy ? () => void timeline(session, requestCursor) : undefined} /></div>) : !busy && <div className="empty-state transcript-empty"><div><p>{text('此会话尚未取得可显示的请求。', 'No displayable request was retrieved for this session.')}</p></div></div>}
           </section></div>
         </article> : <div className="empty-state session-no-selection"><div><span className="empty-icon"><UiIcon name="sessions" /></span><h3>{text('选择一个会话', 'Select a session')}</h3></div></div>}
       </section>
@@ -527,7 +537,7 @@ export function Sessions({ initialSession = null, initialRequest = null, languag
     </Dialog>
   </ProductPage>;
 }
-function RequestBody({ request, contentCleared, summary, attemptModels, anchor, language, onOpenFacts, onContentState, onNextRequest, onMoreRequests }: { request: string; contentCleared: boolean; summary?: Request; attemptModels: string[]; anchor: Hit | null; language: 'zh' | 'en'; onOpenFacts(): void; onContentState(requestId: string, state: ContentState): void; onNextRequest?: () => void; onMoreRequests?: () => void }) {
+function RequestBody({ request, active, contentCleared, summary, attemptModels, anchor, language, onOpenFacts, onContentState, onNextRequest, onMoreRequests }: { request: string; active: boolean; contentCleared: boolean; summary?: Request; attemptModels: string[]; anchor: Hit | null; language: 'zh' | 'en'; onOpenFacts(): void; onContentState(requestId: string, state: ContentState): void; onNextRequest?: () => void; onMoreRequests?: () => void }) {
   const text = (cn: string, en: string) => language === 'zh' ? cn : en;
   const [catalog, setCatalog] = useState<Content[]>([]);
   const [events, setEvents] = useState<Record<string, ReadableEvent>>({});
@@ -544,11 +554,16 @@ function RequestBody({ request, contentCleared, summary, attemptModels, anchor, 
   const generation = useRef(0);
   const loadedPages = useRef(0);
   const controller = useRef(new AbortController());
+  const ancestryController = useRef<AbortController | null>(null);
+  const pendingAncestry = useRef<{ roots: string[]; partial: boolean } | null>(null);
   function discardCatalog() {
+    ancestryController.current?.abort();
+    pendingAncestry.current = null;
     setCatalog([]); setEvents({}); setCursor(null); setCatalogLoaded(false);
     setContentEpoch(epoch => epoch + 1);
   }
   async function load(next: string | null = null) {
+    if (!active) return;
     const epoch = ++generation.current; setBusy(true); setError(''); setRecovery(undefined);
     const signal = controller.current.signal;
     if (!next) { loadedPages.current = 0; setCatalogLoaded(false); }
@@ -573,7 +588,7 @@ function RequestBody({ request, contentCleared, summary, attemptModels, anchor, 
       setCatalogLoaded(true);
       if (!append) {
         setAncestryIncomplete(false);
-        void checkAncestry(roots, partial, epoch, signal);
+        void checkAncestry(roots, partial);
       }
     } catch (e) {
       if (!observationCancelled(e, signal) && epoch === generation.current) {
@@ -583,27 +598,41 @@ function RequestBody({ request, contentCleared, summary, attemptModels, anchor, 
     } finally { if (epoch === generation.current) { setBusy(false); setRecovery(undefined); } }
   }
   useLayoutEffect(() => {
-    if (contentCleared) { discardCatalog(); return; }
     function invalidate() {
+      generation.current++;
       controller.current.abort();
       discardCatalog();
-      controller.current = new AbortController();
-      void load();
+      if (active && !contentCleared) {
+        controller.current = new AbortController();
+        void load();
+      }
     }
     controller.current = new AbortController();
-    void load();
+    if (contentCleared) discardCatalog();
+    if (!active) { setBusy(false); setRecovery(undefined); }
+    else if (!contentCleared) {
+      if (!catalogLoaded) void load();
+      else if (pendingAncestry.current) void checkAncestry(pendingAncestry.current.roots, pendingAncestry.current.partial);
+    }
     window.addEventListener('hiroute-content-invalidated', invalidate);
     return () => {
       generation.current++;
       controller.current.abort();
+      ancestryController.current?.abort();
       window.removeEventListener('hiroute-content-invalidated', invalidate);
     };
-  }, [request, contentCleared]);
-  async function checkAncestry(roots: string[], partial: boolean, epoch: number, signal: AbortSignal) {
+  }, [request, contentCleared, active]);
+  async function checkAncestry(roots: string[], partial: boolean) {
+    ancestryController.current?.abort();
+    const owner = new AbortController();
+    ancestryController.current = owner;
+    const signal = owner.signal;
     if (partial) setAncestryIncomplete(true);
     if (!roots.length) return;
+    pendingAncestry.current = { roots, partial };
     const results = await Promise.allSettled(roots.map(transcript_root => readObservation<Ancestry>('ancestry', { request_id: request, transcript_root }, { signal })));
-    if (epoch !== generation.current || signal.aborted) return;
+    if (signal.aborted) return;
+    pendingAncestry.current = null;
     setAncestryIncomplete(partial || results.some(result => result.status === 'rejected' || Boolean(result.value.gap)));
   }
   const contentIncomplete = catalogLoaded && (rootsPartial || ancestryIncomplete || catalog.some(item => !['available', 'complete'].includes(item.state)));
@@ -632,14 +661,14 @@ function RequestBody({ request, contentCleared, summary, attemptModels, anchor, 
     if (!items.length) return null;
     return <React.Fragment key={`${contentEpoch}:${occurrence.key}`}>
       {index === finalAssistantIndex && summary?.within_request_fallback === true && <button className="switch-marker" type="button" onClick={onOpenFacts}><UiIcon name="refresh" /><strong>{attemptModels.length > 1 ? attemptModels.join(' → ') : text('记录到请求内模型回退', 'Recorded model fallback within a request')}</strong><span>{attemptModels.length > 1 ? text('记录到请求内模型回退', 'Recorded model fallback within a request') : text('查看运行记录', 'View run record')}</span><UiIcon name="chevronRight" /></button>}
-      <MessageOccurrence language={language} request={request} items={items} technical={occurrence.technical} modelLabel={index === finalAssistantIndex ? summary?.final_native_model ?? attemptModels.at(-1) : null} onEvent={receiveEvent} />
+      <MessageOccurrence active={active} language={language} request={request} items={items} technical={occurrence.technical} modelLabel={index === finalAssistantIndex ? summary?.final_native_model ?? attemptModels.at(-1) : null} onEvent={receiveEvent} />
     </React.Fragment>;
   };
   const toolBlocks = toolEvents.map(event => <div className="tool-block" key={event.logicalId}><strong>{event.name || text('工具调用', 'Tool call')}</strong><span>{event.arguments ? summarizeToolArguments(event.arguments) : event.phase === 'ready' ? text('参数已就绪，执行结果尚未取得。', 'Arguments ready; execution result not received.') : text('已请求，执行结果尚未取得。', 'Requested; execution result not received.')}</span></div>);
   return <section className="transcript-body">{error && <div className="callout bad" role="alert" data-error-code={error}><UiIcon name="warning" /><span>{text('正文暂时无法读取，请重试。', 'Content is temporarily unavailable. Try again.')}</span><button className="btn" type="button" disabled={busy} onClick={() => void load(null)}>{text('重试', 'Retry')}</button></div>}
     <ReadingRecovery status={recovery} language={language} />
     {contentIncomplete && <div className="callout warn completeness-banner" role="status"><UiIcon name="warning" /><div><strong>{text('会话内容的保存记录不完整', 'The saved conversation record is incomplete')}</strong><p>{text('此处只能展示已保存的内容，不代表 Agent 收到的回答不完整。运行记录仍然可用。', 'Only retained content is shown here. This does not establish that the Agent received an incomplete answer. Run records remain available.')}</p></div></div>}
-    {anchor && catalog.some(item => item.content_id === anchor.content_id && !isPrivateContentKind(item.kind) && !isCleared(item.state)) && <MessageOccurrence key={contentEpoch} language={language} request={request} items={[{ content_id: anchor.content_id, role: text('搜索命中', 'Search hit'), kind: 'text', state: 'complete', direction: '', media_type: '', message_occurrence_id: '' }]} anchor={{ contentId: anchor.content_id, offset: anchor.original_text_offset }} />}
+    {anchor && catalog.some(item => item.content_id === anchor.content_id && !isPrivateContentKind(item.kind) && !isCleared(item.state)) && <MessageOccurrence active={active} key={contentEpoch} language={language} request={request} items={[{ content_id: anchor.content_id, role: text('搜索命中', 'Search hit'), kind: 'text', state: 'complete', direction: '', media_type: '', message_occurrence_id: '' }]} anchor={{ contentId: anchor.content_id, offset: anchor.original_text_offset }} />}
     {displayRuns.map(run => <React.Fragment key={run.start}>{run.technical
       ? <Disclosure className="transcript-context" label={text(`系统与工具上下文（${run.end - run.start} 项）`, `System and tool context (${run.end - run.start})`)} language={language}>{occurrences.slice(run.start, run.end).map((occurrence, index) => renderOccurrence(occurrence, index + run.start))}</Disclosure>
       : occurrences.slice(run.start, run.end).map((occurrence, index) => <React.Fragment key={occurrence.key}>{renderOccurrence(occurrence, index + run.start)}{index + run.start === firstAssistantOccurrenceIndex && toolBlocks}</React.Fragment>)}
@@ -684,7 +713,7 @@ function groupOccurrences(contents: Content[]): { key: string; role: string; tec
   return runs;
 }
 
-function MessageOccurrence({ request, items, anchor, language, modelLabel, technical = false, onEvent }: { onEvent?: (id: string, event: ReadableEvent | null) => void; request: string; items: Content[]; anchor?: { contentId: string; offset: number }; language: 'zh' | 'en'; modelLabel?: string | null; technical?: boolean }) {
+function MessageOccurrence({ request, active, items, anchor, language, modelLabel, technical = false, onEvent }: { onEvent?: (id: string, event: ReadableEvent | null) => void; request: string; active: boolean; items: Content[]; anchor?: { contentId: string; offset: number }; language: 'zh' | 'en'; modelLabel?: string | null; technical?: boolean }) {
   const [visibility, setVisibility] = useState<Record<string, boolean>>({});
   const [partIncomplete, setPartIncomplete] = useState<Record<string, boolean>>({});
   const [contextParts, setContextParts] = useState<Record<string, boolean>>({});
@@ -704,20 +733,24 @@ function MessageOccurrence({ request, items, anchor, language, modelLabel, techn
   const responseText = coalesceResponseText(Object.values(events));
   const visible = potential || responseText.some(part => part.text.length > 0) || Object.values(visibility).some(Boolean);
   const incomplete = items.some(item => !['available', 'complete'].includes(item.state)) || Object.values(partIncomplete).some(Boolean);
-  return <article hidden={!visible} aria-hidden={!visible} className={`message ${!technical && role === 'assistant' ? 'assistant' : !technical && role === 'user' && !contextOnly ? 'user' : 'system'}`}><span className="message-avatar">{technical ? '·' : role === 'assistant' ? 'AI' : role === 'user' && !contextOnly ? 'YOU' : '·'}</span><div><div className="message-role">{roleLabel}{modelLabel && !importedContext && <span className="badge info no-dot">{modelLabel}</span>}{incomplete && <span className="badge warn no-dot">{language === 'zh' ? '内容不完整' : 'Incomplete'}</span>}</div>{items.map(item => <MessagePart key={item.content_id} request={request} item={item} anchor={anchor?.contentId === item.content_id ? anchor.offset : undefined} language={language} onEvent={reportEvent} onVisibility={reportVisibility} onIncomplete={reportIncomplete} onContext={reportContext} />)}{responseText.map(part => <div className="message-content" key={`${part.kind}-${part.index}-${part.version ?? ''}`}>{part.version && <span className="oc-meta">{language === 'zh' ? (part.version === 'accepted' ? '已接受的内容' : '有冲突的结束版本') : (part.version === 'accepted' ? 'Accepted content' : 'Conflicting final version')}</span>}{part.text}</div>)}</div></article>;
+  return <article hidden={!visible} aria-hidden={!visible} className={`message ${!technical && role === 'assistant' ? 'assistant' : !technical && role === 'user' && !contextOnly ? 'user' : 'system'}`}><span className="message-avatar">{technical ? '·' : role === 'assistant' ? 'AI' : role === 'user' && !contextOnly ? 'YOU' : '·'}</span><div><div className="message-role">{roleLabel}{modelLabel && !importedContext && <span className="badge info no-dot">{modelLabel}</span>}{incomplete && <span className="badge warn no-dot">{language === 'zh' ? '内容不完整' : 'Incomplete'}</span>}</div>{items.map(item => <MessagePart active={active} key={item.content_id} request={request} item={item} anchor={anchor?.contentId === item.content_id ? anchor.offset : undefined} language={language} onEvent={reportEvent} onVisibility={reportVisibility} onIncomplete={reportIncomplete} onContext={reportContext} />)}{responseText.map(part => <div className="message-content" key={`${part.kind}-${part.index}-${part.version ?? ''}`}>{part.version && <span className="oc-meta">{language === 'zh' ? (part.version === 'accepted' ? '已接受的内容' : '有冲突的结束版本') : (part.version === 'accepted' ? 'Accepted content' : 'Conflicting final version')}</span>}{part.text}</div>)}</div></article>;
 }
 
-function MessagePart({ request, item, anchor, language, onEvent, onVisibility, onIncomplete, onContext }: { onEvent?: (id: string, event: ReadableEvent | null) => void; onVisibility(id: string, visible: boolean): void; onIncomplete(id: string, incomplete: boolean): void; onContext(id: string, contextOnly: boolean): void; request: string; item: Content; anchor?: number; language: 'zh' | 'en' }) {
+function MessagePart({ request, active, item, anchor, language, onEvent, onVisibility, onIncomplete, onContext }: { onEvent?: (id: string, event: ReadableEvent | null) => void; onVisibility(id: string, visible: boolean): void; onIncomplete(id: string, incomplete: boolean): void; onContext(id: string, contextOnly: boolean): void; request: string; active: boolean; item: Content; anchor?: number; language: 'zh' | 'en' }) {
   const [offset, setOffset] = useState(0); const marker = useRef<HTMLElement>(null);
   const [text, setText] = useState(''); const [cursor, setCursor] = useState<string | null>(null);
   const [state, setState] = useState(item.state); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   const [recovery, setRecovery] = useState<ObservationRecoveryStatus>();
   const generation = useRef(0); const controller = useRef(new AbortController());
   const loadedPages = useRef(0);
+  const loadedScope = useRef<string | null>(null);
+  const scope = JSON.stringify([request, item.content_id, anchor]);
   function discardText() {
+    loadedScope.current = null;
     setText(''); setCursor(null); onEvent?.(item.content_id, null);
   }
   async function load(next: string | null = null) {
+    if (!active) return;
     const epoch = ++generation.current; setBusy(true); setError(''); setRecovery(undefined);
     const signal = controller.current.signal;
     if (!next) loadedPages.current = 0;
@@ -729,31 +762,33 @@ function MessagePart({ request, item, anchor, language, onEvent, onVisibility, o
       if (signal.aborted || epoch !== generation.current) return;
       const page = pages.at(-1)!;
       setState(page.state);
-      if (pages.some(item => isCleared(item.state))) { discardText(); return; }
+      if (pages.some(item => isCleared(item.state))) { discardText(); loadedScope.current = scope; return; }
       const chunks = uniqueBy(pages.flatMap(item => item.chunks), chunk => chunk.original_byte_offset);
       const chunkText = chunks.map(c => c.text).join('');
       loadedPages.current = (rebuilt ? 0 : loadedPages.current) + pages.length;
       if (!next || rebuilt) setOffset(chunks[0]?.original_byte_offset ?? 0);
       setText(current => next && !rebuilt ? current + chunkText : chunkText);
       setCursor(page.next_cursor);
+      loadedScope.current = scope;
     } catch (e) {
       if (!observationCancelled(e, signal) && epoch === generation.current) {
         setError(errorCode(e));
-        if (observationAccessLost(e)) discardText();
+        if (observationAccessLost(e) || observationFailureCode(e) === 'RESOURCE_NOT_FOUND') discardText();
       }
     } finally { if (epoch === generation.current) { setBusy(false); setRecovery(undefined); } }
   }
   useLayoutEffect(() => {
     const invalidate = () => { generation.current++; controller.current.abort(); discardText(); };
     controller.current = new AbortController();
-    if (isCleared(item.state)) discardText();
-    else void load();
+    if (!active) { setBusy(false); setRecovery(undefined); }
+    else if (isCleared(item.state)) discardText();
+    else if (loadedScope.current !== scope) { discardText(); void load(); }
     window.addEventListener('hiroute-content-invalidated', invalidate);
     return () => {
       generation.current++; controller.current.abort();
       window.removeEventListener('hiroute-content-invalidated', invalidate);
     };
-  }, [request, item.content_id, item.state, anchor, onEvent]);
+  }, [active, request, item.content_id, item.state, anchor, onEvent]);
   useEffect(() => { marker.current?.scrollIntoView({ block: 'center' }); }, [text]);
   const event = readableEvent(text, item.media_type, item.direction);
   useEffect(() => { if (event && event.kind !== 'reasoning' && onEvent) onEvent(item.content_id, event); }, [text, item.content_id, onEvent]);
@@ -1035,7 +1070,7 @@ export function ContentExcerpt({ session, request, requestRunning, hit, language
         if (!observationCancelled(error, signal)) {
           if (recoverReads) {
             resolved = true;
-            if (observationAccessLost(error)) setValue('');
+            if (observationAccessLost(error) || observationFailureCode(error) === 'RESOURCE_NOT_FOUND') setValue('');
           }
           setStatus('error');
           callbacks.current.onCompleteness?.(true);

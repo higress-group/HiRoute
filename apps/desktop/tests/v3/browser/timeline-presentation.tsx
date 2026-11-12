@@ -48,11 +48,15 @@ mockIPC((command, payload: any) => {
     observation_read: { reason: 'timeout', retry_after_ms: 100, action: 'retry' },
   } } };
   if (error === 'scope') throw { code: 'SCOPE_TOO_LARGE', retryable: true };
-  if (scenario === 'stale') {
+  if (scenario === 'stale' || scenario === 'stale-absorption') {
     if (count === 0) return { turns, watermark: 'old-snapshot', complete: true };
     if (query.after_watermark === 'old-snapshot') throw { code: 'CHANGE_PREVIEW_STALE', retryable: false };
-    if (query.after_watermark === null) return { turns: turns.slice(1, 11), watermark: 'new-snapshot', complete: false };
-    return { turns: query.after_watermark === 'new-snapshot' ? turns.slice(11) : [], watermark: 'fresh-end', complete: true };
+    const retained = scenario === 'stale' ? turns.slice(1) : turns.flatMap(turn => {
+      if (turn.turn_id === 'turn-14') return [];
+      return [turn.turn_id === 'turn-13' ? { ...turn, requests: [...turn.requests, ...turns[13].requests], content_digest: 'absorbed-turn' } : turn];
+    });
+    if (query.after_watermark === null) return { turns: retained.slice(0, 10), watermark: 'new-snapshot', complete: false };
+    return { turns: query.after_watermark === 'new-snapshot' ? retained.slice(10) : [], watermark: 'fresh-end', complete: true };
   }
   if (scenario === 'extension-late-assessment' && count >= 3) {
     turns[13] = { ...turns[13], assessment_state: 'scored', assessment: { score: .1, partial: false, target_from_ordinal: 2, target_through_ordinal: 2, target_from_turn_id: 'agent-turn-14', target_through_turn_id: 'agent-turn-14' }, content_digest: 'extension-late-score' };

@@ -41,7 +41,8 @@ function externalUrl(value: unknown): string {
   if (!['http:', 'https:'].includes(url.protocol) || !url.host || url.username || url.password) throw { kind: 'native', code: 'EXTERNAL_URL_SCHEME_DENIED' };
   return value;
 }
-async function browserCall(command: string, args: Record<string, unknown>): Promise<unknown> {
+type InvokeOptions = { recoveringObservation?: boolean };
+async function browserCall(command: string, args: Record<string, unknown>, options?: InvokeOptions): Promise<unknown> {
   if (command === 'open_external_url') {
     const anchor = document.createElement('a'); anchor.href = externalUrl(args.url); anchor.target = '_blank'; anchor.rel = 'noopener noreferrer'; anchor.click(); return;
   }
@@ -56,9 +57,9 @@ async function browserCall(command: string, args: Record<string, unknown>): Prom
     if (!path) throw { kind: 'native', code: 'APP_DATA_UNAVAILABLE' };
     window.dispatchEvent(new CustomEvent('hiroute-host-path', { detail: path })); return;
   }
-  return consoleTransport.call(command, args);
+  return consoleTransport.call(command, args, options?.recoveringObservation);
 }
-async function invokeHost<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {
+async function invokeHost<T>(command: string, args: Record<string, unknown>, options?: InvokeOptions): Promise<T> {
   if (override) {
     if (override.capabilities().host === 'console' && ['open_external_url', 'save_classifier_openapi', 'open_diagnostic_directory', 'open_startup_recovery_directory'].includes(command)) return browserCall(command, args) as Promise<T>;
     return override.call<T>(command, args);
@@ -74,10 +75,10 @@ async function invokeHost<T>(command: string, args: Record<string, unknown> = {}
       return (await import('@tauri-apps/api/core')).invoke<T>(`shell_${command}`, nativeArgs);
     }
   }
-  return browserCall(command, args) as Promise<T>;
+  return browserCall(command, args, options) as Promise<T>;
 }
-export async function invoke<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {
-  try { return await invokeHost<T>(command, args); }
+export async function invoke<T>(command: string, args: Record<string, unknown> = {}, options?: InvokeOptions): Promise<T> {
+  try { return await invokeHost<T>(command, args, options); }
   catch (error) {
     if (hostKind() === 'tauri' && nativeConnectionLost(error)) window.dispatchEvent(new Event('hiroute-native-connection-unavailable'));
     throw error;

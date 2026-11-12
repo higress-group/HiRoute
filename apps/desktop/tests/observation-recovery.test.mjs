@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { getEventListeners } from 'node:events';
 import test from 'node:test';
-import { setHostTransport } from '../src/host/index.ts';
+import { invoke, setHostTransport } from '../src/host/index.ts';
+import { CONSOLE_EXPIRED_EVENT, CONSOLE_UNAVAILABLE_EVENT } from '../src/host/console.ts';
 import { observationReadOnce } from '../src/features/observation-client.ts';
 import { readObservation, readObservationPages } from '../src/features/observation-recovery.ts';
 
@@ -168,4 +169,46 @@ test('hidden waits do not send calls, and abort removes visibility listeners', a
   await waiting;
   assert.equal(getEventListeners(visibility, 'visibilitychange').length, 0);
   assert.equal(attempts, 2);
+});
+
+test('the real console transport leaves a recovering read on its page and still expires authorization', async t => {
+  const advance = clock(t);
+  const storage = new Map([['hiroute.console.session', 'synthetic-test-session']]);
+  globalThis.document = Object.assign(new EventTarget(), { hidden: false });
+  globalThis.window = Object.assign(new EventTarget(), { sessionStorage: {
+    getItem: key => storage.get(key) ?? null,
+    setItem: (key, value) => storage.set(key, value),
+    removeItem: key => storage.delete(key),
+  } });
+  t.after(() => { delete globalThis.window; delete globalThis.document; });
+  const events = [];
+  for (const event of [CONSOLE_UNAVAILABLE_EVENT, CONSOLE_EXPIRED_EVENT]) {
+    window.addEventListener(event, () => events.push(event));
+  }
+  const calls = [];
+  let fail = true;
+  let expired = false;
+  t.mock.method(globalThis, 'fetch', async (path, request) => {
+    calls.push(path);
+    assert.equal(request.headers.get('Authorization'), 'Bearer synthetic-test-session');
+    if (fail) throw new TypeError('temporary network error');
+    return expired ? Response.json({ code: 'CONSOLE_AUTH_REQUIRED' }, { status: 401 }) : Response.json({ sessions: ['ready'] });
+  });
+  const read = () => readObservation('sessions', { cursor: null }, { signal: new AbortController().signal });
+  const result = read();
+  await flush();
+  assert.deepEqual(events, []);
+  fail = false;
+  await advance(400);
+  assert.deepEqual(await result, { sessions: ['ready'] });
+  assert.deepEqual(events, []);
+  fail = true;
+  await assert.rejects(invoke('desktop_snapshot'), { code: 'CONSOLE_UNAVAILABLE' });
+  assert.deepEqual(events, [CONSOLE_UNAVAILABLE_EVENT]);
+  fail = false;
+  expired = true;
+  await assert.rejects(read(), { code: 'CONSOLE_AUTH_REQUIRED' });
+  assert.deepEqual(events, [CONSOLE_UNAVAILABLE_EVENT, CONSOLE_EXPIRED_EVENT]);
+  assert.equal(storage.has('hiroute.console.session'), false);
+  assert.deepEqual(calls.map(path => path.split('/').at(-1)), ['observation_read', 'observation_read', 'desktop_snapshot', 'observation_read']);
 });

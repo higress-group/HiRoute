@@ -296,7 +296,7 @@ const scenarios = [
     const [removed, kept, added, later] = ['removed', 'kept', 'added', 'later'].map(id => ({
       session_id: `observation-session/${id}`, request_id: `request/${id}/0`, content_id: id, original_text_offset: 0,
     }));
-    const rebuilding = deferred();
+    const stalePage = deferred(), rebuilding = deferred();
     let stale = false;
     await fresh(control => {
       for (const hit of [removed, kept, added, later]) {
@@ -306,7 +306,7 @@ const scenarios = [
       control.views.session_search = query => {
         if (query.cursor === 'stale-cursor') {
           stale = true;
-          throw { source: 'backend', envelope: { error: { code: 'CHANGE_PREVIEW_STALE', retryable: false } } };
+          return stalePage.promise;
         }
         if (query.cursor === 'new-cursor') return { hits: [later], next_cursor: null, index_partial: false };
         if (stale) return rebuilding.promise;
@@ -315,14 +315,21 @@ const scenarios = [
     });
     await type('needle');
     await until(() => button('加载更多结果'), 'first matching session');
-    rows()[1].click();
-    await until(() => rows()[1]?.getAttribute('aria-current') === 'page', 'selected match');
+    rows()[0].click();
+    await until(() => rows()[0]?.getAttribute('aria-current') === 'page', 'first selected match');
     try {
       button('加载更多结果').click();
+      await until(() => stale, 'continuation held');
+      rows()[1].click();
+      await until(() => rows()[1]?.getAttribute('aria-current') === 'page', 'new selection while continuation is pending');
+      stalePage.reject({ source: 'backend', envelope: { error: { code: 'CHANGE_PREVIEW_STALE', retryable: false } } });
       await until(() => document.querySelector('[data-error-code]') || reads('session_search').length >= 3, 'automatic first-page rebuild');
       assert(!document.querySelector('[data-error-code]'), 'Stale continuation required manual Retry');
       assert(rows().length === 0 && !button('加载更多结果'), 'Invalidated results or cursor remained visible');
-    } finally { rebuilding.resolve({ hits: [kept, added], next_cursor: 'new-cursor', index_partial: false }); }
+    } finally {
+      stalePage.resolve({ hits: [], next_cursor: null, index_partial: false });
+      rebuilding.resolve({ hits: [kept, added], next_cursor: 'new-cursor', index_partial: false });
+    }
     await until(() => rows().length === 3 && rows()[2].textContent.includes('later'), 'replacement pages visible');
     assert(!rows().some(row => row.textContent.includes('removed')), 'The old generation was appended');
     assert(rows()[0].getAttribute('aria-current') === 'page', 'Rebuilding discarded the valid selection');
@@ -365,10 +372,10 @@ const scenarios = [
         contents: [{ content_id: 'removed-body', role: 'assistant', kind: 'text', state: 'complete', direction: 'response_delivered', media_type: 'text/plain', message_occurrence_id: 'response' }],
         transcript_roots: [], roots_partial: false, next_cursor: null,
       });
-      control.views.content = query => query.cursor ? lateBody.promise : {
-        state: deleted ? 'deleted' : 'complete',
-        chunks: [{ text: 'Cleared body must stay hidden', original_byte_offset: 0 }],
-        next_cursor: deleted ? null : 'pending-page',
+      control.views.content = query => {
+        if (query.cursor) return lateBody.promise;
+        if (deleted) throw { source: 'backend', envelope: { error: { code: 'RESOURCE_NOT_FOUND', retryable: false } } };
+        return { state: 'complete', chunks: [{ text: 'Cleared body must stay hidden', original_byte_offset: 0 }], next_cursor: 'pending-page' };
       };
     });
     await until(() => text().includes('Cleared body must stay hidden') && button('继续读取'), 'body before cleanup');
@@ -382,9 +389,36 @@ const scenarios = [
     } finally {
       lateBody.resolve({ state: 'complete', chunks: [{ text: 'Stale continuation text', original_byte_offset: 29 }], next_cursor: null });
     }
-    await until(() => document.querySelector('.transcript-body')?.textContent.includes('正文已清理'), 'confirmed cleanup');
+    await until(() => document.querySelector('.transcript-body [data-error-code="RESOURCE_NOT_FOUND"]'), 'the former body is unavailable');
     assert(!text().includes('Cleared body must stay hidden') && !text().includes('Stale continuation text'), 'A deleted body was restored');
     assert(!button('继续读取'), 'The deleted body could still page');
+    const count = reads('content').length;
+    await pause(450);
+    assert(reads('content').length === count, 'A missing body kept retrying');
+  }],
+  ['a rebuilt catalog cancels ancestry from the obsolete catalog', async () => {
+    const oldAncestry = deferred();
+    let stale = false;
+    await fresh(control => {
+      seedSimple(control);
+      const item = { content_id: 'catalog-part', role: 'assistant', kind: 'text', state: 'complete', direction: 'response_delivered', media_type: 'text/plain', message_occurrence_id: 'response' };
+      control.texts[item.content_id] = 'Visible catalog part';
+      control.views.catalog = query => {
+        if (query.limit !== 20) return { contents: [item], next_cursor: null };
+        if (query.cursor === 'old-catalog') { stale = true; throw { code: 'CHANGE_PREVIEW_STALE' }; }
+        if (query.cursor === 'new-catalog') return { contents: [], transcript_roots: [], roots_partial: false, next_cursor: null };
+        return { contents: [item], transcript_roots: [stale ? 'new-root' : 'old-root'], roots_partial: false, next_cursor: stale ? 'new-catalog' : 'old-catalog' };
+      };
+      control.views.ancestry = query => query.transcript_root === 'old-root' ? oldAncestry.promise : { roots: [], gap: null };
+    });
+    try {
+      await until(() => reads('ancestry').some(call => queryOf(call).transcript_root === 'old-root') && button('继续读取'), 'first catalog and pending ancestry');
+      button('继续读取').click();
+      await until(() => reads('ancestry').some(call => queryOf(call).transcript_root === 'new-root'), 'rebuilt catalog ancestry');
+      oldAncestry.reject({ code: 'OBSERVATION_UNAVAILABLE', details_schema: 'hiroute.observation.read-failure/v1', retryable: true, observation_read: { reason: 'reader_busy', retry_after_ms: 100 } });
+      await pause(450);
+      assert(reads('ancestry').filter(call => queryOf(call).transcript_root === 'old-root').length === 1, 'Rebuilt catalog left an old ancestry retry running');
+    } finally { oldAncestry.resolve({ roots: [], gap: null }); }
   }],
   ['keyword edits withdraw old results immediately and ignore delayed pages', async () => {
     const slow = deferred();
@@ -954,12 +988,20 @@ const scenarios = [
     assert(!document.querySelector('[data-error-code]'), 'Recovered search pagination surfaced an error');
   }],
   ['the fallback filter is a fresh server-side window', async () => {
+    const filtered = deferred();
     await fresh(control => {
       seedSimple(control, Date.now() - 60_000);
       control.requests['observation-session/fallback'] = [control.makeRequest('observation-session/fallback', 0, Date.now() - 50_000, { within_request_fallback: true })];
+      control.views.sessions = query => query.only_model_switch
+        ? filtered.promise.then(() => control.defaultRead('sessions', query))
+        : control.defaultRead('sessions', query);
     });
     await until(() => rows().length === 2, 'both sessions');
-    button('发生过请求内回退').click();
+    try {
+      button('发生过请求内回退').click();
+      await until(() => reads('sessions').some(call => queryOf(call).only_model_switch), 'new filter request');
+      assert(rows().length === 0, 'Previous filter rows were selectable during the new read');
+    } finally { filtered.resolve(); }
     await until(() => rows().length === 1, 'filtered list');
     const latest = queryOf(reads('sessions').at(-1));
     assert(latest.only_model_switch === true, 'Filter was not applied by the query');
