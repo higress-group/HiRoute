@@ -36,8 +36,8 @@ For installer iteration, manually dispatch **build-release-platform** with its
 default x64 Windows target, Windows runner and Desktop option. This uses the same
 release builder without starting the other platform or headless assessment jobs.
 Its uploaded installer is an acceptance input. The identity remains incomplete
-until the required Windows 11 x64 and Server standard-user scenarios pass, and
-the release publisher still enforces those artifact-bound results.
+until the required Windows Server x64 standard-user scenarios pass on its exact
+bytes. The release publisher enforces those results.
 
 Native Windows jobs enable sccache's GitHub Actions backend so compiler objects
 can be reused across runs. Cargo targets remain local to each checkout; artifact

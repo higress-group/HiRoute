@@ -101,7 +101,7 @@ RELEASE_BUILD_TOOLING = {"scripts/linux-release-abi.py", "scripts/linux-release-
                          ".github/workflows/windows-headless.yml", "scripts/build-release.py",
                          "scripts/build-cpa.py", "scripts/package-desktop.py",
                          "scripts/package-standalone.py", "scripts/install-standalone.py",
-                         "scripts/package-windows-shell.py", "scripts/release-qualification.py",
+                         "scripts/package-windows-shell.py", "scripts/windows-desktop-cases.json", "scripts/release-qualification.py",
                          ".github/workflows/omarchy-release.yml", "scripts/package-linux-desktop.py",
                          "scripts/build-omarchy-package.sh", "scripts/omarchy-builder.Dockerfile",
                          "scripts/omarchy-release.py", "scripts/omarchy-kvm-plan.py", "scripts/omarchy-qmp-check.py",
@@ -463,8 +463,6 @@ def select(paths, full=False, bookkeeping=None):
     changed = paths
     if bookkeeping == "record":
         paths = [path for path in paths if path.startswith("contracts/releases/")]
-    elif bookkeeping == "catalog":
-        paths = [path for path in paths if path != "scripts/windows-desktop-cases.json"]
     groups = set()
     frontend = full
     native_checks = desktop_compile_checks(paths)
@@ -484,7 +482,7 @@ def select(paths, full=False, bookkeeping=None):
         targets.update({("hiroute-cli", "contracts"), ("hiroute-client-core", "transport")})
         reasons.append("verified release record and product version projection")
     elif bookkeeping == "catalog":
-        reasons.append("verified release catalog append and any exact Windows decision")
+        reasons.append("verified release catalog append")
     agent_commands = []
     for path in sorted(set(paths)):
         if path in PRODUCT_VERSION_TOOLING:

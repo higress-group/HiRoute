@@ -252,13 +252,10 @@ Create tag `v<version>` on the exact source candidate, create a draft GitHub
 Release, and attach every DMG, Linux archive and companion manifest, and the x64
 Windows NSIS installer with its `.identity.json` sidecar when Windows is in scope.
 Windows headless archives are internal payloads and must not be published. The
-installer identity must bind the exact source/hash and native cases
-from `scripts/windows-desktop-cases.json`, with the actual OS/build recorded.
-Complete acceptance is the default; an explicit committed release decision can
-defer named cases only for its exact version/source/installer, preserving their
-`not_assessed` verdicts. Actual standard-user installation and console readiness
-remain required for both selections. A deferral is never reported as a native pass.
-Compilation alone does not establish native acceptance. After
+installer identity must bind the exact source/hash and the required Windows
+Server x64 standard-user cases from `scripts/windows-desktop-cases.json`, with
+the actual OS/build recorded. Historical publication replays retain their exact
+recorded scope and verdicts. After
 reviewing those assets, add their exact filenames, sizes, and digests to the
 manifest on `main`. Publish the GitHub Release only after that record lands.
 The workflow freezes that `main` revision for the website, resolves the tag's

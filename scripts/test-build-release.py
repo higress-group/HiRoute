@@ -344,19 +344,21 @@ class CandidateTests(unittest.TestCase):
                     "architecture": "x86_64", "distribution": "unsigned", "integrity": "green",
                     "embedded_components": "green", "native_runtime": "green", "installer_sha256": packager.digest(installer),
                     "installer_size": installer.stat().st_size}
-        with self.assertRaisesRegex(ValueError, "Windows 11"):
+        with self.assertRaisesRegex(ValueError, "native selections are incomplete"):
             packager.verify(installer, identity, "a" * 40)
         required = json.loads((REPO / "scripts/windows-desktop-cases.json").read_text())["platforms"]
         identity["native_evidence"] = {"runs": [{"platform": platform_name, "revision": "a" * 40,
             "installer_sha256": packager.digest(installer), "standard_user": True, "architecture": "AMD64",
-            "os_version": "fixture-only", "scenarios": dict.fromkeys(cases, "green")} for platform_name, cases in required.items()]}
+            "os_version": "Windows-2025Server-10.0.26100-SP0",
+            "scenarios": dict.fromkeys(cases, "green")} for platform_name, cases in required.items()]}
         self.assertIs(packager.verify(installer, identity, "a" * 40), identity)
-        for key, value in (("revision", "b" * 40), ("standard_user", False), ("architecture", "ARM64")):
+        for key, value in (("revision", "b" * 40), ("installer_sha256", "0" * 64), ("standard_user", False),
+                           ("architecture", "ARM64"), ("os_version", "Windows-11-10.0.26100-SP0")):
             altered = json.loads(json.dumps(identity))
             altered["native_evidence"]["runs"][0][key] = value
             with self.assertRaisesRegex(ValueError, "all standard-user"):
                 packager.verify(installer, altered, "a" * 40)
-        identity["native_evidence"]["runs"][0]["scenarios"].pop("update.killed-resume")
+        identity["native_evidence"]["runs"][0]["scenarios"].pop("uninstall.restore-agent")
         with self.assertRaisesRegex(ValueError, "all standard-user"):
             packager.verify(installer, identity, "a" * 40)
 
@@ -461,44 +463,43 @@ class NativeCompilerContextTests(unittest.TestCase):
 
 
 class NativeAcceptanceDecisionTests(unittest.TestCase):
-    def fixture(self):
-        # Validator fixtures only, never native installation evidence.
-        policy = json.loads((REPO / "scripts/windows-desktop-cases.json").read_text())
-        policy["release_decisions"] = []
-        identity = {"version": "1.2.3", "revision": "a" * 40, "installer_sha256": "c" * 64,
-                    "native_runtime": "green", "native_evidence": {"runs": [
-                        {"platform": platform, "revision": "a" * 40, "installer_sha256": "c" * 64,
-                         "standard_user": True, "architecture": "AMD64", "os_version": "fixture-only",
-                         "scenarios": dict.fromkeys(cases, "green")}
-                        for platform, cases in policy["platforms"].items()]}}
-        decision = {key: identity[key] for key in ("version", "revision", "installer_sha256")}
-        decision.update(decision_url="https://github.com/higress-group/HiRoute/issues/193#issuecomment-123",
-                        deferred_cases={platform: [case for case in cases if case not in
-                                        ("install.standard-user", "install.console-ready")]
-                                        for platform, cases in policy["platforms"].items()})
-        return policy, identity, decision
-
-    def test_full_acceptance_remains_default_and_partial_without_decision_is_rejected(self):
+    def test_new_installers_require_one_complete_standard_user_server_run(self):
         verify = MODULES["package-windows-shell"].verify_native_acceptance
-        policy, identity, _ = self.fixture()
-        verify(identity, policy)
-        identity["native_evidence"]["runs"][0]["scenarios"]["update.killed-resume"] = "not_assessed"
-        with self.assertRaisesRegex(ValueError, "all standard-user"):
-            verify(identity, policy)
+        run = {"platform": "server", "revision": "a" * 40, "installer_sha256": "c" * 64,
+               "standard_user": True, "architecture": "AMD64", "os_version": "Windows-2025Server-10.0.26100-SP0",
+               "scenarios": dict.fromkeys(("install.standard-user", "install.console-ready", "console.source-plan-agent",
+                                           "uninstall.restore-agent"), "green")}
+        identity = {"version": "1.2.3", "revision": run["revision"], "installer_sha256": run["installer_sha256"],
+                    "native_runtime": "green", "native_evidence": {"runs": [run]}}
+        verify(identity)
+        for verdict in ("not_assessed", "failed"):
+            run["scenarios"]["uninstall.restore-agent"] = verdict
+            with self.subTest(verdict=verdict), self.assertRaisesRegex(ValueError, "all standard-user"):
+                verify(identity)
+        run["scenarios"]["uninstall.restore-agent"] = "green"
+        identity["native_evidence"]["runs"].append({**run, "platform": "windows11"})
+        with self.assertRaisesRegex(ValueError, "native selections are incomplete"):
+            verify(identity)
+        identity["native_evidence"]["runs"] = [run]
         identity["native_runtime"] = "deferred"
         with self.assertRaisesRegex(ValueError, "exact committed release decision"):
-            verify(identity, policy)
+            verify(identity)
 
-    def test_exact_decision_retains_unexecuted_states_and_rejects_drift_failure_or_waived_install(self):
+    def test_historical_decision_retains_verdicts_and_rejects_drift_or_waived_install(self):
         verify = MODULES["package-windows-shell"].verify_native_acceptance
-        policy, identity, decision = self.fixture()
-        policy["release_decisions"].append(decision)
-        identity.update(native_runtime="deferred", acceptance_decision=decision["decision_url"])
-        for run in identity["native_evidence"]["runs"]:
-            for case in decision["deferred_cases"][run["platform"]]:
-                run["scenarios"][case] = "not_assessed"
+        policy = json.loads((REPO / "scripts/windows-desktop-cases.json").read_text())
+        # Only the verdict shape is a fixture. The historical artifact binding is the committed decision.
+        decision = next(item for item in policy["release_decisions"] if item["version"] == "0.6.0")
+        binding = {key: decision[key] for key in ("version", "revision", "installer_sha256")}
+        runs = [{**binding, "platform": platform, "standard_user": True, "architecture": "AMD64",
+                 "os_version": "Windows-2025Server-10.0.26100-SP0",
+                 "scenarios": {case: "not_assessed" if case in decision["deferred_cases"][platform] else "green"
+                               for case in cases}}
+                for platform, cases in policy["historical_platforms"].items()]
+        identity = {**binding, "native_runtime": "deferred", "acceptance_decision": decision["decision_url"],
+                    "native_evidence": {"runs": runs}}
         verify(identity, policy)
-        for key, value in (("revision", "b" * 40), ("version", "1.2.4"),
+        for key, value in (("revision", "b" * 40), ("version", "0.6.1"),
                            ("installer_sha256", "d" * 64), ("acceptance_decision", "unrecorded")):
             changed = json.loads(json.dumps(identity)); changed[key] = value
             with self.subTest(field=key), self.assertRaises(ValueError):
@@ -508,6 +509,8 @@ class NativeAcceptanceDecisionTests(unittest.TestCase):
             changed["native_evidence"]["runs"][0]["scenarios"]["update.killed-resume"] = state
             with self.subTest(verdict=state), self.assertRaises(ValueError):
                 verify(changed, policy)
+        with self.assertRaisesRegex(ValueError, "exact committed release decision"):
+            verify({**binding, "native_runtime": "green", "native_evidence": {"runs": runs[1:]}}, policy)
         decision["deferred_cases"]["windows11"].append("install.console-ready")
         identity["native_evidence"]["runs"][0]["scenarios"]["install.console-ready"] = "not_assessed"
         with self.assertRaisesRegex(ValueError, "cannot omit actual standard-user"):

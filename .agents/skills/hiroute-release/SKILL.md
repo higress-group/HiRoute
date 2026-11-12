@@ -33,7 +33,8 @@ stable source.
 
 Both tiers require the existing [package qualification and native gates](../../../docs/release-builds.md#build-and-publish-the-frozen-artifacts)
 and the [website review](../../../apps/website/docs/release-reviews/README.md)
-for the release. Follow the applicable release policy for any scoped deferral.
+for the release. Use the [Windows Server native Desktop cases](../../../docs/windows-desktop-installation.md#evidence-and-release-claims)
+and keep the hosted Windows replay and affected updater checks in their own scope.
 
 ## Reuse evidence and freeze once
 

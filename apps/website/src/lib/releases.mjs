@@ -9,6 +9,7 @@ const SHA256 = /^[0-9a-f]{64}$/;
 const VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/;
 const REVISION = /^[0-9a-f]{40}$/;
 const FILENAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,239}$/;
+const WINDOWS_SERVER_OS = /^Windows-[0-9]+Server-[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.]+)?$/;
 const SHORT_DOWNLOAD_VERSIONS = new Set(shortDownloadVersions);
 const STANDALONE_TARGETS = {
   Linux: { x86_64: 'x86_64-unknown-linux-gnu', aarch64: 'aarch64-unknown-linux-gnu' },
@@ -196,19 +197,16 @@ export function publicationAssets(release, artifact) {
 
 export function verifyWindowsNativeAcceptance(identity, policy = windowsAcceptance) {
   if (policy.schema !== 'hiroute.windows-desktop-acceptance/v1') throw new Error('unknown Windows native acceptance policy');
-  const cases = policy.platforms;
-  const runs = identity.native_evidence?.runs;
-  if (!Array.isArray(runs) || runs.length !== Object.keys(cases).length
-      || new Set(runs.map(run => run?.platform)).size !== runs.length
-      || runs.some(run => !cases[run?.platform])) throw new Error('Windows Desktop native selections are incomplete');
+  let cases = policy.platforms;
   let deferred = Object.fromEntries(Object.keys(cases).map(platform => [platform, []]));
-  if (identity.native_runtime !== 'green') {
-    const decisions = policy.release_decisions.filter(entry => ['version', 'revision', 'installer_sha256'].every(key => entry[key] === identity[key]));
+  const decisions = policy.release_decisions.filter(entry => ['version', 'revision', 'installer_sha256'].every(key => entry[key] === identity[key]));
+  if (identity.native_runtime === 'deferred' || decisions.length) {
     if (identity.native_runtime !== 'deferred' || decisions.length !== 1
         || identity.acceptance_decision !== decisions[0].decision_url
         || !/^https:\/\/github\.com\/higress-group\/HiRoute\/issues\/[1-9][0-9]*#issuecomment-[1-9][0-9]*$/.test(decisions[0].decision_url)) {
       throw new Error('Windows native deferral lacks an exact committed release decision');
     }
+    cases = policy.historical_platforms;
     deferred = decisions[0].deferred_cases ?? {};
     if (Object.keys(deferred).length !== Object.keys(cases).length || Object.keys(cases).some(key => !Object.hasOwn(deferred, key))
         || !Object.values(deferred).some(list => Array.isArray(list) && list.length)
@@ -216,9 +214,16 @@ export function verifyWindowsNativeAcceptance(identity, policy = windowsAcceptan
           || list.some(id => !cases[platform]?.includes(id) || ['install.standard-user', 'install.console-ready'].includes(id)))) {
       throw new Error('native deferral cannot omit actual standard-user installation and console readiness');
     }
+  } else if (identity.native_runtime !== 'green' || Object.hasOwn(identity, 'acceptance_decision')) {
+    throw new Error('Windows Desktop requires completed native acceptance on Windows Server x64');
   }
+  const runs = identity.native_evidence?.runs;
+  if (!Array.isArray(runs) || runs.length !== Object.keys(cases).length
+      || runs.some(run => typeof run?.platform !== 'string' || !Object.hasOwn(cases, run.platform))
+      || new Set(runs.map(run => run.platform)).size !== runs.length) throw new Error('Windows Desktop native selections are incomplete');
   if (runs.some(run => run.revision !== identity.revision || run.installer_sha256 !== identity.installer_sha256
-      || run.standard_user !== true || run.architecture !== 'AMD64' || !run.os_version
+      || run.standard_user !== true || run.architecture !== 'AMD64' || typeof run.os_version !== 'string' || !run.os_version
+      || (identity.native_runtime === 'green' && !WINDOWS_SERVER_OS.test(run.os_version))
       || !run.scenarios || Array.isArray(run.scenarios) || Object.keys(run.scenarios).length !== cases[run.platform].length
       || cases[run.platform].some(id => run.scenarios[id] !== (deferred[run.platform].includes(id) ? 'not_assessed' : 'green')))) {
     throw new Error('Windows Desktop native acceptance is incomplete or belongs to another artifact');
