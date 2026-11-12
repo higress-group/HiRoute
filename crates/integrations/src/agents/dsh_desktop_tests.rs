@@ -48,7 +48,7 @@ fn desktop_only_installation_discovers_and_proves_the_shipped_composition() {
     let proof = scanner.check_dsh_desktop_model_configuration().unwrap();
     assert!(
         scanner
-            .dsh_desktop_model_configuration_is_current(&proof)
+            .dsh_desktop_model_configuration_is_current(&proof.0)
             .unwrap()
     );
     assert!(
@@ -76,7 +76,7 @@ fn desktop_proof_tracks_only_its_actual_dependencies_and_rejects_custom_composit
     .unwrap();
     assert!(
         scanner
-            .dsh_desktop_model_configuration_is_current(&proof)
+            .dsh_desktop_model_configuration_is_current(&proof.0)
             .unwrap(),
         "unrelated Web profile is not a Desktop dependency"
     );
@@ -87,7 +87,7 @@ fn desktop_proof_tracks_only_its_actual_dependencies_and_rejects_custom_composit
     .unwrap();
     assert!(
         !scanner
-            .dsh_desktop_model_configuration_is_current(&proof)
+            .dsh_desktop_model_configuration_is_current(&proof.0)
             .unwrap()
     );
     fs::write(
@@ -125,6 +125,32 @@ fn desktop_probe_failure_does_not_fall_back_to_web_cli_or_mutate_native_files() 
     assert!(scanner.check_dsh_desktop_model_configuration().is_err());
     assert!(!scanner.dsh_desktop_models_target().exists());
     assert!(!scanner.dsh_user_models_target().exists());
+}
+
+#[test]
+fn desktop_plugin_profile_requires_the_bundled_independent_provider_api() {
+    let directory = tempfile::tempdir().unwrap();
+    let layout = desktop_layout(directory.path());
+    let executable = layout.dsh_desktop_executable.clone().unwrap();
+    let scanner = FilesystemAgentScannerV1::new(layout, registry());
+    let manifest = scanner
+        .dsh_desktop_models_target()
+        .with_file_name("package.json");
+    fs::create_dir_all(manifest.parent().unwrap()).unwrap();
+    fs::write(&manifest, br#"{"dependencies":{"fixture":"1.0.0"},"dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","@deepseek-ai/dsh-web-app","fixture"]}}}"#).unwrap();
+    assert_eq!(
+        scanner.check_dsh_desktop_model_configuration(),
+        Err(DshDesktopModelCheckError::MissingAdapter)
+    );
+    fs::write(&executable, b"#!/bin/sh\n[ \"$2\" = --experimental-import-meta-resolve ] || exit 1\nprintf '%s\\n' 'HIRoute Desktop provider ready'\n").unwrap();
+    let (proof, independent) = scanner.check_dsh_desktop_model_configuration().unwrap();
+    assert!(independent);
+    assert!(
+        scanner
+            .dsh_desktop_model_configuration_is_current(&proof)
+            .unwrap()
+    );
+    assert!(!scanner.dsh_desktop_models_target().exists());
 }
 
 #[test]

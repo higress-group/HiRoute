@@ -54,6 +54,8 @@ pub struct AdditionalModelFilePayload {
     pub pi_settings_content: Option<CanonicalDigest>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub additional_dependencies: Option<CanonicalDigest>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub independent_dsh_provider: bool,
 }
 
 /// A stable, context-owned namespace. It never adopts an existing unowned provider.
@@ -62,6 +64,10 @@ pub fn additional_model_provider_id(context_id: &str) -> String {
     format!("hiroute-main-{}", &digest.as_str()[7..])
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Seals the existing native facts and the probed Desktop layout"
+)]
 pub fn settings_additional_model_file_intent(
     control: &AgentConnectionControlIntentV1,
     context_id: &str,
@@ -70,6 +76,7 @@ pub fn settings_additional_model_file_intent(
     change: AdditionalModelFileAction,
     pi_settings_content: Option<CanonicalDigest>,
     additional_dependencies: Option<CanonicalDigest>,
+    independent_dsh_provider: bool,
 ) -> Result<ExternalEffectIntentV1, OperationValidationError> {
     if control.transaction() != AgentConnectionTransactionKindV1::Settings {
         return Err(OperationValidationError::UnregisteredEffectPlan);
@@ -95,6 +102,7 @@ pub fn settings_additional_model_file_intent(
         change,
         pi_settings_content,
         additional_dependencies,
+        independent_dsh_provider,
     };
     let intent = ExternalEffectIntentV1::from_agent_connection_planner(
         control,
@@ -159,6 +167,9 @@ pub fn decode_settings_additional_model_file(
     if payload.schema != schema(kind)
         || (kind == AgentKindV1::Pi) != payload.pi_settings_content.is_some()
         || (kind == AgentKindV1::OpenCode) != payload.additional_dependencies.is_some()
+        || (payload.independent_dsh_provider
+            && (agent != "agent_dsh_desktop"
+                || !matches!(payload.change, AdditionalModelFileAction::Configure { .. })))
         || !super::settings::identity(&payload.context_id)
     {
         return Err(invalid());

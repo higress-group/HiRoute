@@ -607,15 +607,20 @@ one profile SHALL preserve the other profile, native providers and unrelated
 user content. Restore SHALL remain available after the Desktop application is
 removed; missing or unsupported installation SHALL block new Configure attempts.
 
-Configure SHALL verify the installed app's bundled public CLI in an isolated
+Configure SHALL verify the installed app's bundled provider capability in an isolated
 HOME, DSH_HOME and working directory, without activating user plugins or models.
 On Windows, bundled version and composition probes SHALL exclude the daemon's
 ambient environment and use isolated AppData roots.
-The shipped Desktop profile uses the standard Web bundles; because upstream
-forbids a Desktop-profile CLI dump, admission SHALL combine the bundled CLI's
-standard Web composition with the actual Desktop manifest and static patches.
-Custom bundle/dependency composition SHALL be rejected rather than inferred from
-a default dump. Capture SHALL bind executable/archive identity, home patch,
+Desktop profiles SHALL retain the standard base and Web bundles in order.
+A runtime exposing the packaged pi-ai adapter and Responses and Messages
+protocol factories SHALL allow additional bundles and dependencies. HiRoute SHALL
+register its own provider routes through the owned routing adapter entry. This
+preserves the effective provider configuration supplied by other bundles.
+A factory profile on a carrier without this capability MAY use the existing
+bundled Web composition check and legacy provider placement. Existing settings
+and restore records SHALL remain usable. A subsequent save on a capable carrier
+SHALL move only the owned provider entries, preserving provider IDs and native
+default selections. Capture SHALL bind executable/archive identity, home patch,
 Desktop patch and manifest, and recheck them before returning. A Web-profile
 change SHALL NOT invalidate an independent Desktop proof.
 
@@ -638,6 +643,14 @@ Gateway request provenance; those require native client evidence.
 - **AND** Web configuration SHALL retain its previous content and ownership
 - **WHEN** HiRoute restarts and the Desktop app is removed
 - **THEN** the retained Desktop operation SHALL still restore only its owned model configuration and adapter.
+
+#### Scenario: Desktop plugins keep their existing models
+
+- **GIVEN** a capable Desktop profile includes an additional bundle providing its own model
+- **WHEN** the user saves HiRoute routes using Responses and Messages
+- **THEN** the native Desktop runtime SHALL expose and serve both the existing model and the HiRoute routes
+- **WHEN** the user restores the HiRoute settings
+- **THEN** the existing model SHALL remain available and the bundle and manifest SHALL retain their previous content.
 
 #### Scenario: Windows installation discovery and Web scan diagnostics
 

@@ -234,6 +234,7 @@ impl LocalControlAdapter {
                     endpoint,
                     models,
                     local_grant: &material,
+                    independent_dsh_provider: payload.independent_dsh_provider,
                 };
                 match previous {
                     Some((original, previous_intent)) => {

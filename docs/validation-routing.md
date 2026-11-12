@@ -325,6 +325,14 @@ It records `read_only_dsh_discovery`; it does not establish model configuration,
 an actual model request or UI acceptance. Other test names and mismatched ignored
 selection retain the ordinary fresh-profile admission.
 
+`windows_headless.exe` case `actual_windows_dsh_desktop_additional_plugin_models`
+uses the official installed Desktop carrier and its bundled Host, a dedicated DSH
+home, and the measured HiRoute CLI and daemon. It covers public Save and Restore,
+native Responses and Messages model requests through the Gateway, and preservation
+of an existing model from an additional bundle. Run it with `--ignored` in the
+fresh standard-user profile. Its native Host model calls do not exercise the
+Electron window or installer.
+
 `inspect-installation` runs a read-only inventory in the configured account. Collect
 and finish it normally; its success is inspection evidence, not a product scenario.
 When the user explicitly authorizes clearing old validation data, use

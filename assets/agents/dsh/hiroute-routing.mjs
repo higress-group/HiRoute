@@ -186,7 +186,48 @@ function requestContext(ctx, options) {
   return Object.freeze({ minimum, wire: Object.freeze(wire), parent, users });
 }
 
-export function apply(ctx) {
+async function registerDesktopProviders(ctx, providers) {
+  const [{ PiAiAdapter }, { openAIResponsesApi }, { anthropicMessagesApi }] = await Promise.all([
+    import("@deepseek-ai/dsh-llm-pi-ai"),
+    import("@earendil-works/pi-ai/api/openai-responses.lazy"),
+    import("@earendil-works/pi-ai/api/anthropic-messages.lazy"),
+  ]);
+  const protocols = { "openai-responses": openAIResponsesApi, "anthropic-messages": anthropicMessagesApi };
+  const profiles = new Map();
+  for (const [id, { api, baseURL, headers, models }] of Object.entries(providers)) {
+    const protocol = protocols[api]();
+    const catalog = models.map(model => ({ ...model, provider: id, api, baseUrl: baseURL }));
+    profiles.set(id, {
+      provider: id,
+      displayName: id,
+      headers,
+      streamIdleTimeoutMs: 300_000,
+      modelErrors: new Map(),
+      configuredMaxTokens: new Map(models.map(model => [model.id, model.maxTokens])),
+      piProvider: {
+        id,
+        name: id,
+        baseUrl: baseURL,
+        // The managed route authenticates with its explicit protected Gateway headers.
+        auth: { apiKey: { name: id, resolve: async () => ({ auth: {}, source: id }) } },
+        getModels: () => catalog,
+        stream: (model, context, options) => protocol.stream(model, context, options),
+        streamSimple: (model, context, options) => protocol.streamSimple(model, context, options),
+      },
+    });
+  }
+  ctx.inject(["llm"], (scope) => {
+    const adapter = new PiAiAdapter({
+      profiles: () => profiles,
+      resolveApiKey: async () => undefined,
+      auth: {},
+      prepareHeaders: (request, headers) => scope.waterfall("llm-pi-ai/request-headers", request, headers, () => headers),
+    });
+    scope.llm.registerAdapter([...profiles.keys()], adapter);
+  });
+}
+
+export function apply(ctx, config) {
   const storage = transport();
   // Web sessions can own an isolated LLM service. Cordis otherwise filters this
   // root-loaded listener before it can bind main or auxiliary call metadata.
@@ -204,4 +245,5 @@ export function apply(ctx) {
       throw(error) { return storage.run(context, () => iterator.throw ? iterator.throw(error) : Promise.reject(error)); },
     };
   }, { global: true });
+  if (config?.providers) return registerDesktopProviders(ctx, config.providers);
 }

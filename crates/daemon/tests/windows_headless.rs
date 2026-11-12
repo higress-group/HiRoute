@@ -7,6 +7,8 @@ mod windows_business_http;
 mod windows_claude_connection;
 #[path = "support/windows_decision_business.rs"]
 mod windows_decision_business;
+#[path = "support/windows_dsh_desktop_models.rs"]
+mod windows_dsh_desktop_models;
 #[path = "support/windows_execution_host.rs"]
 mod windows_execution_host;
 #[path = "support/windows_foreground_console.rs"]
@@ -1133,6 +1135,12 @@ fn actual_windows_qoder_persisted_user_models_with_official_account() {
     println!(
         "Windows ordinary Qoder user models: official private account, public Source/Plan transactions, saved Responses/Messages providers, actual native requests, grant rotation, independent installed Skill and trusted CLI, durable restart and exact native settings restore"
     );
+}
+
+#[test]
+#[ignore = "requires installed official Windows DSH Desktop and the configured Node runtime"]
+fn actual_windows_dsh_desktop_additional_plugin_models() {
+    windows_dsh_desktop_models::run(&InstalledProduct::create());
 }
 
 #[test]

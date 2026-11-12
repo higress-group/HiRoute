@@ -256,7 +256,7 @@ impl FilesystemAgentScannerV1 {
     fn dsh_desktop_contract(
         &self,
         skills: bool,
-    ) -> Result<(CanonicalDigest, PathBuf, PathBuf), DshDesktopModelCheckError> {
+    ) -> Result<(CanonicalDigest, PathBuf, PathBuf, bool), DshDesktopModelCheckError> {
         use DshDesktopModelCheckError as Check;
         let mut dependencies = self
             .dsh_desktop_patch_dependencies(skills)
@@ -267,25 +267,27 @@ impl FilesystemAgentScannerV1 {
             .join("profiles/desktop/package.json");
         let bytes = super::super::dsh_config::read_patch_bytes(&manifest)
             .map_err(|error| Check::file_error(error, Check::Manifest))?;
+        let mut factory = true;
         if !bytes.is_empty() {
             let value: serde_json::Value =
                 serde_json::from_slice(&bytes).map_err(|_| Check::Manifest)?;
-            let bundles = &value["dsh"]["profile"]["bundles"];
-            if !bundles
+            let bundles = value["dsh"]["profile"]["bundles"]
                 .as_array()
-                .is_some_and(|entries| entries.iter().all(serde_json::Value::is_string))
-            {
-                return Err(Check::Manifest);
-            }
+                .filter(|entries| entries.iter().all(serde_json::Value::is_string))
+                .ok_or(Check::Manifest)?;
             let has_dependencies = match value.get("dependencies") {
                 Some(serde_json::Value::Object(entries)) => !entries.is_empty(),
                 Some(_) => return Err(Check::Manifest),
                 None => false,
             };
-            // This is the shipped Desktop composition. Custom bundle loading is not
-            // established by the public CLI's default dump and must not be asserted.
-            if bundles != &serde_json::json!(["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"])
-                || has_dependencies
+            let base = bundles
+                .iter()
+                .position(|entry| entry == "@deepseek-ai/dsh-base");
+            let web = bundles
+                .iter()
+                .position(|entry| entry == "@deepseek-ai/dsh-web-app");
+            factory = base == Some(0) && web == Some(1) && bundles.len() == 2 && !has_dependencies;
+            if !matches!((base, web), (Some(base), Some(web)) if base < web) || (skills && !factory)
             {
                 return Err(Check::CustomProfile);
             }
@@ -304,33 +306,56 @@ impl FilesystemAgentScannerV1 {
             );
         }
         let digest = CanonicalDigest::of(&dependencies).map_err(|_| Check::Runtime)?;
-        Ok((digest, executable, archive))
+        Ok((digest, executable, archive, factory))
     }
     #[cfg(any(unix, windows))]
     pub fn check_dsh_desktop_model_configuration(
         &self,
-    ) -> Result<CanonicalDigest, DshDesktopModelCheckError> {
+    ) -> Result<(CanonicalDigest, bool), DshDesktopModelCheckError> {
         use DshDesktopModelCheckError as Check;
-        let (before, executable, archive) = self.dsh_desktop_contract(false)?;
-        let mut command = Self::dsh_desktop_command(&executable, &archive);
-        // Upstream forbids dumping the Desktop profile. Its standard manifest uses
-        // these same Web bundles; inspect that default, never pretend this runs Desktop.
-        command.args(["--profile", "web", "--dump-default-config"]);
-        let output =
-            super::dsh_native::dsh_public_probe(command, false).map_err(|_| Check::Probe)?;
-        super::dsh_native::check_composition(&output, &["llm-pi-ai"])
-            .map_err(Check::composition_error)?;
+        let (before, executable, archive, factory) = self.dsh_desktop_contract(false)?;
+        let mut command = std::process::Command::new(&executable);
+        command
+            .env_clear()
+            .env("PATH", std::env::var_os("PATH").unwrap_or_default())
+            .env("ELECTRON_RUN_AS_NODE", "1")
+            .args([
+                "--expose-internals",
+                "--experimental-import-meta-resolve",
+                "--input-type=module",
+                "--eval",
+                include_str!("../../../../assets/agents/dsh/probe-desktop-provider.mjs"),
+                "--",
+            ])
+            .arg(&archive);
+        let independent_provider =
+            super::dsh_native::dsh_public_probe(command, false).is_ok_and(|output| {
+                std::str::from_utf8(&output)
+                    .is_ok_and(|text| text.trim() == "HIRoute Desktop provider ready")
+            });
+        if !independent_provider {
+            if !factory {
+                return Err(Check::MissingAdapter);
+            }
+            // Older carriers can still use the shipped Web composition for a factory profile.
+            let mut command = Self::dsh_desktop_command(&executable, &archive);
+            command.args(["--profile", "web", "--dump-default-config"]);
+            let output =
+                super::dsh_native::dsh_public_probe(command, false).map_err(|_| Check::Probe)?;
+            super::dsh_native::check_composition(&output, &["llm-pi-ai"])
+                .map_err(Check::composition_error)?;
+        }
         if !self.dsh_desktop_model_configuration_is_current(&before)? {
             return Err(Check::SourceChanged);
         }
-        Ok(before)
+        Ok((before, independent_provider))
     }
     pub fn dsh_desktop_model_configuration_is_current(
         &self,
         checked: &CanonicalDigest,
     ) -> Result<bool, DshDesktopModelCheckError> {
         self.dsh_desktop_contract(false)
-            .map(|(current, _, _)| current == *checked)
+            .map(|(current, _, _, _)| current == *checked)
     }
 
     #[cfg(any(unix, windows))]
@@ -338,7 +363,7 @@ impl FilesystemAgentScannerV1 {
         &self,
     ) -> Result<CanonicalDigest, DshDesktopModelCheckError> {
         use DshDesktopModelCheckError as Check;
-        let (before, executable, archive) = self.dsh_desktop_contract(true)?;
+        let (before, executable, archive, _) = self.dsh_desktop_contract(true)?;
         let mut command = Self::dsh_desktop_command(&executable, &archive);
         command.args(["--profile", "web", "--dump-default-config"]);
         let output =

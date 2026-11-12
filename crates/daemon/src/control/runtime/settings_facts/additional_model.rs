@@ -15,6 +15,7 @@ impl LocalControlAdapter {
         spec: &AgentSettingsSpecV2,
         class: SettingsAgentClass,
         mut input: AgentSettingsPlanningInput,
+        independent_dsh_provider: bool,
     ) -> Result<AgentSettingsPlanningInput, ControlReadError> {
         let diagnostics = self.agent_read_diagnostics();
         let _total = Timer::start(&diagnostics, Category::GrantProvenance, Stage::Total);
@@ -454,6 +455,7 @@ impl LocalControlAdapter {
             "content":expected_content,"fingerprint":before_fingerprint,"publication":publication.digest,
             "grant":current_grant,"token":token_input_fingerprint,"provider":provider_id,"endpoint":endpoint,
             "conflict":qoder_model_conflict,"models":models,"additional_dependencies":additional_dependencies,"kind":kind,"pi_settings":pi_settings,"previous":previous.as_ref().map(|(op,_)| &op.operation_id),"restore":restore,
+            "independent_dsh_provider":independent_dsh_provider,
         });
         #[cfg(test)]
         diagnostics::record("additional_model", &dependency_facts);
@@ -539,6 +541,7 @@ impl LocalControlAdapter {
                 kind,
                 pi_settings_content: pi_settings.map(|settings| settings.content_digest),
                 additional_dependencies,
+                independent_dsh_provider,
                 routing_adapter,
                 provider_id,
                 endpoint,

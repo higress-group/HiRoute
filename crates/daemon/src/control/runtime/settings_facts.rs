@@ -153,25 +153,32 @@ impl LocalControlAdapter {
         // native-file snapshot. Apply captures again under the admission lock;
         // mutable configuration still participates in both snapshots below.
         #[cfg(any(unix, windows))]
-        let dsh_composition = if matches!(
-            class,
-            SettingsAgentClass::Dsh | SettingsAgentClass::DshDesktop
-        ) && matches!(spec.model, AgentFacetIntent::Configure { .. })
-        {
-            Some(if class == SettingsAgentClass::DshDesktop {
-                self.scanner
-                    .check_dsh_desktop_model_configuration()
-                    .map_err(dsh_desktop_model_check_failure)?
+        let (dsh_composition, independent_dsh_provider) =
+            if matches!(
+                class,
+                SettingsAgentClass::Dsh | SettingsAgentClass::DshDesktop
+            ) && matches!(spec.model, AgentFacetIntent::Configure { .. })
+            {
+                let (digest, independent) = if class == SettingsAgentClass::DshDesktop {
+                    self.scanner
+                        .check_dsh_desktop_model_configuration()
+                        .map_err(dsh_desktop_model_check_failure)?
+                } else {
+                    (
+                        self.scanner
+                            .check_dsh_model_configuration()
+                            .map_err(|_| ControlReadError::Unavailable)?,
+                        false,
+                    )
+                };
+                (Some(digest), independent)
             } else {
-                self.scanner
-                    .check_dsh_model_configuration()
-                    .map_err(|_| ControlReadError::Unavailable)?
-            })
-        } else {
-            None
-        };
-        let first = self.complete_settings_snapshot(spec, class)?;
-        let mut second = self.complete_settings_snapshot(spec, class)?;
+                (None, false)
+            };
+        #[cfg(not(any(unix, windows)))]
+        let independent_dsh_provider = false;
+        let first = self.complete_settings_snapshot(spec, class, independent_dsh_provider)?;
+        let mut second = self.complete_settings_snapshot(spec, class, independent_dsh_provider)?;
         #[cfg(any(unix, windows))]
         if let Some(checked) = dsh_composition.as_ref()
             && !(if class == SettingsAgentClass::DshDesktop {
@@ -210,6 +217,7 @@ impl LocalControlAdapter {
         &self,
         spec: &AgentSettingsSpecV2,
         class: SettingsAgentClass,
+        independent_dsh_provider: bool,
     ) -> Result<AgentSettingsPlanningInput, ControlReadError> {
         let diagnostics = self.agent_read_diagnostics();
         let _total = Timer::start(&diagnostics, Category::SettingsPlanning, Stage::Total);
@@ -225,6 +233,7 @@ impl LocalControlAdapter {
                 spec,
                 class,
                 self.additional_settings_snapshot(spec, class)?,
+                independent_dsh_provider,
             );
         }
         let owned_claude = if class == SettingsAgentClass::Claude {

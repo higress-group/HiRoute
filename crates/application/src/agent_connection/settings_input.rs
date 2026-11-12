@@ -55,6 +55,7 @@ pub enum SettingsModelTargetFacts {
         kind: hiroute_domain::AgentKindV1,
         pi_settings_content: Option<CanonicalDigest>,
         additional_dependencies: Option<CanonicalDigest>,
+        independent_dsh_provider: bool,
         routing_adapter: Option<super::NativePluginFileFacts>,
         provider_id: String,
         endpoint: String,
@@ -146,6 +147,7 @@ impl AgentSettingsPlanningInput {
                         pi_settings_content,
                         additional_dependencies,
                         routing_adapter: _,
+                        independent_dsh_provider: _,
                         provider_id,
                         endpoint,
                         models,
@@ -453,7 +455,9 @@ impl AgentSettingsPlanningInput {
                             change,
                         ) => {
                             let SettingsModelTargetFacts::Additional {
-                                routing_adapter, ..
+                                routing_adapter,
+                                independent_dsh_provider,
+                                ..
                             } = &file.target
                             else {
                                 return Err(invalid());
@@ -493,6 +497,7 @@ impl AgentSettingsPlanningInput {
                                 change,
                                 pi_settings_content,
                                 additional_dependencies,
+                                *independent_dsh_provider,
                             )?);
                             if let (
                                 Some(facts),

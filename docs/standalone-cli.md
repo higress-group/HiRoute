@@ -1238,9 +1238,11 @@ IPv6, multiple listeners, and firewall management are not supported.
 - `REVISION_CONFLICT` / `CHANGE_PREVIEW_STALE`: read current resources/options and Preview
   again. Never modify and force an old Preview through Apply.
 - `ACTION_REQUIRED` when configuring `agent_dsh_desktop`. In JSON output, check
-  `error.message_key`. `error.dsh_desktop_custom_profile` identifies a change to the
-  Desktop profile's default bundles or dependencies. `error.dsh_desktop_probe_failed`
-  identifies a failure to read the default configuration with the bundled CLI.
+  `error.message_key`. `error.dsh_desktop_custom_profile` identifies missing or
+  reordered default base and Web bundles. `error.dsh_desktop_model_adapter_missing`
+  identifies a bundled runtime without the provider capability required by the
+  selected profile. `error.dsh_desktop_probe_failed` identifies a failure to read
+  the factory composition with the bundled CLI.
 - `IDEMPOTENCY_KEY_REUSED`: the key already names another digest. Use `operations find` to
   inspect the winning Operation; do not claim that new content was applied.
 - Lost Apply response: keep the original spec/digest/revisions/key and call
