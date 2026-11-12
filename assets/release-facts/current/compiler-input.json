@@ -81527,7 +81527,7 @@
             "client-catalog"
           ],
           "status_candidates": [
-            "Deprecated; from 2026-12-01 this direct Gemini API ID automatically routes to gemini-3.5-flash-lite at the destination model pricing. Not yet retired."
+            "Deprecated; on 2026-12-01 direct ID automatically routes to gemini-3.5-flash-lite at destination pricing; not yet retired."
           ],
           "upstream_model_id": "gemini-2.5-flash",
           "usable_for": [
@@ -81735,7 +81735,7 @@
             "client-catalog"
           ],
           "status_candidates": [
-            "Deprecated; from 2026-12-01 this direct Gemini API ID automatically routes to gemini-3.8-flash at the destination model pricing. Not yet retired."
+            "Deprecated; on 2026-12-01 direct ID automatically routes to gemini-3.8-flash at destination pricing; not yet retired."
           ],
           "upstream_model_id": "gemini-2.5-pro",
           "usable_for": [
@@ -106984,7 +106984,7 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:a451a920e0e7b42f2b6a13e4e214f44035ca9ad3d654309341b9728cb04e7ecb"
+      "source_catalog_digest": "sha256:849c7154882159fd17391c3789658b9daffd4149b504b9e835967ec3b5b5244c"
     },
     "rating_snapshot": {
       "digest": "sha256:5fa20fef854989fc3c1a6106af04121e5b934ad1f391ab93a414958ec570aadf",
@@ -109093,7 +109093,7 @@
     "schema": "hiroute.release-model-data/v2"
   },
   "official_model_data": {
-    "data_revision": 14,
+    "data_revision": 15,
     "pricing_facts": [
       {
         "pricing_key": "anthropic-platform/claude-fable-5-2/claude-fable-5-2",

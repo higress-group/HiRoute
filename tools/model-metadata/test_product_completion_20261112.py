@@ -1,5 +1,12 @@
 """Scoped product facts and lifecycle warnings reach the client projection."""
 import json
+import contextlib
+import copy
+import io
+import sys
+from unittest import mock
+
+import validate_catalog
 from pathlib import Path
 import hashlib
 import unittest
@@ -66,6 +73,30 @@ class ProductCompletionTests(unittest.TestCase):
         for b in self.metadata['endpoint_bindings']:
             if b['product_key'] == 'kimi-code-subscription':
                 self.assertNotIn('newly registered users', b['availability']['condition'])
+
+    def test_authoring_validator_rejects_lifecycle_notes_the_installed_reader_cannot_load(self):
+        original_load = validate_catalog.load_json
+        for note in (
+            'Deprecated; from 2026-12-01 this direct Gemini API ID automatically routes to '
+            'gemini-3.8-flash at the destination model pricing. Not yet retired.',
+            '退' * 43,  # 43 characters, 129 UTF-8 bytes.
+        ):
+            with self.subTest(note=note):
+                catalog = copy.deepcopy(self.source)
+                record = next(r for r in catalog['model_metadata_records']
+                              if r['model_record_key'] == 'openclaw/google/gemini-2.5-pro')
+                record['status_candidates'] = [note]
+                def load(path):
+                    return catalog if path == ROOT / SOURCE else original_load(path)
+                output = io.StringIO()
+                with mock.patch.object(validate_catalog, 'load_json', side_effect=load), \
+                     mock.patch.object(sys, 'argv', ['validate_catalog.py', '--today', '2026-11-12']), \
+                     contextlib.redirect_stdout(output):
+                    result = validate_catalog.main()
+                self.assertEqual(result, 1)
+                self.assertIn(
+                    'model metadata openclaw/google/gemini-2.5-pro status_candidates exceed the 128-byte reader limit',
+                    json.loads(output.getvalue())['errors'])
 
     def test_exact_direct_lifecycle_records_preserve_client_assertions(self):
         expected = {

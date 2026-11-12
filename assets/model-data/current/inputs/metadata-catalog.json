@@ -94544,7 +94544,7 @@
       ],
       "lifecycle": "deprecated",
       "status_candidates": [
-        "Deprecated; from 2026-12-01 this direct Gemini API ID automatically routes to gemini-3.5-flash-lite at the destination model pricing. Not yet retired."
+        "Deprecated; on 2026-12-01 direct ID automatically routes to gemini-3.5-flash-lite at destination pricing; not yet retired."
       ],
       "replacement_upstream_ids": [
         "gemini-3.5-flash-lite"
@@ -94807,7 +94807,7 @@
       ],
       "lifecycle": "deprecated",
       "status_candidates": [
-        "Deprecated; from 2026-12-01 this direct Gemini API ID automatically routes to gemini-3.8-flash at the destination model pricing. Not yet retired."
+        "Deprecated; on 2026-12-01 direct ID automatically routes to gemini-3.8-flash at destination pricing; not yet retired."
       ],
       "replacement_upstream_ids": [
         "gemini-3.8-flash"
