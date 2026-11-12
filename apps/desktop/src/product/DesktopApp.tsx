@@ -3,6 +3,7 @@ import { TrialQuickStart } from '../features/trial/TrialQuickStart';
 import { NewModels } from '../features/trial/NewModels';
 import { useTrustSuggestions } from '../features/trust/use-trust-suggestions';
 import { NativeConnectionRecovery } from './NativeConnectionRecovery';
+import { nativeConnectionReadText } from '../native-connection';
 import { startupFailureText } from '../storage-recovery';
 import { randomId } from '../random-id.ts';
 import { hostCapabilities } from '../host/index.ts';
@@ -12,6 +13,7 @@ import type { DecisionService } from '../features/decision-services/types';
 import { DecisionServicesPage } from '../features/decision-services/DecisionServicesPage';
 import { requestEditorReplacement } from '../ui/discard-guard';
 import { useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { invoke } from '../host/index.ts';
 import { Agents } from '../agents';
 import type { AgentTask, AgentTaskRead } from '../features/AgentTasks';
@@ -36,6 +38,7 @@ import {
 import type { OperationReference } from '../features/model-connections/types';
 import {
   PresentationRoot,
+  ProductPage,
   TabList,
   UiIcon,
   WebConfirmationHost,
@@ -118,11 +121,15 @@ function failureHelp(code: string, language: 'zh' | 'en', operation?: DesktopOpe
 export function DesktopApp() {
   const preferences = usePresentationPreferences();
   const { language } = preferences;
-  const home = useDesktopHome();
   const [trialIntent, setTrialIntent] = useState<{ modelId?: string; bindingId?: string } | null>(null);
   const [trialModelsOpen, setTrialModelsOpen] = useState(false);
   const trialOpen = Boolean(trialIntent) && !trialModelsOpen;
   const [page, setPage] = useState<Page>('home');
+  const [observationConnectionLost, setObservationConnectionLost] = useState(false);
+  const authorityLost = useRef(false);
+  const checkingNativeStatus = useRef(false);
+  const homeObservationActive = page === 'home' && !trialOpen && !observationConnectionLost;
+  const home = useDesktopHome(homeObservationActive);
   const [modelTab, setModelTab] = useState<'general' | 'decisions'>('general');
   // Managing an API connection from a decision draft keeps that draft mounted behind the model page.
   const [decisionDetour, setDecisionDetour] = useState(false), [sourceRefreshKey, setSourceRefreshKey] = useState(0);
@@ -194,10 +201,30 @@ export function DesktopApp() {
   ];
 
   useEffect(() => {
-    const refresh = () => { home.invalidateService(true); void home.refreshDesktop(); };
+    const refresh = () => {
+      if (!authorityLost.current) {
+        authorityLost.current = true;
+        // Cut off the current read owners before a late reply can repaint records.
+        flushSync(() => {
+          setObservationConnectionLost(true);
+          home.invalidateObservations(true);
+          home.invalidateService(true);
+        });
+      }
+      if (checkingNativeStatus.current) return;
+      checkingNativeStatus.current = true;
+      void home.refreshDesktop().finally(() => { checkingNativeStatus.current = false; });
+    };
     window.addEventListener('hiroute-native-connection-unavailable', refresh);
     return () => window.removeEventListener('hiroute-native-connection-unavailable', refresh);
-  }, [home.invalidateService, home.refreshDesktop]);
+  }, [home.invalidateService, home.invalidateObservations, home.refreshDesktop]);
+  useEffect(() => {
+    if (observationConnectionLost && home.desktopSnapshot?.native_connection === 'ready' && home.desktopSnapshot.trusted_authority
+      && home.reads.service.status === 'ready' && !home.reads.service.data.nativeConnectionLost) {
+      authorityLost.current = false;
+      setObservationConnectionLost(false);
+    }
+  }, [observationConnectionLost, home.desktopSnapshot, home.reads.service]);
   const startupFailure = home.startup?.state === 'failed' ? home.startup : null;
   const startupMessage = startupFailureText(startupFailure?.code, startupFailure?.storage_recovery, language, 'macos');
   const upgradePhase = home.startup?.state === 'starting' ? home.startup.upgrade_phase : undefined;
@@ -373,7 +400,6 @@ export function DesktopApp() {
   }
 
   function openPage(next: Page) {
-    if (next === 'home' && page !== 'home') void Promise.allSettled([home.refreshActivity(), home.refreshValue()]);
     setVisited(current => current.has(next) ? current : new Set([...current, next]));
     setPage(next);
     if (next !== 'models') { decisionReturn.current = null; setReturningToRoute(false); setDecisionDetour(false); }
@@ -757,7 +783,13 @@ export function DesktopApp() {
         <HostNotices language={language} />
         {notice && <div className="toast-stack" aria-live="polite"><div className="toast" role="status"><UiIcon name="info" /><span>{notice}</span></div></div>}
         {upgradePhaseText && <div className="callout" role="status" aria-live="polite"><UiIcon name="info" /><div><strong>{upgradePhaseText}</strong><p>{language === 'zh' ? '请等待升级完成；请保留原数据与完整安装包。' : 'Wait for the upgrade to finish. Keep the original data and complete installation package.'}</p></div></div>}
-        <NativeConnectionRecovery status={home.desktopSnapshot?.native_connection} language={language} serviceResponsive={home.reads.service.status === 'ready'} onRefresh={home.refreshDesktop} onRecovered={async () => { home.invalidateService(); await home.refreshAll(); setRefreshVersion(value => value + 1); }} />
+        <NativeConnectionRecovery status={home.desktopSnapshot?.native_connection} language={language} serviceResponsive={home.reads.service.status === 'ready'} onRefresh={home.refreshDesktop} onRecovered={async () => {
+          authorityLost.current = false;
+          setObservationConnectionLost(false);
+          home.invalidateService();
+          await home.refreshAll();
+          setRefreshVersion(value => value + 1);
+        }} />
         {startupFailure && <div className="callout bad startup-recovery" role="alert" data-error-code={startupFailure.code}>
           <UiIcon name="warning" />
           <div>
@@ -781,6 +813,7 @@ export function DesktopApp() {
         {trialIntent && <div className="trial-page-host" hidden={trialModelsOpen}><TrialQuickStart active={!trialModelsOpen} onOpenModels={() => void addTrialModel()} onOpenPerformance={plan => { setTrialIntent(null); void showRouting({ key: `trial/${randomId()}`, plan, initialView: 'performance' }); }} onOpenSessions={sessionId => { void (async () => { if (!await allowPageChange('sessions') || !await leaveTrial()) return; setSessionIntent({ key: `sessions/${randomId()}`, sessionId }); openPage('sessions'); })(); }} initialModelId={trialIntent.modelId} initialBindingId={trialIntent.bindingId} language={language} mutable={mutationAllowed} snapshot={home.desktopSnapshot} operation={operation} onRepresentedOperations={setTrialOperationIds} onOperation={value => acceptOperation(value, { kind: 'routing' })} onRefresh={async () => { setObserving(true); home.invalidateCatalog(); await home.refreshDesktop(); setRefreshVersion(value => value + 1); }} onClose={() => setTrialIntent(null)} onOpenAgent={id => { setTrialIntent(null); setAgentIntent({ key: `agents/${randomId()}`, agentId: id }); openPage('agents'); }} /></div>}
         <div hidden={trialOpen || page !== 'home'}><Home
             language={language}
+            observationActive={homeObservationActive}
             reads={home.reads}
             operation={homeOperation}
             trustSuggestions={trustSuggestions}
@@ -877,7 +910,9 @@ export function DesktopApp() {
               })();
             }}
           /></div>}
-        {visited.has('sessions') && <div hidden={trialOpen || page !== 'sessions'}><Sessions
+        {visited.has('sessions') && <div hidden={trialOpen || page !== 'sessions'}>{observationConnectionLost
+          ? <ProductPage title={text.pages.sessions}><p className="oc-meta" role="status">{nativeConnectionReadText('TRUSTED_AUTHORITY_UNAVAILABLE', language)}</p></ProductPage>
+          : <Sessions
             key={sessionIntent.key}
             active={!trialOpen && page === 'sessions'}
             initialSession={sessionIntent.sessionId ?? null}
@@ -886,7 +921,7 @@ export function DesktopApp() {
             refreshVersion={refreshVersion}
             language={language}
             onOpenAgents={() => void openPageSafely('agents')}
-          /></div>}
+          />}</div>}
         <div hidden={trialOpen || page !== 'settings'}><SettingsPage
           active={!trialOpen && page === 'settings'}
           language={language}

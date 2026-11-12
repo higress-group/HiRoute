@@ -3,6 +3,8 @@ import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { connectPage, evaluate, waitFor } from './cdp-client.mjs';
 const [port, base, output] = process.argv.slice(2);
+const transport = process.env.HIROUTE_BROWSER_TRANSPORT ?? 'tauri';
+if (!['tauri', 'console'].includes(transport)) throw new Error('Unknown browser host transport');
 const client = await connectPage(Number(port));
 const keepAlive = setInterval(() => {}, 1000);
 const results = [];
@@ -13,8 +15,12 @@ async function advance(ms) { await evaluate(client, `${fixture}.advance(${ms});t
 async function open(query, width = 1200, height = 813) {
   await client.send('Page.enable'); await client.send('Runtime.enable');
   await client.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
-  await client.send('Page.navigate', { url: `${base}session-live-refresh.html?${query}` });
+  const url = new URL('session-live-refresh.html', base);
+  url.search = query;
+  url.searchParams.set('transport', transport);
+  await client.send('Page.navigate', { url: url.href });
   await waitFor(client, '!!document.querySelector("#toggle-active")');
+  if (transport === 'console') assert.equal(await evaluate(client, 'window.fixtureTransport'), 'console');
   await evaluate(client, 'document.fonts.ready.then(()=>true)');
 }
 async function shot(name) { const capture = await client.send('Page.captureScreenshot', { format: 'png' }); await writeFile(path.join(output, `${name}.png`), Buffer.from(capture.data, 'base64')); }
@@ -49,6 +55,19 @@ try {
     await evaluate(client, `document.querySelectorAll('.session-item')[1].click();${fixture}.deferSummary=false;${fixture}.phase=0;${fixture}.release();true`); await flush();
     assert.equal(await evaluate(client, `document.querySelectorAll('.session-item')[1].getAttribute('aria-current')`), 'page');
     assert.ok(await evaluate(client, `document.querySelector('.transcript-head h2').textContent.includes('session-2')`));
+  });
+  await run('session.hidden-conversation-stops-body-recovery', async () => {
+    await open('routed&body=busy');
+    await waitFor(client, 'document.querySelectorAll(".session-view-tabs button").length===2');
+    await evaluate(client, 'document.querySelector(".session-view-tabs button:last-child").click();true');
+    await waitFor(client, '!!document.querySelector(".transcript-body [data-observation-recovery]")');
+    await evaluate(client, 'document.querySelector(".session-view-tabs button:first-child").click();true');
+    const filter = "r.view==='catalog'&&r.query.limit===20";
+    const before = await readCount(filter);
+    await new Promise(resolve => setTimeout(resolve, 550));
+    assert.equal(await readCount(filter), before, 'A hidden conversation issued another body read');
+    await evaluate(client, `${fixture}.body='available';document.querySelector(".session-view-tabs button:last-child").click();true`);
+    await waitFor(client, 'document.querySelector(".transcript-body .message-content")?.textContent.includes("Ready user content")');
   });
   for (const [language, theme, width, height] of [['en', 'light', 755, 600], ['zh', 'dark', 1200, 813]]) {
     for (const initial of ['pending', 'error']) await run(`session.excerpt-${initial}-recovers-with-unchanged-digest.${language}`, async () => {

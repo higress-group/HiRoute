@@ -8,7 +8,7 @@ import '../../../src/occami/styles.css';
 const params = new URLSearchParams(location.search);
 const language = params.get('lang') === 'zh' ? 'zh' : 'en';
 const scenario = params.get('scenario') ?? 'coordinates';
-const reads: { at: number; error: string | null }[] = [];
+const reads: { at: number; error: string | null; after: string | null }[] = [];
 const model = 'managed-provider/exact-model-id';
 const turns = Array.from({ length: 18 }, (_, offset): TimelineTurn => {
   const n = offset + 1;
@@ -42,9 +42,22 @@ mockIPC((command, payload: any) => {
   if (view !== 'routing_timeline') throw new Error(`Unexpected observation ${view}`);
   const count = reads.length;
   const error = ['timeout', 'extension-late-assessment'].includes(scenario) && (count === 1 || count === 2) ? 'timeout' : scenario === 'scope' && count === 0 ? 'scope' : null;
-  reads.push({ at: performance.now(), error });
-  if (error === 'timeout') throw { code: 'OBSERVATION_UNAVAILABLE', observation_read: { reason: 'timeout' } };
-  if (error === 'scope') throw { code: 'OBSERVATION_SCOPE_TOO_LARGE' };
+  reads.push({ at: performance.now(), error, after: query.after_watermark });
+  if (error === 'timeout') throw { source: 'backend', envelope: { error: {
+    code: 'OBSERVATION_UNAVAILABLE', retryable: true, details_schema: 'hiroute.observation.read-failure/v1',
+    observation_read: { reason: 'timeout', retry_after_ms: 100, action: 'retry' },
+  } } };
+  if (error === 'scope') throw { code: 'SCOPE_TOO_LARGE', retryable: true };
+  if (scenario === 'stale' || scenario === 'stale-absorption') {
+    if (count === 0) return { turns, watermark: 'old-snapshot', complete: true };
+    if (query.after_watermark === 'old-snapshot') throw { code: 'CHANGE_PREVIEW_STALE', retryable: false };
+    const retained = scenario === 'stale' ? turns.slice(1) : turns.flatMap(turn => {
+      if (turn.turn_id === 'turn-14') return [];
+      return [turn.turn_id === 'turn-13' ? { ...turn, requests: [...turn.requests, ...turns[13].requests], content_digest: 'absorbed-turn' } : turn];
+    });
+    if (query.after_watermark === null) return { turns: retained.slice(0, 10), watermark: 'new-snapshot', complete: false };
+    return { turns: query.after_watermark === 'new-snapshot' ? retained.slice(10) : [], watermark: 'fresh-end', complete: true };
+  }
   if (scenario === 'extension-late-assessment' && count >= 3) {
     turns[13] = { ...turns[13], assessment_state: 'scored', assessment: { score: .1, partial: false, target_from_ordinal: 2, target_through_ordinal: 2, target_from_turn_id: 'agent-turn-14', target_through_turn_id: 'agent-turn-14' }, content_digest: 'extension-late-score' };
     return { turns: query.after_watermark == null ? turns : count === 3 ? [turns[13]] : [], watermark: `watermark-${count}`, complete: true };

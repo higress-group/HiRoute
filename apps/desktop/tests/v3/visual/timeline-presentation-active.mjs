@@ -4,6 +4,8 @@ import path from 'node:path';
 import { connectPage, evaluate, waitFor } from './cdp-client.mjs';
 
 const [port, base, output] = process.argv.slice(2);
+const transport = process.env.HIROUTE_BROWSER_TRANSPORT ?? 'tauri';
+if (!['tauri', 'console'].includes(transport)) throw new Error('Unknown browser host transport');
 const client = await connectPage(Number(port));
 const results = [];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -14,8 +16,10 @@ const shot = async name => {
 async function open(scenario, lang = 'en', theme = 'light', width = 1200, height = 813) {
   await client.send('Page.enable'); await client.send('Runtime.enable');
   await client.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
-  await client.send('Page.navigate', { url: `${base}timeline-presentation.html?scenario=${scenario}&lang=${lang}&theme=${theme}` });
-  await waitFor(client, `!!document.querySelector('.routing-timeline') && !!window.presentationFixture`);
+  const url = new URL('timeline-presentation.html', base);
+  url.search = new URLSearchParams({ scenario, lang, theme, transport }).toString();
+  await client.send('Page.navigate', { url: url.href });
+  await waitFor(client, `!!document.querySelector('.routing-timeline') && !!window.presentationFixture${transport === 'console' ? " && window.fixtureTransport === 'console'" : ''}`);
   await evaluate(client, 'document.fonts.ready.then(()=>true)');
 }
 async function select(n) {
@@ -80,18 +84,39 @@ try {
   await check('timeout-retains-selection-and-backs-off', async () => {
     await open('timeout'); await waitFor(client, `document.querySelectorAll('.routing-turn').length===18`);
     await select(14);
-    await waitFor(client, `!!document.querySelector('[data-error-code]')`);
+    await waitFor(client, `!!document.querySelector('[data-observation-recovery]')`);
     const stale = await evaluate(client, `({title:document.querySelector('.routing-detail-head > strong').textContent,status:document.querySelector('.routing-live').textContent,count:document.querySelectorAll('.routing-turn').length})`);
     assert.equal(stale.title, 'T14'); assert.equal(stale.count, 18);
     assert.ok(stale.status.includes('Update delayed'), stale.status);
     await evaluate(client, `document.querySelector('.routing-live').scrollIntoView({block:'start'});true`);
     await shot('timeout-retained');
-    await sleep(6500);
-    await waitFor(client, `presentationFixture.reads.length>=4 && !document.querySelector('[data-error-code]')`);
+    assert.ok(!await evaluate(client, `!!document.querySelector('[data-error-code]')`));
+    await waitFor(client, `presentationFixture.reads.length>=4 && !document.querySelector('[data-observation-recovery]')`);
     const readTimes = await evaluate(client, 'presentationFixture.reads');
-    assert.ok(readTimes[3].at-readTimes[2].at>=3500, JSON.stringify(readTimes));
+    assert.ok(readTimes[2].at-readTimes[1].at>=390 && readTimes[3].at-readTimes[2].at>=990, JSON.stringify(readTimes));
     assert.equal(await evaluate(client, `document.querySelector('.routing-detail-head > strong').textContent`), 'T14');
     assert.ok(await evaluate(client, `document.querySelector('.routing-live').textContent.includes('Live')`));
+  });
+  await check('stale-watermark-rebuilds-and-restores-selection', async () => {
+    await open('stale', 'zh', 'dark', 755, 600);
+    await waitFor(client, `document.querySelectorAll('.routing-turn').length===18`);
+    await select(14);
+    await waitFor(client, `!!document.querySelector('[data-observation-recovery="rebuilding"]')`);
+    assert.equal(await evaluate(client, `document.querySelectorAll('.routing-turn').length`), 0);
+    assert.ok(!await evaluate(client, `!!document.querySelector('[data-error-code]')`));
+    await shot('stale-rebuilding');
+    await waitFor(client, `document.querySelectorAll('.routing-turn').length===17 && document.querySelector('.routing-detail-head > strong')?.textContent==='T13'`);
+    assert.deepEqual(await evaluate(client, `presentationFixture.reads.slice(0,4).map(read=>read.after)`), [null, 'old-snapshot', null, 'new-snapshot']);
+    assert.ok(!await evaluate(client, `!!document.querySelector('.routing-turn[data-turn-id="turn-1"]')`));
+  });
+  await check('stale-rebuild-transfers-focus-to-the-absorbing-turn', async () => {
+    await open('stale-absorption');
+    await waitFor(client, `document.querySelectorAll('.routing-turn').length===18`);
+    await select(14);
+    await evaluate(client, `document.querySelector('[data-overview-turn="turn-14"]').focus();true`);
+    await waitFor(client, `!!document.querySelector('[data-observation-recovery="rebuilding"]')`);
+    await waitFor(client, `document.querySelectorAll('.routing-turn').length===17 && document.querySelector('.routing-detail-head > strong')?.textContent==='T13'`);
+    assert.equal(await evaluate(client, `document.activeElement.getAttribute('data-overview-turn')`), 'turn-13');
   });
   await check('capacity-requires-explicit-retry', async () => {
     await open('scope'); await waitFor(client, `!!document.querySelector('[data-error-code]')`);
@@ -121,9 +146,9 @@ try {
     }
     // Two transient errors must retain the selected extension decision. Only a
     // changed T14 is resent on recovery, with a score targeting its AgentTurnId.
-    await waitFor(client, `!!document.querySelector('[data-error-code]')`);
+    await waitFor(client, `!!document.querySelector('[data-observation-recovery]')`);
     const retained = await assertExtension(false);
-    await waitFor(client, `presentationFixture.reads.length>=4 && !document.querySelector('[data-error-code]')`, { timeout: 12000 });
+    await waitFor(client, `presentationFixture.reads.length>=4 && !document.querySelector('[data-observation-recovery]')`, { timeout: 12000 });
     const recovered = await assertExtension(true);
     await shot(`extension-late-assessment-${lang}`);
     const before = await evaluate(client, 'presentationFixture.reads.length');

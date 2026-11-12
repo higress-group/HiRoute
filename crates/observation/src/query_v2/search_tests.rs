@@ -278,6 +278,55 @@ fn indexed_body_pages_are_bounded_and_never_duplicate_overlap_bytes() {
 }
 
 #[test]
+fn expired_content_is_distinct_from_pending_body_storage() {
+    let root = tempfile::tempdir().unwrap();
+    let store = LocalObservationStore::open(root.path(), DigestAuthority::new([2; 32])).unwrap();
+    source(&store, b"retained text");
+    let query = ObservationContentQueryV2 {
+        anchor_offset: None,
+        request_id: LogicalRequestId::parse("request").unwrap(),
+        content_id: "content".into(),
+        cursor: None,
+    };
+    let connection = rusqlite::Connection::open(&store.activity_path).unwrap();
+    connection
+        .execute(
+            "UPDATE content_instances_v2 SET state='partial' WHERE content_id='content'",
+            [],
+        )
+        .unwrap();
+    assert_eq!(
+        store.observed_content_page(&reader(true), &query, 500),
+        Err(ObservationV2Error::Unavailable)
+    );
+    connection
+        .execute(
+            "UPDATE logical_requests SET started_at_ms=?1 WHERE request_id='request'",
+            [500 - crate::managed_text::RETENTION_MS],
+        )
+        .unwrap();
+    assert_eq!(
+        store.observed_content_page(&reader(true), &query, 500),
+        Err(ObservationV2Error::NotFound)
+    );
+    assert_eq!(
+        ObservationV2Error::NotFound.into_legacy_domain(),
+        hiroute_domain::ObservationQueryError::Unavailable
+    );
+}
+
+#[test]
+fn sqlite_corruption_does_not_become_retryable_storage_unavailability() {
+    for code in [rusqlite::ffi::SQLITE_CORRUPT, rusqlite::ffi::SQLITE_NOTADB] {
+        let error = rusqlite::Error::SqliteFailure(rusqlite::ffi::Error::new(code), None);
+        assert_eq!(
+            ObservationV2Error::from(error).into_domain(),
+            hiroute_domain::ObservationQueryError::Corrupt
+        );
+    }
+}
+
+#[test]
 fn catalog_marks_aborted_capture_even_when_all_available_chunks_are_complete() {
     let root = tempfile::tempdir().unwrap();
     let store = LocalObservationStore::open(root.path(), DigestAuthority::new([2; 32])).unwrap();

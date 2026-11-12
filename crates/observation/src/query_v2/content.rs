@@ -101,7 +101,20 @@ impl crate::LocalObservationStore {
         let Some((occurrence, media, digest, byte_count, direction, delivery, index_state)) =
             metadata
         else {
-            return Err(ObservationV2Error::Unavailable);
+            // Pending content can still complete. A missing or expired instance
+            // has no current body to retry, even when a caller has an old ID.
+            let retained: bool = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM content_instances_v2 c JOIN logical_requests r ON r.workspace_id=c.workspace_id AND r.request_id=c.request_id
+                 WHERE c.workspace_id=?1 AND c.request_id=?2 AND c.content_id=?3
+                   AND c.state NOT IN ('deleted','expired') AND r.started_at_ms>?4)",
+                params![reader.workspace().as_str(),query.request_id.as_str(),query.content_id,now_ms.saturating_sub(crate::managed_text::RETENTION_MS)],
+                |row| row.get(0),
+            )?;
+            return Err(if retained {
+                ObservationV2Error::Unavailable
+            } else {
+                ObservationV2Error::NotFound
+            });
         };
         if query
             .anchor_offset

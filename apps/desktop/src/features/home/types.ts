@@ -1,12 +1,13 @@
 import type { BrandKind, Language, UiIconName } from '../../ui';
 import type { CacheHitSummary } from '../usage-presentation';
+import type { ObservationRecoveryStatus } from '../observation-recovery';
 
 /**
  * UI-only read state. Domain adapters project their safe query results into this shape.
  * It is not a backend DTO and must never carry credentials, capabilities, or trusted facts.
  */
 export type HomeRead<T> =
-  | { status: 'loading'; previous?: T; requestId?: string }
+  | { status: 'loading'; previous?: T; requestId?: string; recovery?: ObservationRecoveryStatus }
   | { status: 'ready'; data: T; revision?: string }
   | { status: 'error'; code: string; message?: string; previous?: T; retryable?: boolean };
 

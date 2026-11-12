@@ -8,6 +8,7 @@ export type { HostCapabilities, HostKind, HostTransport } from './types.ts';
 export { plaintextConsole } from './console.ts';
 let override: HostTransport | undefined;
 let shellCapabilities: HostCapabilities | undefined;
+let nativeAuthorityGeneration = 0;
 export function hostKind(): HostKind {
   if (override) return override.capabilities().host;
   if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return 'console';
@@ -58,7 +59,7 @@ async function browserCall(command: string, args: Record<string, unknown>): Prom
   }
   return consoleTransport.call(command, args);
 }
-async function invokeHost<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {
+async function invokeHost<T>(command: string, args: Record<string, unknown>): Promise<T> {
   if (override) {
     if (override.capabilities().host === 'console' && ['open_external_url', 'save_classifier_openapi', 'open_diagnostic_directory', 'open_startup_recovery_directory'].includes(command)) return browserCall(command, args) as Promise<T>;
     return override.call<T>(command, args);
@@ -77,9 +78,15 @@ async function invokeHost<T>(command: string, args: Record<string, unknown> = {}
   return browserCall(command, args) as Promise<T>;
 }
 export async function invoke<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {
-  try { return await invokeHost<T>(command, args); }
-  catch (error) {
-    if (hostKind() === 'tauri' && nativeConnectionLost(error)) window.dispatchEvent(new Event('hiroute-native-connection-unavailable'));
+  const generation = nativeAuthorityGeneration;
+  try {
+    const result = await invokeHost<T>(command, args);
+    if (command === 'recover_native_connection' && hostKind() === 'tauri') nativeAuthorityGeneration++;
+    return result;
+  } catch (error) {
+    if (generation === nativeAuthorityGeneration && hostKind() === 'tauri' && nativeConnectionLost(error)) {
+      window.dispatchEvent(new Event('hiroute-native-connection-unavailable'));
+    }
     throw error;
   }
 }

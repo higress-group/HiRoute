@@ -24,7 +24,7 @@ function contextId(): string {
   storage().setItem(CONTEXT_KEY, context);
   return context;
 }
-async function request<T>(path: string, options: RequestInit = {}, authenticated = true): Promise<T> {
+async function request<T>(path: string, options: RequestInit = {}, authenticated = true, notifyUnavailable = true): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set('Content-Type', 'application/json');
   if (authenticated) {
@@ -37,7 +37,7 @@ async function request<T>(path: string, options: RequestInit = {}, authenticated
   try {
     response = await fetch(`${API}${path}`, { ...options, headers, credentials: 'omit', cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(90_000) });
   } catch {
-    window.dispatchEvent(new Event(CONSOLE_UNAVAILABLE_EVENT));
+    if (notifyUnavailable) window.dispatchEvent(new Event(CONSOLE_UNAVAILABLE_EVENT));
     throw failure('CONSOLE_UNAVAILABLE');
   }
   let value: unknown;
@@ -74,6 +74,9 @@ export const consoleTransport: HostTransport = {
       await readConsoleSession();
       return { state: 'ready', recovery_available: false } as T;
     }
-    return request<T>(`/command/${encodeURIComponent(command)}`, { method: 'POST', body: JSON.stringify(args) });
+    // Observation reads report a network interruption to their page owner.
+    // Authentication failures still expire the session in request().
+    return request<T>(`/command/${encodeURIComponent(command)}`, { method: 'POST', body: JSON.stringify(args) },
+      true, command !== 'observation_read');
   },
 };

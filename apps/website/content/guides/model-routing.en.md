@@ -29,6 +29,7 @@ Command pointers (choose only what the goal needs; prefix each with hiroute):
 - Adjust trust, custom branches and other settings: routing show · routing options → routing preview
 - Publish and connect an Agent: routing apply · agents connect preview → agents connect apply
 - Inspect model selection, quality and cost: sessions timeline · observation plan-quality samples · observation plan-trust · value show
+- If Home or Sessions is updating in HiRoute 0.6.1 or later, keep the page open for automatic read recovery.
 
 The UI and CLI connect to the same HiRoute service and share configuration and execution records. Inspect and reuse existing state. Get exact parameters from the installed command’s --help and hiroute schema show --command-id COMMAND_ID --include-schema. Follow the built-in Skill for the required preview, apply and verification, then report the result.
 ```
@@ -154,6 +155,8 @@ After you change these settings and publish, save the agent model settings again
 ## 5. Inspect the outcome
 
 Open a session in **Sessions**. The **Routing timeline** shows, turn by turn, the group and model actually used, simple probability and stage scores, and where low-score protection applied and was released. Select a turn to see the selection basis at the start of that stage, plus each request's usage, cache hits and API-equivalent estimate. **View conversation** switches to the conversation, and **View model performance** opens the route's model performance.
+
+In HiRoute 0.6.1 and later, Home and Sessions automatically finish reads after a brief interruption. Keep the page open while it updates. If the displayed history needs to be loaded again, the page restores your selection when it is still available.
 
 <figure>
   <a href="/decision-assets/readme-session-en.png"><img src="/decision-assets/readme-session-en.png" alt="Session routing timeline showing actual models and stage scores" loading="lazy" /></a>

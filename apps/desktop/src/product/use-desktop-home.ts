@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { invoke } from '../host/index.ts';
 import {
   beginDomainRead,
@@ -29,7 +29,8 @@ import {
   type ObservationValueSummary,
 } from './home-projections';
 import { safeDiagnosticCode } from '../error-code';
-import { observationRead } from '../features/observation-client';
+import { observationAccessLost, observationCancelled, observationFailureCode } from '../features/observation-failure';
+import { readObservation } from '../features/observation-recovery';
 
 const HOME_TARGET = 'desktop/local-home';
 const loading = <T,>(): DomainReadSlot<T> => ({
@@ -42,7 +43,7 @@ function errorCode(error: unknown): string {
   return safeDiagnosticCode(error, 'READ_UNAVAILABLE');
 }
 
-export function useDesktopHome() {
+export function useDesktopHome(observationActive: boolean) {
   const [startup, setStartup] = useState<{ state: 'starting' | 'ready' | 'failed'; code?: string; storage_recovery?: unknown; recovery_available: boolean; backup_directory?: string; upgrade_phase?: 'source_check' | 'backup' | 'conversion' | 'validation' | 'service_recovery' } | null>(null);
   const [service, setService] = useState<DomainReadSlot<HomeService>>(loading);
   const [compute, setCompute] = useState<DomainReadSlot<HomeCompute>>(loading);
@@ -196,85 +197,57 @@ export function useDesktopHome() {
     ]);
   }, [refreshAgents, refreshCompute]);
 
-  const refreshActivity = useCallback(async () => {
-    activityRead.current?.abort();
+  const refreshObservation = useCallback(async <Result, Projection>(
+    domain: 'activity' | 'value', owner: { current: AbortController | null },
+    setRead: Dispatch<SetStateAction<DomainReadSlot<Projection>>>,
+    view: string, query: Parameters<typeof readObservation>[1], project: (value: Result) => Projection,
+  ) => {
+    if (!observationActive || owner.current) return;
     const controller = new AbortController();
-    activityRead.current = controller;
-    const request = requestId('activity');
-    setActivity(current => beginDomainRead(current, request, HOME_TARGET));
+    owner.current = controller;
+    const request = requestId(domain);
+    setRead(current => beginDomainRead(current, request, HOME_TARGET));
+    try {
+      const result = await readObservation<Result>(view, query, {
+        signal: controller.signal,
+        onRecovery: recovery => setRead(current => current.requestId === request && current.read.status === 'loading'
+          ? { ...current, read: { ...current.read, recovery } } : current),
+        onRebuild: () => setRead(current => current.requestId === request
+          ? { ...current, read: { status: 'loading', requestId: request, recovery: 'rebuilding' } } : current),
+      });
+      if (!controller.signal.aborted) setRead(current => resolveDomainRead(current, request, HOME_TARGET, project(result)));
+    } catch (error) {
+      if (observationCancelled(error, controller.signal)) return;
+      setRead(current => {
+        const failure = failDomainRead(current, request, HOME_TARGET, observationFailureCode(error) ?? errorCode(error));
+        return failure !== current && observationAccessLost(error) && failure.read.status === 'error'
+          ? { ...failure, read: { ...failure.read, previous: undefined } } : failure;
+      });
+    } finally {
+      if (owner.current === controller) owner.current = null;
+    }
+  }, [observationActive, requestId]);
+
+  const refreshActivity = useCallback(() => {
     const to = Date.now();
-    try {
-      const page = await observationRead<ObservationSessionPage>(
-        'sessions', {
-          from_ms: to - 7 * 86_400_000,
-          to_ms: to,
-          session_id: null,
-          limit: 6,
-          cursor: null,
-          agent_id: null,
-          plan_id: null,
-          native_model: null,
-          outcome: null,
-          only_model_switch: false,
-        }, controller.signal,
-      );
-      setActivity(current => resolveDomainRead(
-        current,
-        request,
-        HOME_TARGET,
-        projectHomeActivity(page),
-      ));
-    } catch (error) {
-      if (controller.signal.aborted) return;
-      setActivity(current => failDomainRead(
-        current,
-        request,
-        HOME_TARGET,
-        errorCode(error),
-      ));
-    }
-  }, [requestId]);
+    return refreshObservation<ObservationSessionPage, HomeActivity>('activity', activityRead, setActivity, 'sessions', {
+      from_ms: to - 7 * 86_400_000, to_ms: to, limit: 6, cursor: null,
+      session_id: null, agent_id: null, plan_id: null, native_model: null, outcome: null, only_model_switch: false,
+    }, projectHomeActivity);
+  }, [refreshObservation]);
 
-  const refreshValue = useCallback(async () => {
-    valueRead.current?.abort();
-    const controller = new AbortController();
-    valueRead.current = controller;
-    const request = requestId('value');
-    setValue(current => beginDomainRead(current, request, HOME_TARGET));
-    try {
-      const summary = await observationRead<ObservationValueSummary>(
-        'home_value', {
-          period: 'seven_days',
-          session_id: null,
-          currency: null,
-        }, controller.signal,
-      );
-      setValue(current => resolveDomainRead(
-        current,
-        request,
-        HOME_TARGET,
-        projectHomeValue(summary),
-      ));
-    } catch (error) {
-      if (controller.signal.aborted) return;
-      setValue(current => failDomainRead(
-        current,
-        request,
-        HOME_TARGET,
-        errorCode(error),
-      ));
-    }
-  }, [requestId]);
+  const refreshValue = useCallback(() => refreshObservation<ObservationValueSummary, HomeValue>(
+    'value', valueRead, setValue, 'home_value', { period: 'seven_days', session_id: null, currency: null }, projectHomeValue,
+  ), [refreshObservation]);
 
-  const refreshAll = useCallback(async () => {
-    await Promise.allSettled([
-      refreshDesktop(),
-      refreshCompute(),
-      refreshAgents(),
-      refreshActivity(),
-      refreshValue(),
-    ]);
-  }, [refreshActivity, refreshAgents, refreshCompute, refreshDesktop, refreshValue]);
+  const refreshCatalog = useCallback(() => Promise.allSettled([refreshDesktop(), refreshCompute(), refreshAgents()]),
+    [refreshDesktop, refreshCompute, refreshAgents]);
+
+  const refreshAll = useCallback(() => {
+    void refreshActivity();
+    void refreshValue();
+    return refreshCatalog();
+  }, [refreshActivity, refreshValue, refreshCatalog]);
 
   const refreshDomain = useCallback(async (domain: keyof HomeReads) => {
     if (domain === 'service' || domain === 'plans') return refreshDesktop();
@@ -284,14 +257,34 @@ export function useDesktopHome() {
     return refreshValue();
   }, [refreshActivity, refreshAgents, refreshCompute, refreshDesktop, refreshValue]);
 
-  useEffect(() => {
-    void refreshAll();
-  }, [refreshAll]);
+  useEffect(() => { void refreshCatalog(); }, [refreshCatalog]);
 
-  useEffect(() => () => {
+  const stopObservations = useCallback(() => {
     activityRead.current?.abort();
     valueRead.current?.abort();
+    activityRead.current = valueRead.current = null;
   }, []);
+  const invalidateObservations = useCallback((connectionLost = false) => {
+    stopObservations();
+    const unavailable = <T,>(): DomainReadSlot<T> => ({
+      ...loading<T>(),
+      read: { status: 'error', code: 'TRUSTED_AUTHORITY_UNAVAILABLE' },
+    });
+    setActivity(connectionLost ? unavailable() : loading());
+    setValue(connectionLost ? unavailable() : loading());
+  }, [stopObservations]);
+
+  useLayoutEffect(() => {
+    function invalidate() {
+      invalidateObservations();
+      void refreshActivity();
+      void refreshValue();
+    }
+    void refreshActivity();
+    void refreshValue();
+    window.addEventListener('hiroute-content-invalidated', invalidate);
+    return () => { stopObservations(); window.removeEventListener('hiroute-content-invalidated', invalidate); };
+  }, [refreshActivity, refreshValue, stopObservations, invalidateObservations]);
 
   useEffect(() => {
     let cancelled = false;
@@ -328,10 +321,9 @@ export function useDesktopHome() {
     refreshAll,
     refreshDesktop,
     invalidateService,
+    invalidateObservations,
     refreshCompute,
     refreshAgents,
-    refreshActivity,
-    refreshValue,
     refreshDomain,
     invalidateCatalog,
     refreshInvalidatedCatalog,
