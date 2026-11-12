@@ -1,0 +1,10 @@
+run,arm,same_product_session,route_verified,first_candidate_passed,complete_acceptance,first_patch_seconds,first_complete_acceptance_seconds,wall_seconds,agent_and_tool_seconds,machine_seconds,model_requests,native_model_switches,execution_api_equivalent_usd,api_equivalent_usd,known_cost_lower_bound_usd,usage_priced,usage_attempts,transport_errors,cancelled_requests,effective_delivery_seconds,cutoff_grade
+5311-rQ31,all_qwen,True,True,False,False,2700.916,,2700.945,2700.048,0.0,144,0,0.23608238078228255,0.23608238078228255,0.23608238078228255,144,144,0,0,,not_ready
+5311-rA31,all_astra,True,True,True,True,260.281,982.305,982.349,676.999,304.325,32,0,6.4544775,6.4544775,6.4544775,32,32,0,0,982.305,
+5311-rN31,native_workflow,True,True,True,True,260.524,1933.271,1933.309,1614.532,317.499,56,1,2.482682440167887,2.483797440167887,2.483797440167887,56,56,0,0,1933.271,
+5311-rA32,all_astra,True,True,True,True,285.313,1109.437,1109.479,795.481,312.782,39,0,6.399718,6.399718,6.399718,39,39,0,0,1109.437,
+5311-rN32,native_workflow,True,True,True,True,305.538,3008.589,3008.625,2678.933,328.547,74,1,2.729427843692326,2.730545843692326,2.730545843692326,74,74,0,0,3008.589,
+5311-rQ32,all_qwen,True,True,True,True,1367.864,8936.637,2701.268,2700.139,392.759,123,0,0.216263692921355,0.216263692921355,0.216263692921355,123,123,0,0,3093.989,pass
+5311-rN33,native_workflow,True,True,True,True,239.729,1944.604,1944.722,1596.634,346.737,54,1,2.6476911396380305,2.6488301396380303,2.6488301396380303,54,54,0,0,1944.604,
+5311-rQ33,all_qwen,True,True,False,False,2701.12,,2701.162,2700.03,0.0,101,0,,,0.14657958266357088,100,101,0,1,,not_ready
+5311-rA33,all_astra,True,True,True,True,299.123,1066.47,1066.553,690.322,374.724,40,0,6.969656,6.969656,6.969656,40,40,0,0,1066.47,
