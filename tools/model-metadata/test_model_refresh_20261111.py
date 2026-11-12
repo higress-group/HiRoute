@@ -97,10 +97,10 @@ class November11ModelProjectionTests(unittest.TestCase):
         self.assertIn('Messages and Responses default off', self.models['minimax-m3']['reasoning']['note'])
 
     def test_minimax_prices_stay_global_and_tier_specific(self):
-        price, = self.prices('minimax-m3-1-flash')
+        price, = self.prices('minimax-m3-1-flash', 'minimax-payg-global')
         self.assertEqual((price['product_key'], price['currency']), ('minimax-payg-global', 'USD'))
         self.assertEqual(price['schedules'][0]['rates'], {'input': '0.15', 'output': '0.60', 'cache-read': '0.015'})
-        price, = self.prices('minimax-m3')
+        price, = self.prices('minimax-m3', 'minimax-payg-global')
         rates = {s['schedule_key']: s for s in price['schedules']}
         self.assertEqual(rates['priority-long']['rates']['input'], '0.90')
         self.assertEqual(rates['standard-long']['rates']['cache-read'], '0.12')
@@ -150,7 +150,7 @@ class November11ModelProjectionTests(unittest.TestCase):
         model = self.models['glm-5-3-flashx-global']
         self.assertIsNone(model['context_tokens']['value'])
         self.assertIsNone(model['max_output_tokens']['value'])
-        self.assertTrue(all(b['product_key'] == 'zai-general-global'
+        self.assertTrue(all(b['product_key'] in {'zai-general-global', 'zhipu-general-cn'}
                             for b in self.bindings('glm-5-3-flashx-global')))
 
     def test_deepseek_dated_revision_has_product_and_protocol_scoped_bindings(self):

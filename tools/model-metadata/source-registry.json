@@ -273,6 +273,7 @@
     {
       "authority_key": "minimax",
       "allowed_https_prefixes": [
+        "https://platform.minimax.cn/docs/",
         "https://platform.minimax.io/",
         "https://platform.minimaxi.com/"
       ],

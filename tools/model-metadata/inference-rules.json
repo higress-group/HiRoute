@@ -1865,7 +1865,8 @@
         "capability_hints.vision": "supported",
         "input_modalities": [
           "image",
-          "text"
+          "text",
+          "video"
         ],
         "context_tokens": {
           "state": "known",
@@ -1889,10 +1890,12 @@
           "state": "native-text-representable"
         }
       },
-      "reason": "GLM-5.3 Flash is documented with a 1,000,000-token window, 131,072 max output, and image input (the Flash variant carries vision).",
+      "reason": "GLM-5.3 Flash is documented with a 1,000,000-token window, 131,072 max output, and image input (the Flash variant carries vision). Current provider documentation additionally establishes video input.",
       "evidence_refs": [
         "source-035",
-        "source-036"
+        "source-036",
+        "source-zai-flash-20261112",
+        "source-zhipu-flash-20261112"
       ]
     },
     {

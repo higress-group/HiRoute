@@ -3,6 +3,9 @@ use std::collections::BTreeMap;
 use hiroute_domain::*;
 use hiroute_integrations::TrustedReleaseCatalog;
 
+#[path = "current_model_metadata/domestic.rs"]
+mod domestic;
+
 fn assert_no_numeric_cost_leaf(value: &serde_json::Value) {
     match value {
         serde_json::Value::Number(number) => {
@@ -111,8 +114,8 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
             .all(|capability| !capability.capability_id.starts_with("cap.runtime.")),
         "incomplete bindings must not become executable capabilities"
     );
-    assert_eq!(data.metadata_catalog.provider_records.len(), 113);
-    assert_eq!(data.metadata_catalog.model_records.len(), 787);
+    assert_eq!(data.metadata_catalog.provider_records.len(), 114);
+    assert_eq!(data.metadata_catalog.model_records.len(), 789);
     assert_eq!(data.metadata_catalog.inference_rules.len(), 190);
     for product_key in [
         "bailian-token-personal-cn-beijing",

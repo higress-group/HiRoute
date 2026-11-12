@@ -316,3 +316,77 @@ test('Qwen4 preview check drafts retain explicit user budgets and require connec
   assert.deepEqual(selected.capabilities.max_output_tokens, edited.capabilities.max_output_tokens);
   assert.equal(selected.catalog_configuration_id, null);
 });
+
+
+test('MiniMax China prefill scopes output budgets to the selected current protocol', async () => {
+  const { withRegisteredModels, buildCheckDraft } = await import('../src/features/model-connections/state.ts');
+  for (const [protocol, base_url, request_path, output] of [
+    ['chat_completions', 'https://api.minimax.cn/v1', '/chat/completions', 524_288],
+    ['messages', 'https://api.minimax.cn/anthropic', '/v1/messages', 32_768],
+    ['responses', 'https://api.minimax.cn/v1', '/responses', 32_768],
+  ]) {
+    const candidates = registeredModelCandidates({ known_models: {}, endpoints: [
+      { protocol, base_url, request_path, stable_preference: 0 },
+    ] }, bundle.metadata_catalog);
+    assert.deepEqual(candidates.map(value => value.upstream_model_id).sort(),
+      ['MiniMax-M2.7', 'MiniMax-M3', 'MiniMax-M3.1-Flash']);
+    const current = candidates.filter(value => value.upstream_model_id !== 'MiniMax-M2.7');
+    const drafts = withRegisteredModels([], current);
+    for (const draft of drafts) {
+      assert.equal(draft.capabilities.context_tokens.value, 1_000_000, protocol);
+      assert.equal(draft.capabilities.max_output_tokens.value, output, protocol);
+      assert.equal(draft.membership, 'user_declared');
+      assert.equal(draft.catalog_configuration_id, null);
+    }
+    const edited = { ...drafts[0], capabilities: { ...drafts[0].capabilities,
+      max_output_tokens: { value: 8192, basis: 'user_declared' },
+    } };
+    const refreshed = withRegisteredModels([edited], current);
+    const wire = buildCheckDraft({ provenance: { kind: 'user_configured', configuration_revision: 1 }, models: refreshed });
+    assert.deepEqual(wire.models[0].capabilities.max_output_tokens, edited.capabilities.max_output_tokens);
+  }
+  const legacy = registeredModelCandidates({ known_models: {}, endpoints: [
+    { protocol: 'chat_completions', base_url: 'https://api.minimaxi.com/v1', request_path: '/chat/completions', stable_preference: 0 },
+  ] }, bundle.metadata_catalog);
+  assert.ok(legacy.some(value => value.upstream_model_id === 'MiniMax-M2.7'));
+  const provider = bundle.metadata_catalog.provider_records.find(value => value.provider_record_key === 'official/minimax-payg-cn');
+  assert.deepEqual(metadataProviderCandidates(provider, bundle.metadata_catalog, [])
+    .map(value => value.upstream_model_id).sort(), ['MiniMax-M3', 'MiniMax-M3.1-Flash']);
+});
+
+test('domestic GLM and Kimi prefills retain product-specific availability and exact limits', () => {
+  assert.ok(ids('zhipu.general.cn.v1').includes('glm-5.3-flashx'));
+  assert.ok(!ids('zhipu.coding-plan.cn.v1').includes('glm-5.3-flashx'));
+  const zaiResponses = registeredModelCandidates({ known_models: {}, endpoints: [
+    { protocol: 'responses', base_url: 'https://api.z.ai', request_path: '/api/v1/responses', stable_preference: 0 },
+  ] }, bundle.metadata_catalog);
+  for (const id of ['glm-5.3', 'glm-5.3-flash']) {
+    assert.ok(zaiResponses.some(value => value.upstream_model_id === id), id);
+  }
+  const platform = registeredModelCandidates(option('kimi.open-platform.cn.v1'), bundle.metadata_catalog);
+  assert.equal(platform.find(value => value.upstream_model_id === 'kimi-k2.6').capability_prefill.context_tokens.value, 262_144);
+  const code = registeredModelCandidates(option('kimi.code.cn.v1'), bundle.metadata_catalog);
+  assert.equal(code.find(value => value.upstream_model_id === 'k3').capability_prefill.context_tokens.value, 1_048_576);
+  assert.equal(code.find(value => value.upstream_model_id === 'k3-256k').capability_prefill.context_tokens.value, 262_144);
+});
+
+test('direct lifecycle corrections prevent new prefills and preserve manually saved declarations', async () => {
+  const { blankModel, withRegisteredModels, buildCheckDraft } = await import('../src/features/model-connections/state.ts');
+  for (const [providerKey, removed] of [
+    ['openclaw/mistral', ['mistral-medium-3-5']],
+    ['hermes-agent/anthropic', ['claude-sonnet-4-5-20250929', 'claude-opus-4-20250514', 'claude-sonnet-4-20250514']],
+    ['openclaw/google', ['gemini-2.5-pro', 'gemini-2.5-flash']],
+  ]) {
+    const provider = bundle.metadata_catalog.provider_records.find(value => value.provider_record_key === providerKey);
+    const candidates = metadataProviderCandidates(provider, bundle.metadata_catalog, []);
+    for (const id of removed) assert.ok(!candidates.some(value => value.upstream_model_id === id), `${providerKey}/${id}`);
+    const saved = blankModel(removed[0], 'My saved model');
+    const refreshed = withRegisteredModels([saved], candidates);
+    assert.equal(refreshed[0], saved);
+    const wire = buildCheckDraft({ provenance: { kind: 'user_configured', configuration_revision: 1 }, models: refreshed });
+    assert.equal(wire.models[0].upstream_model_id, removed[0]);
+  }
+  const hosted = bundle.metadata_catalog.provider_records.find(value => value.provider_record_key === 'hermes-agent/copilot');
+  assert.ok(metadataProviderCandidates(hosted, bundle.metadata_catalog, [])
+    .some(value => value.upstream_model_id === 'gemini-2.5-pro'));
+});

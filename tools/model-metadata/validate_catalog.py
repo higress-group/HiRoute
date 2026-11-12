@@ -860,6 +860,9 @@ def main() -> int:
                 isinstance(value, str) and value for value in values
             ) or not is_sorted_unique(values):
                 errors.append(f"model metadata {record_key} has invalid {field}")
+            elif field == "status_candidates" and any(len(value.encode("utf-8")) > 128 for value in values):
+                # Match the installed reader's valid_strings(..., 128) contract.
+                errors.append(f"model metadata {record_key} status_candidates exceed the 128-byte reader limit")
         rendering = record.get("reasoning_rendering_hints", {})
         rendering_state = record.get("reasoning_rendering_state")
         if not isinstance(rendering, dict) or set(rendering) != {
