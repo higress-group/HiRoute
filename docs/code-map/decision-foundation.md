@@ -167,6 +167,9 @@ keeps unrelated session growth out of the routine scan. Incoming projection and
 fingerprinting stay outside that lock; no model execution owns it.
 [Branch resolution](../../crates/gateway/src/agent_turn_history/store/branches.rs)
 uses a bounded scope index and the [accepted response boundary](../../crates/gateway/src/agent_turn_history/boundary.rs).
+The [late-join regressions](../../crates/gateway/src/agent_turn_history/late_join_tests.rs)
+cover response boundaries across all three ingress protocols when earlier stage
+output is missing, including actual capture loss and Responses tool-batch priority.
 The [native Responses tool handoff](../../crates/gateway/src/agent_turn_history/tool_continuation.rs)
 uses the accepted downstream write to release routing before optional capture.
 A full response match bypasses a sibling's pending handoff. The [scope ledger](../../crates/gateway/src/agent_turn_history/store/scoring_history.rs)

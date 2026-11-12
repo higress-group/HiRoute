@@ -121,7 +121,8 @@ pub(super) fn close_active(
         .as_ref()
         .ok_or(AgentTurnHistoryError::TurnContextUnavailable)?;
     let selected_branch_id = decision.branch_id.clone();
-    let capture_partial = entry.active.capture_partial
+    let capture_partial = entry.active.missing_current_output
+        || entry.active.capture_partial
         || entry.active.scope_partial
         || entry.active.request_ids_clipped;
     let attribution = if entry.active.request_ids_clipped {

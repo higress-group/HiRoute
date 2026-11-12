@@ -112,22 +112,13 @@ fn send(fixture: &RuntimeFixture, input: &[Value], turn: &str) -> Value {
     assistant
 }
 
-#[test]
-fn retained_long_hermes_chat_keeps_tool_stage_and_complete_next_input_assessment() {
-    let regular = NativeProvider::start(vec![
-        streamed(Some("first")),
-        streamed(Some("second")),
-        streamed(None),
-        streamed(None),
-    ]);
-    let primary = NativeProvider::start(vec![streamed(None)]);
-    let classifier = NativeProvider::start(vec![
-        reply(CLASSIFIER_COMPLEX),
-        reply(br#"{"group":"regular","assessment":{"score":0.75,"partial":false}}"#),
-        reply(br#"{"group":"regular","assessment":{"score":0.75,"partial":false}}"#),
-    ]);
+fn launch_hermes_chat(
+    regular: &NativeProvider,
+    primary: &NativeProvider,
+    classifier: &NativeProvider,
+) -> RuntimeFixture {
     let fixture = RuntimeFixture::launch_rest_classified_with_native_control(
-        &[&regular, &primary, &classifier],
+        &[regular, primary, classifier],
         1,
     );
     let mut publication = fixture.publication();
@@ -139,7 +130,7 @@ fn retained_long_hermes_chat_keeps_tool_stage_and_complete_next_input_assessment
     for (candidate, provider) in publication.aliases[0]
         .candidates
         .iter_mut()
-        .zip([&regular, &primary])
+        .zip([regular, primary])
     {
         *candidate = hiroute_e2e::gateway_fixture::sealed_native_candidate(
             candidate.local_id,
@@ -157,6 +148,24 @@ fn retained_long_hermes_chat_keeps_tool_stage_and_complete_next_input_assessment
         grant.consumer = Some(hiroute_domain::AgentModelConsumerV1::Hermes);
     }
     fixture.publish(&mut publication);
+    fixture
+}
+
+#[test]
+fn retained_long_hermes_chat_keeps_tool_stage_and_complete_next_input_assessment() {
+    let regular = NativeProvider::start(vec![
+        streamed(Some("first")),
+        streamed(Some("second")),
+        streamed(None),
+        streamed(None),
+    ]);
+    let primary = NativeProvider::start(vec![streamed(None)]);
+    let classifier = NativeProvider::start(vec![
+        reply(CLASSIFIER_COMPLEX),
+        reply(br#"{"group":"regular","assessment":{"score":0.75,"partial":false}}"#),
+        reply(br#"{"group":"regular","assessment":{"score":0.75,"partial":false}}"#),
+    ]);
+    let fixture = launch_hermes_chat(&regular, &primary, &classifier);
     let mut input = Vec::new();
     for i in 0..50 {
         input.push(json!({"role":"user","content":format!("Old input {i}: {}","x".repeat(16384))}));
@@ -204,6 +213,71 @@ fn retained_long_hermes_chat_keeps_tool_stage_and_complete_next_input_assessment
     assert_eq!(score["fact"]["partial"], false);
     assert_eq!(
         score["fact"]["history_membership"]["request_ids"]
+            .as_array()
+            .unwrap()
+            .len(),
+        3
+    );
+}
+
+#[test]
+fn late_join_hermes_chat_classifies_once_and_records_one_partial_stage() {
+    let regular = NativeProvider::start(vec![
+        streamed(Some("first")),
+        streamed(Some("second")),
+        streamed(None),
+    ]);
+    let primary = NativeProvider::start(vec![streamed(None)]);
+    let classifier = NativeProvider::start(vec![
+        reply(CLASSIFIER_SIMPLE),
+        reply(CLASSIFIER_SIMPLE),
+        reply(CLASSIFIER_SIMPLE),
+    ]);
+    let fixture = launch_hermes_chat(&regular, &primary, &classifier);
+    let mut input = vec![
+        json!({"role":"user","content":"Run two lookups."}),
+        json!({"role":"assistant","content":"I started before this branch opened."}),
+    ];
+    for _ in 0..2 {
+        let assistant = send(&fixture, &input, "late-join");
+        assert_eq!(
+            classifier.calls(),
+            1,
+            "tool continuation reclassified the turn"
+        );
+        let id = assistant["tool_calls"][0]["id"].clone();
+        input.extend([
+            assistant,
+            json!({"role":"tool","tool_call_id":id,"content":"42"}),
+        ]);
+    }
+    send(&fixture, &input, "late-join");
+    assert_eq!(
+        (regular.calls(), primary.calls(), classifier.calls()),
+        (3, 0, 1)
+    );
+
+    let facts = wait_execution_facts(&fixture, 3);
+    let admissions = facts
+        .iter()
+        .filter(|event| event["fact"]["kind"] == "agent_turn_admitted")
+        .map(|event| &event["fact"])
+        .collect::<Vec<_>>();
+    assert_eq!(admissions.len(), 3);
+    for admission in &admissions[1..] {
+        assert_eq!(admission["agent_turn_id"], admissions[0]["agent_turn_id"]);
+        assert_eq!(admission["branch_id"], admissions[0]["branch_id"]);
+    }
+    let mut stages = facts
+        .iter()
+        .filter(|event| event["fact"]["kind"] == "agent_turn_finished");
+    let stage = &stages.next().expect("completed stage")["fact"];
+    assert!(stages.next().is_none());
+    assert_eq!(stage["agent_turn_id"], admissions[0]["agent_turn_id"]);
+    assert_eq!(stage["history_partial"], true);
+    assert_eq!(stage["history_membership"]["capture_partial"], true);
+    assert_eq!(
+        stage["history_membership"]["request_ids"]
             .as_array()
             .unwrap()
             .len(),

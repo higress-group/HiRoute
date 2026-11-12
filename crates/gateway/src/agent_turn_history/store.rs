@@ -201,6 +201,8 @@ struct ActiveTurn {
     // Provider outcomes are facts about every actual request, independent of
     // whether the routing stage is still waiting for a tool continuation.
     provider_outcomes_known: bool,
+    // Output missed before this branch joined still belongs to the current stage.
+    missing_current_output: bool,
     capture_partial: bool,
     finalized: bool,
 }
@@ -512,7 +514,8 @@ impl AgentTurnHistoryStore {
                 last_request_status: AgentTurnStatus::Unknown,
                 request_output_accepted: false,
                 provider_outcomes_known: true,
-                capture_partial: missing_current_output,
+                missing_current_output,
+                capture_partial: false,
                 finalized: false,
             };
             let checkpoint = TranscriptCheckpoint {
@@ -894,6 +897,7 @@ impl AgentTurnHistoryStore {
                 last_request_status: AgentTurnStatus::Unknown,
                 request_output_accepted: false,
                 provider_outcomes_known: true,
+                missing_current_output: false,
                 capture_partial: false,
                 finalized: false,
             };

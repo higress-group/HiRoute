@@ -2,6 +2,8 @@ use super::*;
 
 #[path = "concurrent_encoding_tests.rs"]
 mod encoding;
+#[path = "late_join_tests.rs"]
+mod late_join;
 #[path = "scoring_budget_tests.rs"]
 mod scoring_budget;
 

@@ -23,5 +23,6 @@ pub(super) fn failed_before_output(entry: &SessionEntry) -> bool {
     entry.pending_request.is_none()
         && entry.active.last_request_status == AgentTurnStatus::Failed
         && !entry.active.request_output_accepted
+        && !entry.active.missing_current_output
         && !entry.active.capture_partial
 }
