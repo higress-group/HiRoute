@@ -16,7 +16,7 @@ For delegation, use the built-in delegation Skill: https://hiroute.ai/en/docs/ta
 - Find DSH and importable models: hiroute quickstart · compute scan · compute connection prepare
 - Publish a plan and connect the right entry: routing preview / apply · agents connect preview / apply
 - Check executors and actual models: worker executors · worker result · sessions timeline
-The UI and CLI share configuration and records. Distinguish Web from Desktop and follow installed --help and hiroute schema show --command-id COMMAND_ID --include-schema.
+The UI and CLI share configuration and records. For Desktop, use the context_id returned by agents scan for agent_dsh_desktop. Follow installed --help and hiroute schema show --command-id COMMAND_ID --include-schema.
 ```
 
 </details>
@@ -54,6 +54,8 @@ In **Agent**, select **DeepSeek Harness Web** or **DeepSeek Harness Desktop**, m
 </figure>
 
 Restart that client, select the route in its model picker and try a log-analysis or code-reading task. See the models used in HiRoute's **Sessions → Routing timeline**. Web and Desktop have separate route settings.
+
+If saving reports a custom Desktop profile, check the plugins in that profile's `package.json`. HiRoute model routing requires the default bundles and no extra dependencies. If the bundled CLI cannot check the default configuration, verify the DeepSeek Harness Desktop installation and try saving again.
 
 <h2 id="task-delegation">4. Explore task delegation</h2>
 

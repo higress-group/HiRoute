@@ -274,20 +274,31 @@ impl FilesystemAgentScannerV1 {
         );
         command.args(["--profile", "acp", "--dump-default-config"]);
         check_composition(&dsh_public_probe(command, true)?, required)
+            .map_err(|_| AgentFilesystemScanError::InvalidConfig)
     }
 }
 
+#[cfg(any(unix, windows))]
+pub(super) enum DshCompositionError {
+    InvalidOutput,
+    MissingRequiredPlugin,
+}
+
+#[cfg(any(unix, windows))]
 pub(super) fn check_composition(
     bytes: &[u8],
     required: &[&str],
-) -> Result<(), AgentFilesystemScanError> {
-    let text = std::str::from_utf8(bytes).map_err(|_| AgentFilesystemScanError::InvalidConfig)?;
+) -> Result<(), DshCompositionError> {
+    let text = std::str::from_utf8(bytes).map_err(|_| DshCompositionError::InvalidOutput)?;
+    if text.trim().is_empty() {
+        return Err(DshCompositionError::InvalidOutput);
+    }
     if required.iter().any(|id| {
         !text
             .lines()
             .any(|line| line.trim() == format!("- id: {id}"))
     }) {
-        return Err(AgentFilesystemScanError::InvalidConfig);
+        return Err(DshCompositionError::MissingRequiredPlugin);
     }
     Ok(())
 }

@@ -1,6 +1,24 @@
 //! Native Agent identities and resource targets; Skill ownership remains independent of model profiles.
 use super::*;
 
+#[cfg(any(unix, windows))]
+pub(super) fn dsh_desktop_model_check_failure(
+    error: hiroute_integrations::DshDesktopModelCheckError,
+) -> ControlReadError {
+    use hiroute_application::control::DshDesktopModelCheckFailure as Failure;
+    use hiroute_integrations::DshDesktopModelCheckError as Check;
+    let reason = match error {
+        Check::Patch => Failure::Patch,
+        Check::Manifest => Failure::Manifest,
+        Check::CustomProfile => Failure::CustomProfile,
+        Check::Runtime => Failure::Runtime,
+        Check::Probe => Failure::Probe,
+        Check::MissingAdapter => Failure::MissingAdapter,
+        Check::SourceChanged => return ControlReadError::SnapshotChanged,
+    };
+    ControlReadError::DshDesktopModelCheckFailed(reason)
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(in crate::control::runtime) enum SettingsAgentClass {
     Codex,
