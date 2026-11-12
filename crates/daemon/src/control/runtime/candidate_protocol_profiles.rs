@@ -183,7 +183,9 @@ pub(super) fn protocol_profiles(
                 model_configuration_id: capability.model_configuration_id.clone(),
                 native_model: native_transport_model.to_owned(),
                 model_support: StoredModelSupportV1 {
-                    tools: GatewayCriticalFactV1::Exact(model.capabilities.tool),
+                    tools: GatewayCriticalFactV1::Exact(
+                        face.tool_override.unwrap_or(model.capabilities.tool),
+                    ),
                     vision: GatewayCriticalFactV1::Exact(model.capabilities.vision),
                 },
                 max_input_tokens: GatewayCriticalFactV1::Exact(model.capabilities.context_tokens),

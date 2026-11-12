@@ -28,16 +28,16 @@ pub(super) fn failure(kind: FailureKind) -> CallFailure {
     })
 }
 
-pub(super) fn reserve(
+pub(super) fn reserve<'a>(
     lease: &CredentialLease,
-    estimates: &BTreeMap<String, KeySpendEstimateV1>,
+    estimates: impl FnOnce() -> &'a BTreeMap<String, KeySpendEstimateV1>,
 ) -> Result<Option<KeySpendGuard>, CallFailure> {
     let currency = lease
         .spending_currency()
         .map_err(|_| failure(FailureKind::BudgetUnavailable))?;
     let estimate = currency
         .as_ref()
-        .and_then(|currency| estimates.get(currency));
+        .and_then(|currency| estimates().get(currency));
     lease
         .reserve_spending(estimate)
         .or_else(|error| match error {

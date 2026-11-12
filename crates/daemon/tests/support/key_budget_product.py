@@ -7,7 +7,9 @@ import sys
 import threading
 import time
 from credential_pool_product import save_source
-from model_connections_product import MODEL, NATIVE_TOKEN, NativeUpstream, control, declared, publish_plan_and_agent, save_native_source
+from model_connections_product import (MODEL, NATIVE_TOKEN, NativeUpstream, control, declared,
+                                       gateway_request, publish_plan_and_agent, save_native_source)
+from publication_process import plan_change
 from publication_product import Product, V1, encoded
 from plan_content_process import read_content
 
@@ -110,7 +112,7 @@ def saved_probe(product, upstream, saved, inference_model=None):
     return product.public_cli('compute connection test', {'kind': 'native', 'request': {'draft': draft}}, success=False)
 
 
-def decision_budget(product, source_id, first, second):
+def decision_budget(product, upstream, saved, first, second, fallback):
     from http.server import ThreadingHTTPServer
     from decision_connections_v2_product import Endpoint
     Endpoint.requests = []
@@ -120,7 +122,8 @@ def decision_budget(product, source_id, first, second):
     thread = threading.Thread(target=endpoint.serve_forever, daemon=True)
     thread.start()
     try:
-        command = ('decision connections apply --id decision/local-budget --name Budgeted '
+        source_id = saved['source_id']
+        command = ('decision connections apply --id decision/shared-key --name Decision '
             '--provider openai --source ' + source_id + ' --endpoint '
             f'http://127.0.0.1:{endpoint.server_port}/v1/decisions')
         preview = product.public_cli(command)[1]['data']
@@ -129,48 +132,76 @@ def decision_budget(product, source_id, first, second):
             'expected_revisions': preview['expected_revisions'], 'idempotency_key': 'budget-decision-save'})[1]
         assert applied['data']['state'] == 'succeeded', applied
 
-        def test(detail=True):
-            view = next(row for row in control(product, 'ListDecisionServicesV3', {})['data']['services']
-                        if row['service']['id'] == 'decision/local-budget')
+        view = next(row for row in control(product, 'ListDecisionServicesV3', {})['data']['services']
+                    if row['service']['id'] == 'decision/shared-key')
+
+        def test(detail):
             request = {'id': view['service']['id'], 'revision': view['service']['revision'],
                 'expected_configuration_digest': view['configuration_digest']}
             if detail:
                 request['include_decision_failure'] = True
-            return product.public_cli('decision network test', request)[1]['data']
+            before = len(Endpoint.requests)
+            result = product.public_cli('decision network test', request)[1]['data']
+            assert result['check']['outcome'] == 'passed', result
+            assert 'decision_failure' not in result, result
+            assert [auth for auth, _ in Endpoint.requests[before:]] == ['Bearer ' + NATIVE_TOKEN]
 
-        before = query(product, source_id)
-        accepted = test()
-        assert accepted['check']['outcome'] == 'passed', accepted
-        assert Endpoint.requests[-1][0] == 'Bearer ' + NATIVE_TOKEN, Endpoint.requests
-        after = query(product, source_id)
-        assert [(b['lifetime_spent_micros'], b['reserved_micros']) for b in after['budgets']] == [
-            (b['lifetime_spent_micros'], b['reserved_micros']) for b in before['budgets']]
-        with sqlite3.connect(product.storage / 'live/control.db') as db:
-            pending = db.execute("SELECT COUNT(*) FROM compute_key_spend_reservations WHERE state='pending' AND amount_micros=0 AND key_id=?", (first,)).fetchone()[0]
-            assert pending > 0, 'unpriced decision did not retain pending evidence'
-        # Both local budgets are known exhausted. Do not make another provider
-        # call, and expose the actual local cause only to opted-in callers.
-        for key in (first, second):
-            current = query(product, source_id)
-            budget = next(b for b in current['budgets'] if b['definition']['budget_id'] == current['bindings'][key])
-            assert budget['lifetime_spent_micros'] > 0, budget
-            allowance(product, source_id, key, budget['lifetime_spent_micros'], 'exhaust-' + key.rsplit('-', 1)[-1], budget['definition'], currency=budget['definition']['policy']['currency'])
-        count = len(Endpoint.requests)
-        refused = test()
-        assert refused['check']['outcome'] == 'failed', refused
-        assert refused['decision_failure'] == {'kind': 'budget_exhausted', 'http_status': None}, refused
-        assert len(Endpoint.requests) == count, 'exhausted decision called the provider'
-        legacy = test(False)
-        assert 'decision_failure' not in legacy, legacy
-        current = query(product, source_id)
-        first_budget = next(b for b in current['budgets'] if b['definition']['budget_id'] == current['bindings'][first])
-        allowance(product, source_id, first, 1_000_000, 'decision-restore', first_budget['definition'])
-        assert test()['check']['outcome'] == 'passed'
+        def ledger_count():
+            with sqlite3.connect(product.storage / 'live/control.db') as db:
+                return db.execute('SELECT COUNT(*) FROM compute_key_spend_reservations WHERE key_id IN (?, ?)',
+                                  (first, second)).fetchone()[0]
+
+        # Even when the first Key still has some funds, a decision adds no
+        # reservation, including an unpriced one.
+        before = query(product, source_id), ledger_count()
+        test(True)
+        assert (query(product, source_id), ledger_count()) == before, 'decision probe changed the inference ledger'
+
+        first_budget = wait_for_settled_balance(product, source_id, first)
+        exhausted = allowance(product, source_id, first, first_budget['lifetime_spent_micros'],
+                              'exhaust-for-decision', first_budget['definition'])
+        assert exhausted['available_micros'] == 0, exhausted
+        before = query(product, source_id), ledger_count()
+        test(True)
+        test(False)
+        assert (query(product, source_id), ledger_count()) == before
+
+        selection = {'binding_id': saved['binding_id']}
+        smart = dict(product.editor['smart'], economy=[selection], primary=[selection],
+                     classifier={'kind': 'decision_service_v3', 'service': view['service']},
+                     reselect_on_user_message=True)
+        change = plan_change(product, 'update', mode='smart_saving', candidates=[], smart=smart)
+        preview = product.preview('routing preview', {'change': change})
+        product.apply('routing apply', 'ApplyAgentPlanChange', preview, {'change': change},
+                      'key-budget-shared-decision')
+        frozen = read_content(product)
+
+        def routed():
+            decision_calls = len(Endpoint.requests)
+            with upstream.lock:
+                model_calls = len(upstream.requests)
+            before = wait_for_settled_balance(product, source_id, second)
+            records = ledger_count()
+            gateway_request(product)
+            # Same source: the decision uses the first Key; inference must
+            # skip it and charge the only Key with an available balance.
+            assert [auth for auth, _ in Endpoint.requests[decision_calls:]] == ['Bearer ' + NATIVE_TOKEN]
+            with upstream.lock:
+                assert [row['authorization'] for row in upstream.requests[model_calls:]] == ['Bearer ' + fallback]
+            after = wait_for_settled_balance(product, source_id, second)
+            assert after['lifetime_spent_micros'] == before['lifetime_spent_micros'] + 7, (before, after)
+            assert after['available_micros'] == before['available_micros'] - 7, after
+            assert wait_for_settled_balance(product, source_id, first) == exhausted
+            assert ledger_count() == records + 1
+            assert read_content(product) == frozen
+
+        routed()
         product.stop(); product.start()
-        assert test()['check']['outcome'] == 'passed'
-        print(json.dumps({'scenario': 'decision-key-budget-real-cli', 'state': 'green',
-            'same_key_and_budget': True, 'unknown_price_allowed': True, 'unpriced_pending': True,
-            'budget_failure_detail': True, 'legacy_result_unchanged': True, 'restart_preserved': True}), flush=True)
+        test(True)
+        routed()
+        print(json.dumps({'scenario': 'decision-key-budget-isolation', 'state': 'green',
+            'exhausted_key_used_for_decision': True, 'only_inference_charged': True,
+            'legacy_result_unchanged': True, 'restart_preserved': True}), flush=True)
     finally:
         endpoint.shutdown(); endpoint.server_close(); thread.join(timeout=5)
 
@@ -270,7 +301,7 @@ def run(repository):
         cny = wait_for_settled_balance(product, source_id, second)
         assert cny['lifetime_spent_micros'] == 7 and cny['available_micros'] == 999_993, cny
 
-        decision_budget(product, source_id, first, second)
+        decision_budget(product, upstream, saved, first, second, fallback)
 
         print(json.dumps({'scenario': 'key-budget-real-gateway', 'state': 'green', 'unknown_price_allowed': True, 'saved_probe_allowed': True, 'key_fallback': True, 'usage_settled': True, 'restart_preserved': True, 'cap_edits_retain_spending': True, 'frozen_plan_unchanged': True}), flush=True)
     finally:

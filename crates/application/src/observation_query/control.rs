@@ -432,7 +432,8 @@ fn map_control(error: ControlReadError) -> ObservationQueryError {
         | ControlReadError::CollaborationRootRequired => ObservationQueryError::Unauthorized,
         ControlReadError::NotFound => ObservationQueryError::NotFound,
         ControlReadError::Corrupt => ObservationQueryError::Corrupt,
-        ControlReadError::ClientVersionRequired => ObservationQueryError::Unavailable,
+        ControlReadError::ClientVersionRequired
+        | ControlReadError::DshDesktopModelCheckFailed(_) => ObservationQueryError::Unavailable,
         ControlReadError::Unavailable | ControlReadError::SnapshotChanged => {
             ObservationQueryError::Unavailable
         }

@@ -125,12 +125,12 @@ Upstream authorization is rebuilt from the selected provider lease. The
 [listener scenario](../../tools/e2e-harness/tests/p0_gateway_runtime/bearer_auth.rs)
 covers admission, rejection, token rotation and outbound isolation.
 
-[Context overflow classification](src/runtime/driver/context_overflow.rs)
-preserves a closed HTTP 400 cause for native compaction recovery after bounded
-candidate relay is exhausted. It emits static sanitized error text and does not
-infer overflow from generic errors or replay committed output. The
-[listener scenarios](../../tools/e2e-harness/tests/p0_gateway_runtime/context_overflow.rs)
-cover all three ingress protocols, successful relay and stale-cause rejection.
+[Client recovery classification](src/runtime/driver/client_recovery.rs) keeps
+closed HTTP 400 causes after bounded candidate relay is exhausted. It returns
+static text for [context overflow](../../tools/e2e-harness/tests/p0_gateway_runtime/context_overflow.rs)
+and for [native Messages role rejection](../../tools/e2e-harness/tests/p0_gateway_runtime/messages_system_role.rs)
+so the client can compact or retry its history. Provider text and request IDs
+remain private, and later failures supersede an earlier recovery cause.
 
 Branch candidates may use distinct execution keys for different reasoning settings
 on the same model. Publication freezes `source_binding_id` for their current Native
@@ -723,7 +723,21 @@ of HTTP entity completion. The [socket regressions](../gateway-core/tests/gatewa
 and [full listener cases](../../tools/e2e-harness/tests/p0_gateway_commit_boundary.rs)
 cover completion, deadline and disconnect delivery without another attempt.
 
-### Candidate preparation errors
+### Execution facts at shutdown
+
+Role-all shutdown stops Control/Worker/request producers before waiting for the
+execution-fact sink's admitted sequence prefix. Its ACK frontier advances only
+after per-record feedback or an acknowledged declared-loss watermark. The wait
+uses the remaining component-join deadline and does not require a free event-queue
+slot. A missed deadline remains a shutdown error; an enqueued or dequeued record
+alone is not proof of persistence.
+
+This barrier belongs to shutdown, separate from optional Content capture. Active
+request publishing remains nonblocking, and existing NACK/loss semantics cannot
+be interpreted as complete receipts. Receipt envelopes, stored representations and
+reopen readers retain their current contracts.
+
+## Candidate preparation errors
 
 A published plan freezes candidate selection, while the exact credential authority
 still checks current source and Key permission before decryption. A managed source

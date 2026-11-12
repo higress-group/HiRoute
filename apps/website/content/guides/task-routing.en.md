@@ -5,9 +5,10 @@ Stay in your usual Agent and hand work to a better-fitting **model × harness**.
 | Your main Agent | Capability you want | Example task route |
 | --- | --- | --- |
 | Codex | Run a DeepSeek model with DeepSeek Harness (DSH) | “DSH development”: connect an available DeepSeek model and choose DeepSeek Harness as executor |
+| Codex CLI or Claude Code | Give log triage and test checks to an economical model | [“Pi quick check”](#lightweight-pi) with an economical model and Pi as executor |
 | Hermes | Use Codex for coding and tests | “Codex coding”: choose execution models and Codex CLI as executor |
 
-The capabilities work independently. Your main Agent can keep its existing model and sign-in, delegating only when needed. The steps below show Desktop; the Linux Web UI works the same way.
+Your main Agent can keep its existing model and sign-in and delegate when needed. The steps below show Desktop. The Linux Web UI works the same way.
 
 **Use task routing through the built-in delegation Skill.** Enable it under “Agent → Task routing” as shown below, then give your main Agent the task goal. The Skill handles route discovery, delegation and result retrieval. An Agent with the [management Skill](/en/docs/#management-skill) can also configure routes; the UI and CLI share configuration and task records.
 
@@ -54,6 +55,21 @@ Delegation works best for independently executable work with a clear goal, worki
 
 Do not delegate coordination, plan discovery, status checks, waits, or result summaries. An execution agent cannot recursively create another delegation layer.
 
+<h3 id="lightweight-pi">Use lightweight Pi to cut token costs on delegated tasks</h3>
+
+Give Pi a focused goal and the files it needs when you want to triage logs, find callers or check test coverage. Pi is a lightweight harness with a minimal system prompt. Pair it with an economical model that supports tool calls. The cheaper model processes the long inputs and tool results, and the main Agent reads a short report. On repeated log and code checks, this can substantially reduce primary-model token costs. [Pi documentation](https://pi.dev/)
+
+Install Pi and Node.js on the host running HiRoute. Create a Fixed model route called “Pi quick check” and choose an economical model. Under **More settings → Task delegation**, allow delegation, select Pi and check the installation. For its purpose, write “Read the specified files and report key findings with source locations”. Enable the route, then [turn on Task routing in your main Agent](#delegation-skill).
+
+<figure class="guide-shot-panel">
+  <a href="/guide-assets/agent-guide-pi-worker-en.webp"><img src="/guide-assets/agent-guide-pi-worker-en.webp" alt="HiRoute smart routing with task delegation enabled and Pi selected as executor" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Allow delegation, select Pi and check the local Pi and Node.js installation.</figcaption>
+</figure>
+
+> Use HiRoute to give this failed test log to “Pi quick check”. Return the first error, the relevant files and a command to reproduce it.
+
+Confirm the executor in **Agent → Task history**. In **Sessions → Routing timeline**, check the models and tokens used in the main conversation and the delegated task. Compare similar jobs using the combined usage and any metered cost to see which tasks are worth handing off.
+
 ## 1. Configure a route for delegation
 
 1. Open Smart routing and create or edit a plan.
@@ -71,7 +87,7 @@ A missing installation does not block saving the plan, but the chosen execution 
 
 <h2 id="delegation-skill">2. Enable the built-in delegation Skill for your main Agent</h2>
 
-Open Agent, choose the main agent you use every day, and select Enable under Task routing. Codex, Claude Code, Qoder, Pi, DeepSeek Harness, Hermes and OpenCode can all act as main agents; for Hermes, first select the configuration directory it actually uses.
+Open **Agent**, select the main Agent you use, and choose **Enable** under **Task routing**. Select **Codex** for Codex CLI or **DeepSeek Harness Web** for DSH Web and CLI. Claude Code, Qoder, Pi, Hermes and OpenCode can also send delegated tasks. For Hermes, select the configuration directory you use first.
 
 1. Choose **When to delegate**. With **Only when explicitly requested**, the agent starts a task only when you ask it to execute, delegate, or hand work to a Worker. With **Let the Agent decide by default**, the agent may delegate suitable work on its own, and you can still ask it to answer without execution.
 2. Select **Enable task routing** and complete the task delegation skill check when prompted.

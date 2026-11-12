@@ -4,6 +4,7 @@
 import argparse
 import datetime
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 
@@ -15,6 +16,11 @@ PRODUCT_RELEASE = "mvp-current"
 SEQUENCE = 1
 CATALOG_ID = "client-bundled/current"
 
+
+_document_spec = importlib.util.spec_from_file_location(
+    "hiroute_json_document", ROOT / "tools/model-metadata/json_document.py")
+_document = importlib.util.module_from_spec(_document_spec)
+_document_spec.loader.exec_module(_document)
 
 def compact(value, *, sort_keys=True):
     return json.dumps(
@@ -347,7 +353,7 @@ def outputs():
     )
     profiles["tool_version"] = "hiroute-release-facts/2"
     registry_bytes = compact(value["connector_registry"]) + b"\n"
-    model_data_bytes = compact(value["model_data"]) + b"\n"
+    model_data_bytes = _document.document(value["model_data"])
     cross_reference_digest = digest_value(
         [
             "hiroute.release-facts-cross-reference/v2",
@@ -366,7 +372,7 @@ def outputs():
         "cross_reference_digest": cross_reference_digest,
     }
     return {
-        BUNDLE / "official-model-data.json": compact(official_snapshot(value["model_data"], value["official_model_data"])) + b"\n",
+        BUNDLE / "official-model-data.json": _document.document(official_snapshot(value["model_data"], value["official_model_data"])),
         HERE / "compiler-input.json": (
             json.dumps(value, ensure_ascii=False, indent=2) + "\n"
         ).encode(),

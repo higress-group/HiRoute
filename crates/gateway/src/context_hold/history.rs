@@ -347,6 +347,10 @@ pub(crate) fn observed_history_with_replay<'a>(
         instructions.tag(b"follow-request-reasoning");
         instructions.json(&serde_json::to_value(control).ok()?)?;
     }
+    if let Some(display) = request.requested_reasoning.messages_thinking_display {
+        instructions.tag(b"messages-thinking-display");
+        instructions.string(display.as_str());
+    }
     // The sealed Agent Plan owns reasoning effort/budget. The typed Responses
     // options below retain and hash the supported summary sibling.
     match &request.responses_options {

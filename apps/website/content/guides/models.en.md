@@ -61,24 +61,24 @@ Have a Qoder or WorkBuddy account? Connect the models it offers through [headles
 
 You are ready to configure a route when the saved model appears among its candidates. A successful real request is the next check for upstream inference and tool use.
 
-## Connect a subscription and its API together
+<h2 id="subscription-api-credits">Connect a subscription and its API credits</h2>
 
 After you connect and check a Codex or Claude subscription, the same form lets you enter the matching OpenAI or Anthropic API key, or choose an existing API connection. Leave it blank to use the subscription only. Choose models and save once, and the available models from both sides are imported together.
 
-Some subscriptions include API credits granted each billing cycle. Enter the key of the organization that receives the credits, then give that key a spending allowance as described below, and the credits can serve requests through HiRoute.
+Eligible subscriptions can claim API credits. Use the key from the receiving organization and [set an allowance based on the credit balance and renewal date](#api-key-allowance). Follow the [Codex API credits guide](/en/docs/codex-model-routing/#api-credits) or the [Claude Code API credits guide](/en/docs/claude-code-model-routing/#api-credits) to claim credits and set the candidate order.
 
-## Combine same-named models into one route
+<h2 id="same-model-candidates">Combine same-named models into one route</h2>
 
 Open a model's details and select **Create routing**. If other connections offer the same model, HiRoute asks: "Other connections offer this model. Add them as candidates too?"
 
 - **Add together as candidates:** the current model comes first and the other connections provide fallback.
 - **Use current model only:** the route contains only this model.
 
-The new route uses **Fixed model** and tries candidates in order, skipping candidates that are temporarily unavailable. You can also add the model to an existing route; existing candidates keep their order and new models are appended. Nothing takes effect until you save or publish the route.
+The new route uses **Fixed model** and tries candidates in order, skipping candidates that are temporarily unavailable. You can also append the model to an existing fixed route. Check the candidate order, then enable the route or publish your changes.
 
-The subscription and the API then act as one model: your Agent uses a single model name, HiRoute uses the subscription first, and when the subscription is temporarily unavailable it continues with the API.
+Your Agent selects one route name and HiRoute tries candidates in the order you set. Put the subscription first to use API credits when subscription quota is unavailable. To use credits close to expiry, put the API first, set a key allowance based on your remaining credits, and keep the subscription as backup.
 
-## Limit API key spending
+<h2 id="api-key-allowance">Limit API key spending</h2>
 
 In an API connection's details, open **API keys and allowances**, turn on **Limit API spending** for a key and choose an allowance:
 
@@ -88,7 +88,7 @@ In an API connection's details, open **API keys and allowances**, turn on **Limi
 
 Leave **Initial available amount** blank to start with the full amount, or enter the remainder if some credits were already spent.
 
-Allowances estimate spending for traffic through HiRoute. For known prices, HiRoute reserves funds before forwarding a request and settles the charge when the request finishes. This includes decision model calls that reuse the same API key. Set the applicable input, output and cache rates in the same currency under **Edit pricing**. A request with unknown prices can proceed and stays unpriced in the records, outside the spending total. When the allowance cannot cover a known charge, HiRoute tries another key or the next candidate.
+Allowances estimate ordinary inference spending through HiRoute. For known prices, HiRoute reserves funds before forwarding a request and settles the charge when the request finishes. Decision model calls and their connection tests do not use this local allowance, even if they reuse the same API key. The provider can still bill or limit both types of traffic. Set the applicable input, output and cache rates in the same currency under **Edit pricing**. A request with unknown prices can proceed and stays unpriced in the records, outside the spending total. When the allowance cannot cover a known charge, HiRoute tries another key or the next candidate.
 
 ## Set a proxy
 

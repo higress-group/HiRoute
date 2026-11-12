@@ -119,7 +119,8 @@ pub(super) fn decode_error(
 ) -> Result<ModelError, ProtocolAdapterError> {
     let outer = checked_object(value)?;
     let error = if let Some(error) = outer.get("error") {
-        allow(outer, &["type", "error"])?;
+        // Anthropic HTTP errors can include a provider request ID alongside the error.
+        allow(outer, &["type", "error", "request_id"])?;
         checked_object(error)?
     } else {
         outer

@@ -11,7 +11,7 @@
 
 ```text
 阅读 https://hiroute.ai/zh/docs/opencode-model-routing/
-请帮我复用可识别的 OpenCode API 配置，再新增一条难度路由。CLI 参考：https://hiroute.ai/zh/docs/cli/
+请帮我按本页完成获取模型、配置智能路由和接入 Agent，再用本页的轻量 Pi 场景说明如何用更少的主力模型 token 完成独立任务。按我的需要启用委派。CLI 参考：https://hiroute.ai/zh/docs/cli/
 使用产品内置管理技能：https://hiroute.ai/zh/docs/#management-skill
 需要委派时使用内置委派技能：https://hiroute.ai/zh/docs/task-routing/#delegation-skill
 - 发现和保存 API 来源：hiroute compute scan · compute connection prepare / preview / apply
@@ -23,25 +23,45 @@
 </details>
 </aside>
 
-## 1. 扫描 OpenCode 中已有的 API
+[1. 扫描或登录，获取模型](#get-models) · [2. 配置智能路由](#configure-routing) · [3. 接入 Agent](#connect-agent) · [4. 了解任务委派](#task-delegation)
 
-进入“模型 → 通用模型 → 添加模型 → 扫描本机”。选择可识别的 OpenCode 静态 provider、模型与 API Key 来源，检查并保存。OpenCode 自己的 `/models` 也可能包含动态发现或 OAuth 插件提供的模型；如果扫描没找到，按 [接入模型](/zh/docs/models/) 连接对应 API，或选已有的订阅与本地模型。
+<h2 id="get-models">1. 扫描或登录，获取模型</h2>
 
-## 2. 新增一条 OpenCode 难度路由
+打开“模型 → 通用模型 → 添加模型 → **扫描本机**”，选择发现的 OpenCode 静态 provider、模型与 API Key 来源，检查并保存。
 
-创建“OpenCode 代码审查”计划，选“按难度分流”。常规组收集差异、定位相关文件；主力组评估改动影响和边界条件。选择“启发式规则”开始，或用[决策模型](/zh/docs/model-routing/#difficulty-routing)给阶段表现打分。发布。
+OpenCode 的 `/models` 也可能显示动态发现或 OAuth 插件提供的模型。如果扫描未找到来源，且该服务提供 API 地址与 Key，可从“新建 API 接入”填写并检查。你也可以在“连接订阅”导入 Codex 或 Claude Code 模型，或复用已接入的模型。
 
-进入“Agent → OpenCode → 模型路由”，勾选刚发布的计划，按提示选兼容协议并保存。重启 OpenCode，在 `/models` 中选新增路由。原有 provider 和默认模型保留。试着让 OpenCode 总结一个小改动，然后看 HiRoute “会话 → 路由时间线”。
+<h2 id="configure-routing">2. 配置智能路由</h2>
 
-<figure class="guide-shot-dialog">
-  <a href="/guide-assets/agent-guide-opencode-zh.webp"><img src="/guide-assets/agent-guide-opencode-zh.webp" alt="OpenCode 模型路由设置中选择新增的 HiRoute 计划" width="1200" height="900" loading="lazy" /></a>
-  <figcaption>路由作为一个新选项加入 OpenCode，可以在原生模型选择器中按需使用。</figcaption>
+1. 打开“**智能路由 → 新建智能路由**”，命名为“OpenCode 代码审查”，选择 **“按难度分流”**。
+2. 在“**常规模型**”组点击“添加模型”，选择第一步接入的快速或经济模型，处理读文件、找定义、整理资料等常规工作。
+3. 在“**主力模型**”组添加适合复杂分析、方案判断或多文件修改的模型。两组可以使用不同订阅、API 或本地模型，按各自账号可用的模型组合。
+4. “判断方式”先选 **“启发式规则”**，然后点击 **“启用”**。发布后，这条路由就能在下一步的 Agent 接入设置里选到。
+
+<figure class="guide-shot-panel">
+  <a href="/guide-assets/agent-guide-difficulty-zh.webp"><img src="/guide-assets/agent-guide-difficulty-zh.webp" alt="HiRoute 按难度分流配置中的判断方式、常规模型组和主力模型组" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>常规组负责日常步骤，主力组处理复杂轮次。图中的模型可替换为你第一步接入的模型。</figcaption>
 </figure>
 
-## 3. 让 Pi 做独立检查
+想根据执行表现进一步调整时，可在同一位置选择决策模型，使用阶段评分和低分保护。[了解难度路由的判断方式](/zh/docs/model-routing/#difficulty-routing)
 
-将复用的模型放入“Pi 独立检查”计划。设置常规组和主力组后，在“更多设置 → 任务委派”开启委派，选择 **Pi**，填好用途并检查依赖。发布，在 OpenCode [开启任务路由](/zh/docs/task-routing/#delegation-skill)。
+<h2 id="connect-agent">3. 接入 Agent</h2>
 
-试一句：“使用 HiRoute，把这份 diff 的测试缺口检查委派给 Pi 独立检查，只汇报发现。”打开“Agent → 任务记录”查看执行方和结果。如果希望 OpenCode 自己被其他 Agent 调用，在另一条可委派计划中选择 OpenCode。
+打开“Agent → OpenCode → 模型路由”，勾选“OpenCode 代码审查”，按提示选择兼容协议并保存。
 
-下一步：[准备 Pi 作为执行 Agent](/zh/docs/pi-model-routing/) · [选择其他接入教程](/zh/docs/agent-integrations/)
+<figure class="guide-shot-dialog">
+  <a href="/guide-assets/agent-guide-opencode-zh.webp"><img src="/guide-assets/agent-guide-opencode-zh.webp" alt="OpenCode 中新增 HiRoute 路由的配置" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>路由会加入 OpenCode 的模型列表，在 /models 中按需选用。</figcaption>
+</figure>
+
+重启 OpenCode，输入 `/models` 选中新增路由。先让它总结一个小改动，再看 HiRoute“会话 → 路由时间线”中的模型选择。
+
+<h2 id="task-delegation">4. 了解任务委派</h2>
+
+给 API 字段改名时，先让轻量的 Pi 找出引用该字段的调用、文档和测试。用经济模型做代码库检索，OpenCode 只拿到需要修改的位置和风险提示，把主力模型的上下文留给实现和验证。
+
+新建“Pi 改名影响检查”固定模型路由，在“更多设置 → 任务委派”中开启委派并选 Pi，填写用途并启用。再到“Agent → OpenCode → 任务路由”开启委派。
+
+> 用 HiRoute 把这个字段的改名影响交给“Pi 改名影响检查”。按调用、文档、测试三类列出路径和行号。
+
+从一处字段改名试起，看看委派结果是否足以让主 Agent 直接着手改动。[配置 Pi 轻量委派](/zh/docs/task-routing/#lightweight-pi)

@@ -5,26 +5,26 @@ export const agentGuideHub = 'agent-integrations';
 export const agentGuides = {
   'codex-model-routing': {
     zh: 'Codex', en: 'Codex', native: true,
-    title: { zh: 'Codex 多模型路由：接入订阅和 API，按难度选模', en: 'Codex model routing: combine subscriptions and APIs' },
+    title: { zh: 'Codex API 赠金与订阅路由', en: 'Codex API credits and subscription routing' },
     description: {
-      zh: '复用 Codex 订阅或已有 API，配置按难度分流。用按需 profile 在 Codex CLI 中试用，并把独立任务委派给 DeepSeek Harness。',
-      en: 'Reuse a Codex subscription or API, route by task difficulty with an on-demand Codex CLI profile, and delegate scoped work to DeepSeek Harness.',
+      zh: '在 Codex Desktop 或 CLI 使用 ChatGPT 订阅和 OpenAI API 赠金。组合同名候选，并复用赠金接入配置 OpenAI 决策模型。',
+      en: 'Use your ChatGPT subscription and OpenAI API credits in Codex Desktop or CLI. Combine same-model candidates and reuse the API connection for OpenAI Decisions.',
     },
   },
   'claude-code-model-routing': {
     zh: 'Claude Code', en: 'Claude Code', native: true,
-    title: { zh: 'Claude Code 模型路由：映射 Opus、Sonnet 和 Haiku', en: 'Claude Code model routing with Opus, Sonnet and Haiku presets' },
+    title: { zh: 'Claude Code API 赠金与订阅路由', en: 'Claude Code API credits and subscription routing' },
     description: {
-      zh: '复用 Claude Code 订阅或 Anthropic API，给原生模型预设映射难度路由，再把适合独立执行的工作交给 Pi。',
-      en: 'Connect Claude models, map a difficulty route to a native Claude Code preset, and send a scoped task to Pi when you need a second executor.',
+      zh: '在 Claude Code 使用订阅和 Claude API 赠金。把同名模型放入候选并设置备用顺序，再映射到 Opus、Sonnet 或 Haiku。',
+      en: 'Use Claude API credits with Claude Code. Pair subscription and API candidates for the same model, order the fallback and map an Opus, Sonnet or Haiku preset.',
     },
   },
   'qoder-model-routing': {
     zh: 'Qoder', en: 'Qoder', native: true,
     title: { zh: 'Qoder CLI 模型路由与订阅接入', en: 'Qoder CLI model routing and subscription setup' },
     description: {
-      zh: '把 HiRoute 难度路由加到 Qoder CLI，或通过 Magpie headless 接入 Qoder 订阅模型，组合 DeepSeek-Flash 和 Kimi-K3.1-Pro，再绑定 Pi 等执行 Agent。',
-      en: 'Add a HiRoute difficulty route to Qoder CLI or connect Qoder subscription models through headless Magpie and delegate tasks to Pi.',
+      zh: '通过 Magpie headless 导入 Qoder 订阅模型，配置按难度分流，并接入 Qoder CLI 或 Codex Desktop 独立窗口。',
+      en: 'Import Qoder subscription models through headless Magpie, route by task difficulty, and connect Qoder CLI or a separate Codex Desktop window.',
     },
   },
   'pi-model-routing': {
@@ -37,10 +37,10 @@ export const agentGuides = {
   },
   'deepseek-harness-model-routing': {
     zh: 'DeepSeek Harness', en: 'DeepSeek Harness', native: true,
-    title: { zh: 'DeepSeek Harness 多模型路由：接入已有模型并配置执行 Agent', en: 'DeepSeek Harness model routing and task delegation' },
+    title: { zh: 'DeepSeek Harness Web 与 Desktop 模型路由', en: 'DeepSeek Harness model routing for Web and Desktop' },
     description: {
-      zh: '复用 DeepSeek Harness 的静态模型配置，给 Web 或桌面版添加按难度分流路由，并用 DSH 或 Codex CLI 执行委派任务。',
-      en: 'Connect existing DeepSeek Harness model sources, add a difficulty route to Web or Desktop, and configure DSH or Codex CLI for delegated work.',
+      zh: '扫描 DeepSeek Harness 的现有模型，配置按难度分流，再在 Web 或 Desktop 的模型列表中选用 HiRoute 路由。',
+      en: 'Scan existing DeepSeek Harness model sources, configure difficulty routing and select your HiRoute route in the Web or Desktop model picker.',
     },
   },
   'opencode-model-routing': {

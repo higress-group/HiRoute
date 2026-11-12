@@ -55,7 +55,22 @@ fn codex_v2_registered_user_models_save_reopen_and_keep_legacy_native_credential
     let provenance = catalog.compute_catalog_provenance().unwrap();
     let request = RegisteredModelConnectionCheckRequestV1 {
         inference_model_id: None,
-        models: vec![declaration("qwen3.6-flash"), declaration("qwen3.7-plus")],
+        models: [
+            "qwen3.6-flash",
+            "qwen3.7-plus",
+            "qwen4-max-preview",
+            "qwen4.0-max-preview",
+        ]
+        .into_iter()
+        .map(|id| {
+            let mut model = declaration(id);
+            if id.starts_with("qwen4") {
+                model.capabilities.context_tokens = user(900_000);
+                model.capabilities.max_output_tokens = user(393_216);
+            }
+            model
+        })
+        .collect(),
         connection_option_id: OPTION.into(),
         display_name: Some("Token Plan source-local models".into()),
         expected_catalog: ComputeCatalogProvenanceViewV1 {
@@ -108,7 +123,7 @@ fn codex_v2_registered_user_models_save_reopen_and_keep_legacy_native_credential
             .adapter
             .check_registered_model_connection(request.clone())
             .unwrap();
-        assert_eq!(checked.candidate.models.len(), 2);
+        assert_eq!(checked.candidate.models.len(), 4);
         assert!(
             checked
                 .candidate
@@ -229,8 +244,26 @@ fn codex_v2_registered_user_models_save_reopen_and_keep_legacy_native_credential
         .unwrap()
         .unwrap();
     assert_eq!(reopened, saved);
+    for id in ["qwen4-max-preview", "qwen4.0-max-preview"] {
+        let model = reopened
+            .models
+            .iter()
+            .find(|model| model.upstream_model_id == id)
+            .unwrap();
+        assert!(model.catalog_configuration_id.is_none());
+        assert_eq!(model.capabilities.context_tokens.value, Some(900_000));
+        assert_eq!(model.capabilities.max_output_tokens.value, Some(393_216));
+        assert_eq!(
+            model.capabilities.context_tokens.basis,
+            hiroute_domain::ComputeManagementFactBasisV2::UserDeclared
+        );
+        assert_eq!(
+            model.capabilities.max_output_tokens.basis,
+            hiroute_domain::ComputeManagementFactBasisV2::UserDeclared
+        );
+    }
     let facts = compile_compute_management_source(&reopened).unwrap();
-    assert_eq!(facts.len(), 2);
+    assert_eq!(facts.len(), 4);
     for fact in &facts {
         assert_eq!(
             fact.eligibility,

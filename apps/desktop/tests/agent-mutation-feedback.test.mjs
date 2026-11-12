@@ -49,3 +49,12 @@ test('stable Codex merge conflicts explain the file problem instead of asking fo
   assert.equal(agentSettingsFailureMessage({ source: 'backend', envelope: { error: { code: 'CHANGE_PREVIEW_STALE', message_key: 'error.codex_profile_conflict' } } }, 'en'), null);
   assert.equal(agentSettingsFailureMessage({ source: 'backend', envelope: { error: { code: 'CAPABILITY_DENIED', message_key: 'private native output' } } }, 'zh'), null);
 });
+
+test('DSH Desktop profile and bundled CLI failures explain different recovery actions', () => {
+  const reason = message_key => ({ source: 'backend', envelope: { error: { code: 'ACTION_REQUIRED', message_key } } });
+  assert.match(agentSettingsFailureMessage(reason('error.dsh_desktop_custom_profile'), 'zh'), /默认组合包/);
+  assert.match(agentSettingsFailureMessage(reason('error.dsh_desktop_custom_profile'), 'en'), /extra dependencies/);
+  assert.match(agentSettingsFailureMessage(reason('error.dsh_desktop_probe_failed'), 'zh'), /内置 CLI/);
+  assert.match(agentSettingsFailureMessage(reason('error.dsh_desktop_probe_failed'), 'en'), /bundled .* CLI/);
+  assert.equal(agentSettingsFailureMessage(reason('error.dsh_desktop_unknown'), 'en'), null);
+});

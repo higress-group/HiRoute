@@ -1,14 +1,12 @@
 use super::*;
-use crate::delegation::progress::{
-    ObservationProgressWriter, ProgressBatchWriter, ProgressCapture,
-};
+use crate::delegation::progress::{ObservationProgressWriter, ProgressCapture};
 use hiroute_domain::WorkspaceId;
 use hiroute_observation::managed_text::{
     ManagedTextProgressRead, ManagedTextProgressTarget, ManagedTextScope,
 };
 use hiroute_observation::{DigestAuthority, LocalObservationStore};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
 struct Journal;
 impl AcpRunJournal for Journal {
@@ -134,12 +132,15 @@ async fn permission_never_selects_allow_always_even_when_current_tool_is_allowed
     }
 }
 
-#[tokio::test]
-async fn exact_load_history_is_not_reimported_as_current_run_output() {
-    let directory = tempfile::tempdir().unwrap();
-    let store = Arc::new(
-        LocalObservationStore::open(directory.path(), DigestAuthority::new([41; 32])).unwrap(),
-    );
+fn recorded_progress(
+    path: &std::path::Path,
+) -> (
+    Arc<LocalObservationStore>,
+    ManagedTextProgressTarget,
+    ProgressCapture,
+) {
+    let store =
+        Arc::new(LocalObservationStore::open(path, DigestAuthority::new([41; 32])).unwrap());
     let created_at_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .ok()
@@ -153,11 +154,17 @@ async fn exact_load_history_is_not_reimported_as_current_run_output() {
         },
         created_at_ms,
     };
-    let writer: Arc<dyn ProgressBatchWriter> = Arc::new(ObservationProgressWriter::new(
+    let capture = ProgressCapture::start(Arc::new(ObservationProgressWriter::new(
         Arc::clone(&store),
         target.clone(),
-    ));
-    let capture = ProgressCapture::start(writer);
+    )));
+    (store, target, capture)
+}
+
+#[tokio::test]
+async fn exact_load_history_is_not_reimported_as_current_run_output() {
+    let directory = tempfile::tempdir().unwrap();
+    let (store, target, capture) = recorded_progress(directory.path());
     let (client, server) = tokio::io::duplex(8192);
     let server = tokio::spawn(async move {
         let (reader, mut writer) = tokio::io::split(server);
@@ -328,22 +335,43 @@ async fn cancellation_finitely_closes_an_agent_that_never_resolves_the_prompt() 
 
 #[tokio::test]
 async fn overlong_wire_frame_fails_before_unbounded_json_allocation() {
+    let directory = tempfile::tempdir().unwrap();
+    let (store, target, capture) = recorded_progress(directory.path());
     let (client, server) = tokio::io::duplex(8192);
     let server = tokio::spawn(async move {
         let (reader, mut writer) = tokio::io::split(server);
         let mut lines = BufReader::new(reader).lines();
         assert!(lines.next_line().await.unwrap().is_some());
-        let bytes = vec![b'x'; MAX_ACP_FRAME_BYTES + 1];
+        let mut bytes = tokio::io::repeat(b'x').take(30 * 1024 * 1024 + 1);
         // Reader may close as soon as it exceeds the bound; BrokenPipe is expected.
-        let _ = writer.write_all(&bytes).await;
+        let _ = tokio::io::copy(&mut bytes, &mut writer).await;
     });
     let (read, write) = tokio::io::split(client);
+    let mut request = input();
+    request.deadline = Instant::now() + Duration::from_secs(15);
     let result = timeout(
-        Duration::from_secs(2),
-        run_acp(read, write, input(), Arc::new(Journal)),
+        Duration::from_secs(10),
+        run_acp_with_progress(
+            read,
+            write,
+            request,
+            Arc::new(Journal),
+            Some(capture.sink()),
+        ),
     )
     .await
     .unwrap();
     assert_eq!(result.err(), Some(DelegationErrorV1::ProtocolFailed));
+    capture.stop_and_flush().await;
+    let ManagedTextProgressRead::Available(page) = store
+        .managed_text_progress_read(&target, None, 256)
+        .unwrap()
+    else {
+        panic!("expected the frame size diagnostic in saved progress");
+    };
+    assert_eq!(
+        page.text,
+        "[HiRoute] ACP_FRAME_TOO_LARGE: The incoming ACP frame exceeded the 31457280-byte limit.\n"
+    );
     server.await.unwrap();
 }

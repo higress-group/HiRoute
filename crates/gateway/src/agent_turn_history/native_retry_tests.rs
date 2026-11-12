@@ -134,6 +134,7 @@ fn equal_input_does_not_merge_new_activations_changed_setup_or_unproved_delivery
         "no-turn",
         "changed-input",
         "changed-setup",
+        "missing-current-output",
         "partial-output",
         "capture-gap",
         "pending",
@@ -145,6 +146,11 @@ fn equal_input_does_not_merge_new_activations_changed_setup_or_unproved_delivery
         let store = AgentTurnHistoryStore::default();
         let scope = store.scope_key("workspace", case).unwrap();
         let mut input = request(vec![text(MessageRole::User, "A")]);
+        if case == "missing-current-output" {
+            input
+                .messages
+                .push(text(MessageRole::Assistant, "earlier output"));
+        }
         let (first, _) = new_turn(begin(&store, &scope, &input, &replay, Some(1)));
         store.commit_decision(&first, decision("regular")).unwrap();
         if case == "partial-output" {

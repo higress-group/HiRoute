@@ -1,10 +1,11 @@
 //! ACP v1 only. No reconnect, new-session fallback, file/terminal RPC, or persistent approval.
 use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::schema::v1::{
-    AuthenticateRequest, CancelNotification, ClientCapabilities, InitializeRequest,
+    AuthenticateRequest, CancelNotification, ClientCapabilities, ContentBlock, InitializeRequest,
     LoadSessionRequest, NewSessionRequest, PermissionOptionKind, PromptRequest,
     RequestPermissionOutcome, RequestPermissionRequest, RequestPermissionResponse,
-    ResumeSessionRequest, SelectedPermissionOutcome, SessionNotification, SetSessionModeRequest,
+    ResumeSessionRequest, SelectedPermissionOutcome, SessionNotification, SessionUpdate,
+    SetSessionModeRequest,
 };
 use agent_client_protocol::{Agent, ConnectionTo};
 use hiroute_domain::delegation::{DelegationErrorV1, WorkerExecutionStageV1 as Stage};
@@ -25,7 +26,8 @@ mod model;
 mod pi_failure;
 mod transport;
 pub use identity::AcpNativeIdentityContract;
-pub use transport::MAX_ACP_FRAME_BYTES;
+
+const MAX_ACP_TEXT_BYTES: usize = 1024 * 1024;
 
 pub use hiroute_domain::delegation::DelegationSessionBindingV1 as AcpSessionBinding;
 
@@ -178,18 +180,18 @@ where
                 }
                 let session_matches =
                     state.session.as_deref() == Some(notification.session_id.to_string().as_str());
-                let update = serde_json::to_value(notification.update).unwrap_or(Value::Null);
                 if !session_matches {
                     state.incomplete = true;
                     return Ok(());
                 }
-                if update["sessionUpdate"] == "agent_message_chunk"
-                    && let Some(text) = update.pointer("/content/text").and_then(Value::as_str)
+                if let SessionUpdate::AgentMessageChunk(chunk) = &notification.update
+                    && let ContentBlock::Text(text) = &chunk.content
                 {
+                    let text = &text.text;
                     if let Some(progress) = notification_progress.as_ref() {
                         progress.push(text);
                     }
-                    if state.text.len().saturating_add(text.len()) <= MAX_ACP_FRAME_BYTES {
+                    if state.text.len().saturating_add(text.len()) <= MAX_ACP_TEXT_BYTES {
                         state.text.push_str(text);
                         if notification_journal.text_update(text).is_err() {
                             state.incomplete = true;
@@ -234,7 +236,7 @@ where
             agent_client_protocol::on_receive_request!(),
         )
         .connect_with(
-            transport::bounded_transport(reader, writer),
+            transport::bounded_transport(reader, writer, progress.clone()),
             async move |connection: ConnectionTo<Agent>| {
                 let outcome =
                     run_session(connection, input, journal, updates.clone(), progress).await;
@@ -676,7 +678,7 @@ fn prompt_session_failure(meta: Option<&Map<String, Value>>) -> Result<bool, Del
     if !failure
         .get("title")
         .and_then(Value::as_str)
-        .is_some_and(|title| !title.is_empty() && title.len() <= MAX_ACP_FRAME_BYTES)
+        .is_some_and(|title| !title.is_empty() && title.len() <= MAX_ACP_TEXT_BYTES)
     {
         return Err(DelegationErrorV1::ProtocolFailed);
     }
@@ -698,7 +700,7 @@ fn prompt_session_failure(meta: Option<&Map<String, Value>>) -> Result<bool, Del
     if failure.get("details").is_some_and(|details| {
         !details
             .as_str()
-            .is_some_and(|details| details.len() <= MAX_ACP_FRAME_BYTES)
+            .is_some_and(|details| details.len() <= MAX_ACP_TEXT_BYTES)
     }) {
         return Err(DelegationErrorV1::ProtocolFailed);
     }

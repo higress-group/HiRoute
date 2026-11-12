@@ -603,18 +603,22 @@ fn decode_messages(
             checked_object(context, value, fields, "messages reasoning control")?;
         }
     }
-    let omit_thinking =
-        body.pointer("/thinking/display").and_then(Value::as_str) == Some("omitted");
-    if body.pointer("/thinking/display").is_some() && !omit_thinking {
-        // Only omitted has a defined cross-protocol return-content mapping.
-        context.mark_native_only();
-    }
+    let thinking_display = match body.pointer("/thinking/display").map(Value::as_str) {
+        None => None,
+        Some(Some("omitted")) => Some(MessagesThinkingDisplay::Omitted),
+        Some(Some("summarized")) => Some(MessagesThinkingDisplay::Summarized),
+        Some(Some("updates")) => Some(MessagesThinkingDisplay::Updates),
+        Some(_) => {
+            context.mark_native_only();
+            None
+        }
+    };
     if body.pointer("/output_config/format").is_some()
         && super::structured_output::messages_schema_format(body).is_none()
     {
         context.mark_native_only();
     }
-    let mut instructions = object
+    let instructions = object
         .get("system")
         .map(|value| decode_instruction(context, value, InstructionRole::System))
         .transpose()?
@@ -624,28 +628,8 @@ fn decode_messages(
     let mut native_history = Vec::new();
     for (native_index, value) in required_array(object, "messages")?.iter().enumerate() {
         let before = context.unknown_generation.get();
-        let message = decode_messages_message(context, value)?;
-        match message.role {
-            // Claude Code 2.1.231 emits an instruction reminder as a `system` message even though
-            // the public Messages wire represents instructions at the top level. Normalize this
-            // client extension back into the canonical instruction layer so both a Messages
-            // target and a cross-protocol target preserve its authority without inventing an
-            // unsupported mid-conversation Messages role.
-            MessageRole::System | MessageRole::Developer => {
-                instructions.push(CanonicalInstruction {
-                    role: if message.role == MessageRole::System {
-                        InstructionRole::System
-                    } else {
-                        InstructionRole::Developer
-                    },
-                    content: message.content,
-                });
-            }
-            MessageRole::User | MessageRole::Assistant => {
-                messages.push(message);
-                native_history.push(context.history_item(Some(native_index), before));
-            }
-        }
+        messages.push(decode_messages_message(context, value)?);
+        native_history.push(context.history_item(Some(native_index), before));
     }
     let mut requested_reasoning = match (object.get("thinking"), object.get("output_config")) {
         (None, None) => RequestedReasoningControl::absent(),
@@ -654,7 +638,7 @@ fn decode_messages(
             "output_config": output_config.cloned(),
         })),
     };
-    requested_reasoning.messages_omit_thinking = omit_thinking;
+    requested_reasoning.messages_thinking_display = thinking_display;
     Ok(ModelRequestIRV1 {
         native_body: None,
         native_only: false,

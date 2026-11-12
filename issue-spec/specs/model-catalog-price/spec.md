@@ -281,6 +281,18 @@ Publication sequence and exact-payload digest acceptance SHALL be scoped to the 
 
 The publication and data-revision acceptance floors SHALL survive cache removal and restart. A corrupt or unavailable held copy SHALL not be partially used. In-flight retrieval invalidated by disable/removal SHALL not restore that copy or reverse the setting. Conditional retrieval SHALL fetch full content when no valid held copy exists. Interrupted activation SHALL recover a complete old or new generation under the existing checkpoint ordering, with an explicit retry/recovery state when necessary.
 
+The feed request SHALL advertise gzip support and SHALL also accept uncompressed JSON. Gzip decoding SHALL enforce the 16 MiB decoded-byte limit across all gzip members and a separate 32 MiB encoded-body limit, including gzip headers and empty members; compressed length SHALL NOT substitute for decoded length. Publication digests, semantic validation and private cache bytes SHALL use the exact decoded JSON. Unsupported content codings and corrupt or truncated gzip SHALL fail retrieval without replacing the held validated publication. This negotiation SHALL NOT change compression behavior for model inference, discovery or account-profile requests.
+
+#### Scenario: Gzip and plain responses preserve publication identity
+
+- **WHEN** the fixed feed origin serves the same publication as plain JSON or gzip, with a content length or chunked transfer
+- **THEN** the client obtains identical complete JSON bytes, payload digest and semantic data, preserves a valid ETag when supplied and retains existing conditional-response behavior.
+
+#### Scenario: A small compressed body exceeds the decoded bound
+
+- **WHEN** a gzip response, including concatenated members, expands beyond the supported decoded-byte limit
+- **THEN** the client stops after bounded decoding, classifies the response as oversized and leaves the held validated publication and acceptance floors unchanged.
+
 #### Scenario: Invalid publication
 
 - **WHEN** the HTTPS publication fails schema or content validation
@@ -385,6 +397,8 @@ Official model snapshots SHALL be deterministic projections of the existing main
 
 Sources SHALL change through reviewed repository pull requests. Validation SHALL run in CI for each change and before publication and SHALL reject malformed schemas, duplicate identities, broken metadata references, forbidden executable authority, lost required provenance or inference markers, invalid featured links, oversized complete output, inconsistent same-revision content and data/publication rollback. Dates of first inclusion SHALL remain stable; publication time SHALL not refresh untouched evidence dates.
 
+The complete client-bundled model-data JSON file SHALL be bounded at 8 MiB (8,388,608 bytes), counting all bytes including whitespace and the generated final newline. The generator and bundled ReleaseFacts loader SHALL enforce the same inclusive bound. The registry file and serialized rating snapshot SHALL retain their independent 2 MiB bounds, and the manifest SHALL retain its 16 KiB bound. This model-file budget SHALL NOT relax the complete HTTPS feed's independent 16 MiB decoded-byte bound, structural validation, digest/reference checks or query-page budgets. Increasing this build-input budget SHALL NOT change persisted cache formats, acceptance floors or published metadata semantics.
+
 Generation SHALL include all maintained descriptive records, including existing embedded models and records without a supported executable binding. Descriptive availability and executable qualification SHALL be evaluated separately. Unsupported execution SHALL not cause omission of a valid descriptive record or rejection of the complete publication. Any claimed executable compatibility/minimum client SHALL be checked against the exact recorded supported release registry and adapters; an unestablished version SHALL remain unclaimed. Incorrect executable claims or malformed references SHALL fail validation.
 
 Only the production model-feed deployment SHALL publish the exact validated artifact. It SHALL run independently of the static website build after reviewed metadata, publication or recorded release changes reach main, using the same production environment and serialized deployment boundary as the website. It SHALL upload only the versioned feed object; ordinary website uploads SHALL refuse a model-feed prefix. PR jobs SHALL validate without publishing or requiring production credentials. The fixed HTTPS origin and production pipeline establish trust; the direct JSON needs no independent signature or signing-key lifecycle. Deployment SHALL retrieve and validate the currently served publication before replacement. A genuine HTTP 404 permits first publication; redirects, unsuccessful retrieval or invalid served content stop publication and preserve the served copy. Identical content may be a no-op; changed publication bytes require a strictly greater sequence, and changed semantic model data require a strictly greater data revision. Deployment SHALL record publication sequence, data revision, digests and source revision.
@@ -392,6 +406,16 @@ Only the production model-feed deployment SHALL publish the exact validated arti
 Current committed development source and its complete metadata SHALL be sufficient basis for publication before any compatible stable client release is recorded. A development package, release record or prior client acceptance verification SHALL NOT be required to enable publication. Content, provenance, size and rollback validation SHALL remain mandatory, and recorded supported readers SHALL retain their compatibility checks; development publication SHALL NOT claim unverified released executable support. An incompatible wire change used by an already supported release SHALL use a versioned endpoint and intentional legacy support recorded in the existing compatibility register. Older supported readers retain their supported contract and rollback protections; unreleased experimental formats create no compatibility promise. Persisted user choices and supported cache/configuration inputs SHALL retain their meaning through upgrade or receive explicit versioned recovery, never a silent reset.
 
 Source generation and publication SHALL remain reproducible from the recorded reviewed source revision, including squash-stable provenance. A deployment or validation failure SHALL leave the prior website snapshot served and clients' last usable snapshots intact.
+
+#### Scenario: Load a complete larger bundled catalog
+
+- **WHEN** the validated model-data file exceeds 2 MiB and is at most 8 MiB, with a matching compiled manifest and official snapshot
+- **THEN** the bundled loader accepts the complete catalog without removing descriptive records or changing executable registry authority.
+
+#### Scenario: Enforce independent bundled resource budgets
+
+- **WHEN** the model-data file exceeds 8 MiB or the registry file exceeds 2 MiB
+- **THEN** the bundled loader rejects it with the existing size error before parsing, even if the other resources fit their budgets.
 
 #### Scenario: Publish a correction without a client release
 

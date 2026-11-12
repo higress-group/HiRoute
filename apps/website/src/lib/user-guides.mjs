@@ -56,8 +56,8 @@ export const guidePages = {
     zh: '接入模型', en: 'Connect models',
     title: { zh: '接入模型：订阅、API 与本地模型', en: 'Connect models: subscriptions, APIs and local models' },
     description: {
-      zh: '连接 Codex、Claude Code 订阅、API 和本地模型；把订阅和 API 里的同名模型组成一条路由，订阅暂时用不了时接着用 API，还可以限制 API Key 的花费。',
-      en: 'Connect Codex and Claude Code subscriptions, APIs and local models. Combine a subscription and an API that offer the same model, so work continues on the API when the subscription is unavailable.',
+      zh: '接入 Codex、Claude Code 订阅、API 赠金和本地模型。组合订阅与 API 的同名候选，安排优先顺序并配置 Key 花费额度。',
+      en: 'Connect Codex and Claude Code subscriptions, APIs and local models. Combine same-model sources, set fallback order and budget API credit use.',
     },
   },
   'model-trial': {
@@ -76,12 +76,20 @@ export const guidePages = {
       en: 'Configure a set of models for your Agent. Fixed model and Free first follow candidate order, difficulty routing keeps hard parts on your primary model, and custom branches pick by task category.',
     },
   },
+  'optimize-model-routing': {
+    zh: '复盘与优化模型路由', en: 'Review and optimize model routing',
+    title: { zh: 'Codex token 成本优化：让 Agent 复盘路由、调整决策提示词与信任度', en: 'Optimize Codex token costs: review routing, decision prompts and trust' },
+    description: {
+      zh: 'Codex 额度不够用？让 Agent 用 HiRoute CLI 分析模型切换、阶段评分和费用，提炼工程案例，优化难度提示词与信任度，再用测试和新任务验证。附可复制指引与提示词示例。',
+      en: 'Review model switches, stage scores and costs with the HiRoute CLI. Let your Agent tune decision prompts and trust, then validate on new tasks. Includes copyable prompts.',
+    },
+  },
   'task-routing': {
     zh: 'Agent 智能路由', en: 'Smart Agent routing',
     title: { zh: 'Agent 智能路由：跨 Harness 委派任务', en: 'Smart Agent routing: delegate across harnesses' },
     description: {
-      zh: '让 Codex 委派给 DeepSeek Harness，或让 Hermes 用 Codex 编码。按图配置执行 Agent、开启任务路由，再查看进度并取回结果。',
-      en: 'Delegate from Codex to DeepSeek Harness, or use Codex for coding from Hermes. Configure an execution Agent, enable task routing and follow the results with illustrated steps.',
+      zh: '用轻量 Pi 执行日志初筛、测试检查和资料整理，减少主力模型的 token 开销。按图配置执行 Agent，发起委派并查看结果。',
+      en: 'Delegate log triage, test checks and document scans to lightweight Pi to reduce primary-model token costs. Set up an executor and check the results.',
     },
   },
   [agentGuideHub]: {

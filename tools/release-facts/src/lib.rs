@@ -114,8 +114,8 @@ pub fn compile_release_facts(
     normalize_v2(&mut normalized)?;
     normalized.validate()?;
 
-    let registry_bytes = canonical_sorted_json_line(&normalized.connector_registry)?;
-    let model_data_bytes = canonical_sorted_json_line(&normalized.model_data)?;
+    let registry_bytes = canonical_sorted_json_document(&normalized.connector_registry)?;
+    let model_data_bytes = canonical_sorted_json_document(&normalized.model_data)?;
     let cross_reference_digest = normalized
         .model_data
         .cross_reference_digest(&normalized.connector_registry)?;
@@ -131,7 +131,7 @@ pub fn compile_release_facts(
     if let Some(snapshot) = normalized.official_model_data {
         compiled.files.insert(
             OFFICIAL_MODEL_DATA_FILE.to_owned(),
-            canonical_sorted_json_line(&snapshot.snapshot(&normalized.model_data)?)?,
+            canonical_sorted_json_document(&snapshot.snapshot(&normalized.model_data)?)?,
         );
     }
     Ok(compiled)
@@ -261,7 +261,7 @@ fn canonical_json_line<T: Serialize>(value: &T) -> Result<Vec<u8>, ReleaseFactsC
     Ok(bytes)
 }
 
-fn canonical_sorted_json_line<T: Serialize>(
+fn canonical_sorted_json_document<T: Serialize>(
     value: &T,
 ) -> Result<Vec<u8>, ReleaseFactsCompilerError> {
     fn sorted(value: serde_json::Value) -> serde_json::Value {
@@ -284,7 +284,29 @@ fn canonical_sorted_json_line<T: Serialize>(
     }
 
     let value = serde_json::to_value(value).map_err(ReleaseFactsCompilerError::Json)?;
-    canonical_json_line(&sorted(value))
+    let compact = canonical_json_line(&sorted(value))?;
+    let mut bytes = Vec::with_capacity(compact.len());
+    let (mut quoted, mut escaped, mut column) = (false, false, 0);
+    for byte in compact {
+        bytes.push(byte);
+        column += 1;
+        if byte == b',' && !quoted && column >= 65_536 {
+            bytes.push(b'\n');
+            column = 0;
+        }
+        if quoted {
+            if escaped {
+                escaped = false;
+            } else if byte == b'\\' {
+                escaped = true;
+            } else if byte == b'"' {
+                quoted = false;
+            }
+        } else if byte == b'"' {
+            quoted = true;
+        }
+    }
+    Ok(bytes)
 }
 
 fn normalize_v2(input: &mut ReleaseFactsCompilerInputV2) -> Result<(), ReleaseFactsCompilerError> {
@@ -403,6 +425,32 @@ pub enum ReleaseFactsCompilerError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn large_json_documents_keep_strings_and_semantic_digests() {
+        let rows: Vec<_> = (0..400)
+            .map(|id| {
+                serde_json::json!({
+                    "id": id, "text": "引号 \" ,},{ \\n".repeat(30)
+                })
+            })
+            .collect();
+        let value = serde_json::json!({"rows": rows});
+        let bytes = canonical_sorted_json_document(&value).unwrap();
+        assert_eq!(bytes, canonical_sorted_json_document(&value).unwrap());
+        let decoded: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(decoded, value);
+        assert_eq!(
+            hiroute_domain::CanonicalDigest::of(&decoded).unwrap(),
+            hiroute_domain::CanonicalDigest::of(&value).unwrap()
+        );
+        assert!(bytes.iter().filter(|b| **b == b'\n').count() > 1);
+        assert!(bytes.split(|b| *b == b'\n').all(|line| line.len() < 68_000));
+        assert_eq!(
+            canonical_sorted_json_document(&serde_json::json!({"b": 2, "a": 1})).unwrap(),
+            b"{\"a\":1,\"b\":2}\n"
+        );
+    }
 
     fn root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")

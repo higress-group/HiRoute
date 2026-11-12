@@ -5,6 +5,19 @@ is the single maintained MVP model-data source. The generator pins the complete 
 exact client-discovery runs under `inputs/` by byte digest and emits `model-data.json`, `runtime-projection.json`, and
 `coverage.json`; no network or wall-clock input participates.
 
+The complete generated `model-data.json`, including its final newline, must fit
+8 MiB (8,388,608 bytes). The client ReleaseFacts loader applies the same model-file
+budget. Registry and rating-snapshot budgets remain 2 MiB each; the decoded HTTPS
+feed has its separate 16 MiB budget. Raising the model-file budget does not change
+the generated data, wire schema, structural validation or metadata query-page limits.
+
+Run `python3 assets/model-data/current/test_generate.py` for complete generation
+on synthetic catalogs near the model-file bound without writing maintained output.
+The integration target `release_facts_size` exercises the corresponding bundled
+loader and independent registry bound. Its ignored timing case measures the shared
+loader/official-snapshot initialization functions with synthetic 8 MiB input; it
+does not measure complete daemon or Desktop startup.
+
 Schema and endpoint identifiers may retain a numeric wire-format revision. Those suffixes do not
 identify model-metadata editions: the only maintained and runtime-loaded catalog is `current`.
 

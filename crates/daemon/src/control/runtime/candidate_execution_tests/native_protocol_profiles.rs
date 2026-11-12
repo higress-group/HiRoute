@@ -196,6 +196,7 @@ fn native_messages_only_preserves_explicit_responses_conversion() {
         connector_revision: resolved.connector.revision.to_string(),
     };
     let faces = [ProtocolFace {
+        tool_override: None,
         protocol: UpstreamProtocol::Messages,
         request_path: endpoint.request_path.clone(),
         authentication: GatewayAuthenticationSemanticsV1::Bearer,

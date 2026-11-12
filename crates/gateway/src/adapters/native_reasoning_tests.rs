@@ -427,6 +427,73 @@ fn display_profile(mode: &str) -> CandidateProtocolProfile {
 }
 
 #[test]
+fn bailian_messages_effort_keeps_thinking_updates_without_a_budget() {
+    use hiroute_domain::{GatewayNativeProfileTargetV2, GatewayOperationalTargetV1};
+
+    let mut body = display_request();
+    body["thinking"]["display"] = json!("updates");
+    let request = decode_ingress_request(IngressProtocol::Messages, &body).unwrap();
+    let mut profile = display_profile("enabled");
+    profile.capability.native_model = "qwen3.8-flash".into();
+    let path = "/apps/anthropic/v1/messages";
+    profile.connector.request_path = path.into();
+    profile.native_target = Some(GatewayNativeProfileTargetV2 {
+        operational_target: GatewayOperationalTargetV1::UserConfiguredNative {
+            uri: format!("https://dashscope.aliyuncs.com{path}"),
+        },
+        credential_destination_ref: "compute-target/bailian-fixture".into(),
+    });
+    let budget = project_candidate_request(&request, &profile).unwrap().body;
+    assert_eq!(budget["thinking"], body["thinking"]);
+    assert!(budget["output_config"].get("effort").is_none());
+
+    profile.capability.selected_reasoning_profile_id = "low".into();
+    let reasoning = &mut profile.capability.reasoning_profiles[0];
+    reasoning.profile_id = "low".into();
+    let NativeReasoningRender::ExactFields { fields, .. } = &mut reasoning.render else {
+        panic!("enabled thinking has exact field assignments");
+    };
+    fields[1] = NativeReasoningFieldAssignment {
+        path: vec!["output_config".into(), "effort".into()],
+        value: NativeReasoningValue::String("low".into()),
+    };
+
+    for (authority, bailian) in [
+        ("dashscope.aliyuncs.com", true),
+        ("dashscope-intl.aliyuncs.com", true),
+        ("cn-hongkong.dashscope.aliyuncs.com", true),
+        ("coding.dashscope.aliyuncs.com", true),
+        ("coding-intl.dashscope.aliyuncs.com", true),
+        ("workspace-1.cn-beijing.maas.aliyuncs.com", true),
+        ("workspace.ap-southeast-1.maas.aliyuncs.com", true),
+        ("workspace.cn-hongkong.maas.aliyuncs.com", true),
+        ("workspace.eu-central-1.maas.aliyuncs.com", true),
+        ("workspace.us-east-1.maas.aliyuncs.com", true),
+        ("workspace.ap-northeast-1.maas.aliyuncs.com", true),
+        ("dashscope.aliyuncs.com.example.org", false),
+        ("a.b.cn-beijing.maas.aliyuncs.com", false),
+        ("dashscope.aliyuncs.com:8443", false),
+    ] {
+        profile.native_target.as_mut().unwrap().operational_target =
+            GatewayOperationalTargetV1::UserConfiguredNative {
+                uri: format!("https://{authority}{path}"),
+            };
+        let rendered = project_candidate_request(&request, &profile).unwrap().body;
+        let thinking = if bailian {
+            json!({"type":"enabled","display":"updates"})
+        } else {
+            body["thinking"].clone()
+        };
+        assert_eq!(rendered["thinking"], thinking, "{authority}");
+        assert_eq!(rendered["output_config"]["effort"], "low");
+        assert_eq!(
+            rendered["output_config"]["format"],
+            body["output_config"]["format"]
+        );
+    }
+}
+
+#[test]
 fn thinking_display_plan_modes_use_only_plan_budget_and_preserve_format() {
     let body = display_request();
     let request = decode_ingress_request(IngressProtocol::Messages, &body).unwrap();
@@ -454,6 +521,7 @@ fn thinking_display_fixed_preserves_native_controls_and_unknown_values_stay_boun
     for display in [
         json!("omitted"),
         json!("summarized"),
+        json!("updates"),
         json!("future-mode"),
         json!(42),
         json!(null),
@@ -461,7 +529,10 @@ fn thinking_display_fixed_preserves_native_controls_and_unknown_values_stay_boun
         let mut body = display_request();
         body["thinking"]["display"] = display.clone();
         let mut request = decode_ingress_request(IngressProtocol::Messages, &body).unwrap();
-        assert_eq!(request.native_only, display != "omitted");
+        assert_eq!(
+            request.native_only,
+            !matches!(display.as_str(), Some("omitted" | "summarized" | "updates"))
+        );
         request.requested_reasoning.disposition =
             RequestedReasoningDisposition::AppliedToFixedBinding;
         let native = project_candidate_request(&request, &display_profile("disabled")).unwrap();
@@ -540,7 +611,7 @@ fn thinking_display_policy_survives_replay_externalization() {
     let mut request =
         decode_ingress_request(IngressProtocol::Messages, &display_request()).unwrap();
     externalize_model_request(&mut request, &store, 0).unwrap();
-    assert!(request.requested_reasoning.messages_omit_thinking);
+    assert!(request.requested_reasoning.messages_omit_thinking());
     assert_ne!(
         request.native_body.as_ref().unwrap()["thinking"]["display"],
         "omitted"
@@ -549,7 +620,7 @@ fn thinking_display_policy_survives_replay_externalization() {
     let serialized = serde_json::to_value(&request).unwrap();
     assert!(
         serialized["requested_reasoning"]
-            .get("messages_omit_thinking")
+            .get("messages_thinking_display")
             .is_none()
     );
     drop(request);

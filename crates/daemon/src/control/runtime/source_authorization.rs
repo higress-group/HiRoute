@@ -269,7 +269,8 @@ fn map_control_read(error: hiroute_application::control::ControlReadError) -> Po
             PortErrorCode::PermissionDenied
         }
         hiroute_application::control::ControlReadError::Corrupt => PortErrorCode::Corrupt,
-        hiroute_application::control::ControlReadError::ClientVersionRequired => {
+        hiroute_application::control::ControlReadError::ClientVersionRequired
+        | hiroute_application::control::ControlReadError::DshDesktopModelCheckFailed(_) => {
             PortErrorCode::InvalidData
         }
     };

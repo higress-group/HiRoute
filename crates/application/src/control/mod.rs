@@ -49,6 +49,30 @@ pub enum ControlReadError {
     CollaborationRootRequired,
     /// The selected Codex profile cannot be safely merged or inherits reserved identities.
     CodexProfileConflict,
+    DshDesktopModelCheckFailed(DshDesktopModelCheckFailure),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DshDesktopModelCheckFailure {
+    Patch,
+    Manifest,
+    CustomProfile,
+    Runtime,
+    Probe,
+    MissingAdapter,
+}
+
+impl DshDesktopModelCheckFailure {
+    pub(super) fn message_key(self) -> &'static str {
+        match self {
+            Self::Patch => "error.dsh_desktop_patch_invalid",
+            Self::Manifest => "error.dsh_desktop_manifest_invalid",
+            Self::CustomProfile => "error.dsh_desktop_custom_profile",
+            Self::Runtime => "error.dsh_desktop_runtime_unavailable",
+            Self::Probe => "error.dsh_desktop_probe_failed",
+            Self::MissingAdapter => "error.dsh_desktop_model_adapter_missing",
+        }
+    }
 }
 
 /// Bounded observation composition never waits on a control writer mutex.

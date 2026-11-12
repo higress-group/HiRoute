@@ -10,7 +10,7 @@ Select a HiRoute route in Pi's `/model` picker and keep your usual tools. Give f
 <summary>Preview the instructions</summary>
 
 ```text
-Read https://hiroute.ai/en/docs/pi-model-routing/ and reuse my Pi sources in a difficulty route I can select in Pi. CLI reference: https://hiroute.ai/en/docs/cli/
+Read https://hiroute.ai/en/docs/pi-model-routing/ and help me get models, configure smart routing and connect my Agent. Use this guide's lightweight Pi example to show how a scoped task can use fewer primary-model tokens. Enable delegation when I request it. CLI reference: https://hiroute.ai/en/docs/cli/
 Use the built-in management Skill: https://hiroute.ai/en/docs/#management-skill
 For delegation, use the built-in delegation Skill: https://hiroute.ai/en/docs/task-routing/#delegation-skill
 - Scan and check reusable settings: hiroute compute scan · compute connection prepare / preview / apply
@@ -22,27 +22,45 @@ The UI and CLI share configuration and records. Follow installed --help and hiro
 </details>
 </aside>
 
-## 1. Start with your Pi model settings
+[1. Scan or sign in to get models](#get-models) · [2. Configure smart routing](#configure-routing) · [3. Connect your Agent](#connect-agent) · [4. Explore task delegation](#task-delegation)
 
-Open **Models → General models → Add models → Scan this device**. HiRoute can read supported `models.json` declarations, API key sources and catalogs from an eligible Pi installation. Check the discovered connection and save the models you want. For a model supplied dynamically by an extension, add its API if available.
+<h2 id="get-models">1. Scan or sign in to get models</h2>
 
-You can also start from an existing subscription, API or local model. For example, [connect Qoder models through Magpie](/en/docs/qoder-model-routing/) and use them in Pi.
+Open **Models → General models → Add models → Scan this device** and find your Pi sources. HiRoute reads supported `models.json` declarations, API key sources and recognized installed model catalogs. Select a connection, check it and save the models you want.
 
-## 2. Add a difficulty route to Pi's model picker
+If a runtime plugin provides an API address and key, enter them under **New API connection**, check the connection and save. You can also import Codex or Claude Code models through **Connect subscription**, or [connect Qoder models through Magpie](/en/docs/qoder-model-routing/#connect-qoder).
 
-Create “Pi daily coding” and choose **Difficulty routing**. Use Regular models for symbol searches and code collection, and Primary models for design changes and hard-to-reproduce bugs. Start with **Heuristic rules**, or add a [decision model](/en/docs/model-routing/#difficulty-routing) if you want stage scoring.
+<h2 id="configure-routing">2. Configure smart routing</h2>
 
-Publish the route and add it under **Agent → Pi → Model routing**. Choose the protocol based on the models and the suggestion shown in HiRoute. Restart Pi and select the new route with `/model`; the existing models are still available. Try a small task, then check the HiRoute session timeline.
+1. Open **Smart routing → New smart routing**, name the plan “Pi daily coding” and choose **Difficulty routing**.
+2. Click **Add model** in **Regular models** and choose a fast or economical model from step 1 for reading files, finding definitions and gathering facts.
+3. Add a model to **Primary models** for complex analysis, planning or changes across several files. Combine available models from different subscriptions, APIs or local connections as needed.
+4. Start with **Heuristic rules** under **Decision method**, then click **Enable**. The published route becomes available in the Agent settings in the next step.
 
-<figure class="guide-shot-dialog">
-  <a href="/guide-assets/agent-guide-pi-en.webp"><img src="/guide-assets/agent-guide-pi-en.webp" alt="Available routes and protocol in Pi model routing settings" width="1200" height="900" loading="lazy" /></a>
-  <figcaption>Choose which routes Pi should offer. Restart Pi and select one with /model.</figcaption>
+<figure class="guide-shot-panel">
+  <a href="/guide-assets/agent-guide-difficulty-en.webp"><img src="/guide-assets/agent-guide-difficulty-en.webp" alt="HiRoute difficulty routing with a decision method and Regular and Primary model groups" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Regular models handle routine work and Primary models handle harder turns. Replace the illustrated models with the ones you connected in step 1.</figcaption>
 </figure>
 
-## 3. Let Codex CLI verify the work independently
+To adjust routing using execution feedback, select a decision model in the same section for stage scoring and low-score protection. [Learn about difficulty decisions](/en/docs/model-routing/#difficulty-routing)
 
-Use the same models in a new “Codex regression check” plan. Open **More settings → Task delegation**, select **Codex CLI**, and give it a purpose such as “Reproduce a failure and run the relevant tests.” Check the dependencies, publish, and [enable Task routing](/en/docs/task-routing/#delegation-skill) in Pi.
+<h2 id="connect-agent">3. Connect your Agent</h2>
 
-Ask Pi: “Use HiRoute to delegate regression verification for this module to Codex regression check. Run the relevant tests and summarize the outcome.” Check the executor and results in **Task history**. To use Pi as the executor from another Agent, select Pi in a delegation plan and check the Pi CLI and Node.
+Open **Agent → Pi → Model routing**, check “Pi daily coding”, choose a protocol supported by your models and save.
 
-Next: [Connect Codex CLI](/en/docs/codex-model-routing/) · [Track or continue a delegated task](/en/docs/task-routing/)
+<figure class="guide-shot-dialog">
+  <a href="/guide-assets/agent-guide-pi-en.webp"><img src="/guide-assets/agent-guide-pi-en.webp" alt="Pi route selection and connection protocol in HiRoute" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Check the published route, save it and select it in Pi's /model picker.</figcaption>
+</figure>
+
+Restart Pi, type `/model` and select the new HiRoute route. Ask it to find a function's callers, then inspect the model choices in **Sessions → Routing timeline** in HiRoute.
+
+<h2 id="task-delegation">4. Explore task delegation</h2>
+
+When your main Pi chat uses a primary model for design work, send test discovery and call-site searches to a separate lightweight Pi route. Let the economical model handle file reads and searches, then use the short index in the main chat. For a larger implementation, you can also choose a route bound to Codex CLI.
+
+Create a Fixed model route called “Pi quick search”. Under **More settings → Task delegation**, allow delegation and choose Pi, describe its purpose and enable it. Turn on **Task routing** in the main Pi entry.
+
+> Use HiRoute to delegate test discovery for this function to “Pi quick search”. Return the test files, case names and behaviors covered.
+
+Check the main chat and delegated task separately to see which models they use and how much each consumes. [Set up a lightweight Pi executor](/en/docs/task-routing/#lightweight-pi)

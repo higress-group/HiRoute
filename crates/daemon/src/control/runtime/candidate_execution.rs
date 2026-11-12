@@ -48,6 +48,7 @@ struct ProtocolConnectorFacts {
 
 #[derive(Clone)]
 struct ProtocolFace {
+    tool_override: Option<bool>,
     protocol: UpstreamProtocol,
     request_path: String,
     authentication: GatewayAuthenticationSemanticsV1,
@@ -95,6 +96,7 @@ pub(super) fn materialize_candidate_execution(
                 },
                 capability.upstream_model_id.clone(),
                 vec![ProtocolFace {
+                    tool_override: None,
                     protocol: capability.upstream_protocol,
                     request_path: protocol_endpoint.request_path.clone(),
                     authentication: native_endpoint_authentication(
@@ -146,6 +148,7 @@ pub(super) fn materialize_candidate_execution(
                         return None;
                     }
                     protocol_faces.push(ProtocolFace {
+                        tool_override: None,
                         protocol,
                         request_path: face.request_path().to_owned(),
                         authentication: GatewayAuthenticationSemanticsV1::Bearer,
@@ -310,6 +313,7 @@ pub(super) fn materialize_management_candidate(
                 &fact.provenance,
                 &fact.target,
                 &fact.authentication,
+                &fact.additional_native_endpoints,
                 &fact.upstream_model_id,
                 &fact.capabilities,
                 &fact.default_preferences,
@@ -496,6 +500,7 @@ pub(super) fn materialize_management_candidate(
     let native_capability = reasoning.capability.clone();
     let reasoning = reasoning.with_source_capability(native_capability);
     let mut protocol_faces = vec![ProtocolFace {
+        tool_override: None,
         protocol: protocol_endpoint.protocol,
         request_path: protocol_endpoint.request_path.clone(),
         authentication: fact.authentication.clone(),
@@ -517,6 +522,7 @@ pub(super) fn materialize_management_candidate(
             GatewayOperationalTargetV1::UserConfiguredNative { uri }
         };
         protocol_faces.push(ProtocolFace {
+            tool_override: None,
             protocol: target.upstream_protocol,
             request_path: target.request_path.clone(),
             authentication: endpoint.authentication.clone(),
@@ -530,6 +536,32 @@ pub(super) fn materialize_management_candidate(
             adapter_ref: Some(target.protocol_profile_id.clone()),
             adapter_revision: Some(target.protocol_profile_revision),
         });
+    }
+    if let Some(catalog) = catalog {
+        for face in &mut protocol_faces {
+            let (target, authentication) = if face.protocol == fact.target.upstream_protocol {
+                (&fact.target, &fact.authentication)
+            } else {
+                let extra = fact
+                    .additional_native_endpoints
+                    .iter()
+                    .find(|extra| extra.target.upstream_protocol == face.protocol)?;
+                (&extra.target, &extra.authentication)
+            };
+            face.tool_override = hiroute_integrations::compute::complete_missing_api_capabilities(
+                catalog,
+                &fact.provenance,
+                target,
+                authentication,
+                &[],
+                &fact.upstream_model_id,
+                &fact.capabilities,
+                &fact.default_preferences,
+            )
+            .capabilities
+            .tool
+            .value;
+        }
     }
     let protocol_profiles = protocol_profiles(
         &connector,

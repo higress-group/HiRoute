@@ -173,12 +173,20 @@ with 1024 tokens or disabled without budget. Explicit manual budgets are at leas
 1024 and below actual max_tokens. Adaptive profiles remain adaptive without guessed
 model-name rules. Supported released toggle projections normalize at the current
 wire boundary without changing stored profile/digest.
+For a selected effort on a verified Bailian HTTPS Messages endpoint, the Gateway
+renders enabled thinking with `output_config.effort` and omits the mutually
+exclusive budget. It preserves the client's supported thinking display and
+other native controls. Bailian profiles that select a budget use the usual
+Messages budget rules.
 
 `thinking.display=omitted` controls returned reasoning text, not computation.
 Plan-enabled/adaptive keeps representable omitted display; enabled uses plan budget,
 adaptive never restores caller budget, disabled has no display/budget, and no final
-type leaves no display-only object. Other native display values are retained only
-when expressible. Fixed native controls remain provider-owned. If plan-controlled
+type leaves no display-only object. Known `summarized` and `updates` display values
+require a native path when no response mapping exists. They still allow strict
+ContextHold comparison for modeled history, which includes the known display choice.
+Unknown values retain the conservative native-only history boundary. Fixed native
+controls remain provider-owned. If plan-controlled
 thinking is neither enabled nor adaptive, remove only dependent
 `context_management.edits` entries for `clear_thinking_20251015`, preserving other
 edits/unknown siblings; objects emptied by that removal may disappear. Enabling

@@ -417,6 +417,23 @@ pub enum RequestedReasoningDisposition {
     FollowRequestWithDefault,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum MessagesThinkingDisplay {
+    Omitted,
+    Summarized,
+    Updates,
+}
+
+impl MessagesThinkingDisplay {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Omitted => "omitted",
+            Self::Summarized => "summarized",
+            Self::Updates => "updates",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RequestedReasoningControl {
@@ -424,10 +441,10 @@ pub struct RequestedReasoningControl {
     /// resolves the original request independently against its frozen directory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) followed_control: Option<super::super::profiles::RequestedNativeReasoning>,
-    /// Messages return-text policy, fixed before Replay externalizes controls.
+    /// Known Messages return-text policy, fixed before Replay externalizes controls.
     /// It never changes computation, accounting, or persisted IR contracts.
     #[serde(skip)]
-    pub(crate) messages_omit_thinking: bool,
+    pub(crate) messages_thinking_display: Option<MessagesThinkingDisplay>,
     pub native_value: Option<Value>,
     pub disposition: RequestedReasoningDisposition,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -438,10 +455,14 @@ pub struct RequestedReasoningControl {
 }
 
 impl RequestedReasoningControl {
+    pub(crate) fn messages_omit_thinking(&self) -> bool {
+        self.messages_thinking_display == Some(MessagesThinkingDisplay::Omitted)
+    }
+
     pub fn absent() -> Self {
         Self {
             followed_control: None,
-            messages_omit_thinking: false,
+            messages_thinking_display: None,
             native_value: None,
             disposition: RequestedReasoningDisposition::Absent,
             fixed_profile_digest: None,
@@ -452,7 +473,7 @@ impl RequestedReasoningControl {
     pub fn overridden(native_value: Value) -> Self {
         Self {
             followed_control: None,
-            messages_omit_thinking: false,
+            messages_thinking_display: None,
             native_value: Some(native_value),
             disposition: RequestedReasoningDisposition::OverriddenByAgentPlan,
             fixed_profile_digest: None,

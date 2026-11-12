@@ -619,6 +619,11 @@ a default dump. Capture SHALL bind executable/archive identity, home patch,
 Desktop patch and manifest, and recheck them before returning. A Web-profile
 change SHALL NOT invalidate an independent Desktop proof.
 
+If Desktop model admission fails, Preview and Apply SHALL report `ACTION_REQUIRED`
+with a stable reason for the patch, manifest, custom profile, installation,
+bundled CLI probe or missing model adapter. This failure SHALL occur before
+Operation creation and SHALL omit raw probe output and user configuration.
+
 Desktop model support SHALL NOT imply Worker or collaboration Skill support.
 Management is explicitly supported through the same DSH_HOME user resource and
 canonical Web owner described above; it does not use the Desktop model journal.

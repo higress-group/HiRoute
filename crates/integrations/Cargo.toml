@@ -6,6 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+flate2 = "=1.1.10"
 semver.workspace = true
 getrandom.workspace = true
 hiroute-domain = { path = "../domain" }

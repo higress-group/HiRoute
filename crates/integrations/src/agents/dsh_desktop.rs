@@ -2,6 +2,42 @@
 //! Never redirect Web ownership or require a separately installed npm CLI.
 use super::*;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+pub enum DshDesktopModelCheckError {
+    #[error("DSH Desktop patch is unavailable or invalid")]
+    Patch,
+    #[error("DSH Desktop manifest is unavailable or invalid")]
+    Manifest,
+    #[error("DSH Desktop profile uses a custom bundle or dependency composition")]
+    CustomProfile,
+    #[error("DSH Desktop executable or archive is unavailable")]
+    Runtime,
+    #[error("DSH Desktop bundled CLI default configuration probe failed")]
+    Probe,
+    #[error("DSH Desktop default composition does not expose the required adapter")]
+    MissingAdapter,
+    #[error("DSH Desktop configuration changed during validation")]
+    SourceChanged,
+}
+
+impl DshDesktopModelCheckError {
+    fn file_error(error: AgentFilesystemScanError, fallback: Self) -> Self {
+        match error {
+            AgentFilesystemScanError::SourceChanged => Self::SourceChanged,
+            _ => fallback,
+        }
+    }
+
+    #[cfg(any(unix, windows))]
+    fn composition_error(error: super::dsh_native::DshCompositionError) -> Self {
+        use super::dsh_native::DshCompositionError;
+        match error {
+            DshCompositionError::InvalidOutput => Self::Probe,
+            DshCompositionError::MissingRequiredPlugin => Self::MissingAdapter,
+        }
+    }
+}
+
 #[cfg(not(windows))]
 pub(super) fn installed_executable(home: &Path) -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
@@ -175,10 +211,10 @@ impl FilesystemAgentScannerV1 {
             managed_launch: None,
         }
     }
-    fn dsh_desktop_contract(
+    fn dsh_desktop_patch_dependencies(
         &self,
         skills: bool,
-    ) -> Result<(CanonicalDigest, PathBuf, PathBuf), AgentFilesystemScanError> {
+    ) -> Result<Vec<CanonicalDigest>, AgentFilesystemScanError> {
         let mut dependencies = Vec::new();
         for path in [
             self.layout.dsh_config_root.join("cordis.patch.yml"),
@@ -214,65 +250,85 @@ impl FilesystemAgentScannerV1 {
             }
             dependencies.push(CanonicalDigest::of_bytes(&bytes));
         }
+        Ok(dependencies)
+    }
+
+    fn dsh_desktop_contract(
+        &self,
+        skills: bool,
+    ) -> Result<(CanonicalDigest, PathBuf, PathBuf), DshDesktopModelCheckError> {
+        use DshDesktopModelCheckError as Check;
+        let mut dependencies = self
+            .dsh_desktop_patch_dependencies(skills)
+            .map_err(|error| Check::file_error(error, Check::Patch))?;
         let manifest = self
             .layout
             .dsh_config_root
             .join("profiles/desktop/package.json");
-        let bytes = super::super::dsh_config::read_patch_bytes(&manifest)?;
+        let bytes = super::super::dsh_config::read_patch_bytes(&manifest)
+            .map_err(|error| Check::file_error(error, Check::Manifest))?;
         if !bytes.is_empty() {
-            let value: serde_json::Value = serde_json::from_slice(&bytes).map_err(invalid)?;
+            let value: serde_json::Value =
+                serde_json::from_slice(&bytes).map_err(|_| Check::Manifest)?;
+            let bundles = &value["dsh"]["profile"]["bundles"];
+            if !bundles
+                .as_array()
+                .is_some_and(|entries| entries.iter().all(serde_json::Value::is_string))
+            {
+                return Err(Check::Manifest);
+            }
+            let has_dependencies = match value.get("dependencies") {
+                Some(serde_json::Value::Object(entries)) => !entries.is_empty(),
+                Some(_) => return Err(Check::Manifest),
+                None => false,
+            };
             // This is the shipped Desktop composition. Custom bundle loading is not
             // established by the public CLI's default dump and must not be asserted.
-            if value["dsh"]["profile"]["bundles"]
-                != serde_json::json!(["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"])
-                || value
-                    .get("dependencies")
-                    .is_some_and(|v| !v.as_object().is_some_and(|v| v.is_empty()))
+            if bundles != &serde_json::json!(["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"])
+                || has_dependencies
             {
-                return Err(AgentFilesystemScanError::InvalidConfig);
+                return Err(Check::CustomProfile);
             }
         }
         dependencies.push(CanonicalDigest::of_bytes(&bytes));
-        let executable = self
-            .dsh_desktop_executable_target()
-            .ok_or(AgentFilesystemScanError::SourceUnavailable)?;
-        let archive = Self::dsh_desktop_archive(&executable)?;
+        let executable = self.dsh_desktop_executable_target().ok_or(Check::Runtime)?;
+        let archive = Self::dsh_desktop_archive(&executable).map_err(|_| Check::Runtime)?;
         for path in [&executable, &archive] {
-            let metadata =
-                std::fs::metadata(path).map_err(|_| AgentFilesystemScanError::SourceUnavailable)?;
+            let metadata = std::fs::metadata(path).map_err(|_| Check::Runtime)?;
             if !metadata.is_file() {
-                return Err(AgentFilesystemScanError::SourceUnavailable);
+                return Err(Check::Runtime);
             }
             dependencies.push(
                 CanonicalDigest::of(&(path, metadata.len(), metadata.modified().ok()))
-                    .map_err(invalid)?,
+                    .map_err(|_| Check::Runtime)?,
             );
         }
-        let digest = CanonicalDigest::of(&dependencies).map_err(invalid)?;
+        let digest = CanonicalDigest::of(&dependencies).map_err(|_| Check::Runtime)?;
         Ok((digest, executable, archive))
     }
     #[cfg(any(unix, windows))]
     pub fn check_dsh_desktop_model_configuration(
         &self,
-    ) -> Result<CanonicalDigest, AgentFilesystemScanError> {
+    ) -> Result<CanonicalDigest, DshDesktopModelCheckError> {
+        use DshDesktopModelCheckError as Check;
         let (before, executable, archive) = self.dsh_desktop_contract(false)?;
         let mut command = Self::dsh_desktop_command(&executable, &archive);
         // Upstream forbids dumping the Desktop profile. Its standard manifest uses
         // these same Web bundles; inspect that default, never pretend this runs Desktop.
         command.args(["--profile", "web", "--dump-default-config"]);
-        super::dsh_native::check_composition(
-            &super::dsh_native::dsh_public_probe(command, false)?,
-            &["llm-pi-ai"],
-        )?;
+        let output =
+            super::dsh_native::dsh_public_probe(command, false).map_err(|_| Check::Probe)?;
+        super::dsh_native::check_composition(&output, &["llm-pi-ai"])
+            .map_err(Check::composition_error)?;
         if !self.dsh_desktop_model_configuration_is_current(&before)? {
-            return Err(AgentFilesystemScanError::SourceChanged);
+            return Err(Check::SourceChanged);
         }
         Ok(before)
     }
     pub fn dsh_desktop_model_configuration_is_current(
         &self,
         checked: &CanonicalDigest,
-    ) -> Result<bool, AgentFilesystemScanError> {
+    ) -> Result<bool, DshDesktopModelCheckError> {
         self.dsh_desktop_contract(false)
             .map(|(current, _, _)| current == *checked)
     }
@@ -280,16 +336,17 @@ impl FilesystemAgentScannerV1 {
     #[cfg(any(unix, windows))]
     pub(super) fn check_dsh_desktop_management(
         &self,
-    ) -> Result<CanonicalDigest, AgentFilesystemScanError> {
+    ) -> Result<CanonicalDigest, DshDesktopModelCheckError> {
+        use DshDesktopModelCheckError as Check;
         let (before, executable, archive) = self.dsh_desktop_contract(true)?;
         let mut command = Self::dsh_desktop_command(&executable, &archive);
         command.args(["--profile", "web", "--dump-default-config"]);
-        super::dsh_native::check_composition(
-            &super::dsh_native::dsh_public_probe(command, false)?,
-            &["skill-filesystem", "tool-skill", "skill"],
-        )?;
+        let output =
+            super::dsh_native::dsh_public_probe(command, false).map_err(|_| Check::Probe)?;
+        super::dsh_native::check_composition(&output, &["skill-filesystem", "tool-skill", "skill"])
+            .map_err(Check::composition_error)?;
         if before != self.dsh_desktop_contract(true)?.0 {
-            return Err(AgentFilesystemScanError::SourceChanged);
+            return Err(Check::SourceChanged);
         }
         Ok(before)
     }

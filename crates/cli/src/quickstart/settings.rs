@@ -249,7 +249,7 @@ fn selection(target: &Value, current: &Value, flags: &Flags, plan: &str) -> Resu
             }
             Ok(old)
         }
-        "agent_qoder_default" | "agent_pi_default" | "agent_dsh_default" => {
+        "agent_qoder_default" | "agent_pi_default" | "agent_dsh_default" | "agent_dsh_desktop" => {
             let protocol = flags.required("--protocol")?;
             let mode = match agent {
                 "agent_qoder_default" => "qoder_additional",
@@ -277,4 +277,36 @@ fn add_plan(selection: &mut Value, plan: &str) -> Result<()> {
         plans.push(json!(plan));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dsh_desktop_flags_add_a_plan_without_replacing_existing_routes() {
+        let target = json!({"agent_id": "agent_dsh_desktop"});
+        let current = json!({"current_selection": {
+            "mode": "dsh_additional",
+            "allowed_plan_ids": ["plan/existing"],
+            "plan_protocols": {"plan/existing": "messages"},
+        }});
+        let flags = Flags::parse(
+            &["--protocol".into(), "responses".into()],
+            &["--protocol"],
+            &[],
+            &[],
+        )
+        .unwrap();
+        let selected = selection(&target, &current, &flags, "plan/new").unwrap();
+        assert_eq!(selected["mode"], "dsh_additional");
+        assert_eq!(
+            selected["allowed_plan_ids"],
+            json!(["plan/existing", "plan/new"])
+        );
+        assert_eq!(
+            selected["plan_protocols"],
+            json!({"plan/existing": "messages", "plan/new": "responses"})
+        );
+    }
 }

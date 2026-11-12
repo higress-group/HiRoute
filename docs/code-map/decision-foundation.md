@@ -103,19 +103,15 @@ retain the executed version and content identity.
 
 ## Provider and routing policy
 
-Source-reusing decision tests and routed calls share the Key's local spending
-authority. [Decision prices](../../crates/integrations/src/compute/defaults/decision_spending.rs)
-are indexed at catalog admission, scoped to the actual endpoint/codec/model and
-captured once per call. [Exchange spending](../../crates/gateway/src/core_runtime/classification/spending.rs)
-reserves known bounds, settles provider usage even when an answer is malformed,
-releases proven unsent attempts and retains uncertain/unpriced calls as pending.
-Unknown prices permit requests; local budget failures remain distinct diagnostic
-causes. Frozen V38 ledger estimates retain their original single-rate meaning;
-Core V39 admits input tiers and unpriced pending records without rewriting history.
-The keyed authority reference in decision source effects preserves the existing
-Key budget through membership saves, deletions and compensation. Its one-time
-backfill lives in `migrations/key_spending_v39.rs`; request reads use
-`control/key_budgets/current.rs` without traversing past decision operations.
+[Shared decision leases](../../crates/daemon/src/gateway_ports/credential.rs)
+reuse the source's credential for both routed calls and explicit tests. They
+carry no inference spending authority; neither decision path reads that allowance
+or adds an entry to its ledger. [Exact membership admission](../../crates/local-storage/src/control/compute/management/decision_runtime.rs)
+still checks the saved source, target and Key generation. The keyed authority
+reference in decision source effects continues to preserve ordinary inference
+allowances through membership saves, deletions and compensation. The
+[real CLI and Gateway scenario](../../crates/daemon/tests/support/key_budget_product.py)
+uses the same source with an exhausted first Key and a funded second Key.
 
 Bailian, OpenRouter Jev, TypeSafe and compatible connections share the typed
 `model/state/questions` adapter. OpenAI Decisions uses its own
@@ -171,6 +167,9 @@ keeps unrelated session growth out of the routine scan. Incoming projection and
 fingerprinting stay outside that lock; no model execution owns it.
 [Branch resolution](../../crates/gateway/src/agent_turn_history/store/branches.rs)
 uses a bounded scope index and the [accepted response boundary](../../crates/gateway/src/agent_turn_history/boundary.rs).
+The [late-join regressions](../../crates/gateway/src/agent_turn_history/late_join_tests.rs)
+cover response boundaries across all three ingress protocols when earlier stage
+output is missing, including actual capture loss and Responses tool-batch priority.
 The [native Responses tool handoff](../../crates/gateway/src/agent_turn_history/tool_continuation.rs)
 uses the accepted downstream write to release routing before optional capture.
 A full response match bypasses a sibling's pending handoff. The [scope ledger](../../crates/gateway/src/agent_turn_history/store/scoring_history.rs)

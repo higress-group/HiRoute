@@ -226,7 +226,7 @@ mod tests {
     }
 
     #[test]
-    fn terra_uses_confirmed_sol_efforts_without_inheriting_default_or_other_facts() {
+    fn terra_uses_direct_facts_without_granting_executable_entitlement() {
         let catalog = catalog();
         let metadata = catalog.model_metadata();
         let terra = metadata
@@ -234,36 +234,30 @@ mod tests {
             .iter()
             .find(|m| m.model_key == "gpt-6.1-terra")
             .unwrap();
-        let sol = metadata
-            .canonical_models
-            .iter()
-            .find(|m| m.model_key == "gpt-6.1-sol")
-            .unwrap();
-        assert_eq!(terra.reasoning.profiles, sol.reasoning.profiles);
-        assert_eq!(terra.reasoning.default, None);
-        assert!(
-            terra
-                .reasoning
-                .note
-                .as_ref()
-                .unwrap()
-                .contains("Sol only, not Terra directly")
+        assert_eq!(
+            terra.reasoning.profiles,
+            ["none", "low", "medium", "high", "xhigh", "max"]
         );
-        assert_eq!(terra.context_tokens.value, None);
-        assert_eq!(terra.max_output_tokens.value, None);
-        assert!(
-            terra
-                .capabilities
-                .values()
-                .all(|v| *v == MetadataCapabilityStateV1::Unknown)
+        assert_eq!(terra.reasoning.default.as_deref(), Some("medium"));
+        assert_eq!(terra.context_tokens.value, Some(1_050_000));
+        assert_eq!(terra.max_output_tokens.value, Some(128_000));
+        assert_eq!(
+            terra.capabilities["tool"],
+            MetadataCapabilityStateV1::Supported
         );
-        assert!(
-            terra
-                .modalities
-                .values()
-                .all(|v| *v == MetadataCapabilityStateV1::Unknown)
+        assert_eq!(
+            terra.modalities["image_input"],
+            MetadataCapabilityStateV1::Supported
         );
-        assert_eq!(terra.lifecycle, "unknown");
+        assert_eq!(
+            terra.modalities["audio_input"],
+            MetadataCapabilityStateV1::Unsupported
+        );
+        assert_eq!(
+            terra.modalities["video_input"],
+            MetadataCapabilityStateV1::Unsupported
+        );
+        assert_eq!(terra.lifecycle, "active");
         assert!(
             catalog
                 .model_data()
@@ -271,10 +265,16 @@ mod tests {
                 .iter()
                 .all(|p| !p.model_configuration_id.contains("gpt-6.1-terra"))
         );
-        assert!(metadata.access_products.iter().all(|p| {
-            !p.documented_upstream_model_ids
+        let product = metadata
+            .access_products
+            .iter()
+            .find(|p| p.product_key == "openai-platform-global")
+            .unwrap();
+        assert!(
+            product
+                .documented_upstream_model_ids
                 .contains(&"gpt-6.1-terra".into())
-        }));
+        );
         for protocol in [
             UpstreamProtocol::Responses,
             UpstreamProtocol::ChatCompletions,
@@ -295,8 +295,8 @@ mod tests {
                 value.capability,
                 NativeReasoningCapabilityV1::Discrete {
                     parameter: "reasoning_effort".into(),
-                    profiles: sol.reasoning.profiles.clone(),
-                    default_profile: None,
+                    profiles: terra.reasoning.profiles.clone(),
+                    default_profile: Some("medium".into()),
                 }
             );
         }

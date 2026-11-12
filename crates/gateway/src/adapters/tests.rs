@@ -460,8 +460,10 @@ fn messages_ingress_accepts_only_the_known_claude_transport_hints() {
         }),
     )
     .unwrap();
-    assert_eq!(request.messages.len(), 1);
-    assert_eq!(request.instructions.len(), 2);
+    assert_eq!(request.instructions.len(), 1);
+    assert_eq!(request.messages.len(), 2);
+    assert_eq!(request.messages[1].role, MessageRole::System);
+    assert!(request.requirements().mid_conversation_instructions);
 
     let native = decode_ingress_request(
         IngressProtocol::Messages,

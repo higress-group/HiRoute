@@ -284,6 +284,13 @@ fn settings_read_failure(
     request_id: String,
 ) -> MachineEnvelopeV2<Value> {
     let mut response = failed(map_control_error(error), request_id);
+    if let crate::control::ControlReadError::DshDesktopModelCheckFailed(reason) = error {
+        response
+            .error
+            .as_mut()
+            .expect("failed envelope has an error")
+            .message_key = reason.message_key().into();
+    }
     if error == crate::control::ControlReadError::CodexProfileConflict {
         response
             .error

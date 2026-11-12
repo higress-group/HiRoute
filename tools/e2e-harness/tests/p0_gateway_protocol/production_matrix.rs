@@ -562,9 +562,12 @@ fn expected_native_body(
             IngressProtocol::Messages => {
                 body["output_config"] = json!({"format": messages_schema_format()});
                 body["system"] = json!([
-                    {"type":"text","text":"long instruction ".repeat(1024),"cache_control":{"type":"ephemeral"}},
-                    {"type":"text","text":"reminder"}
+                    {"type":"text","text":"long instruction ".repeat(1024),"cache_control":{"type":"ephemeral"}}
                 ]);
+                body["messages"]
+                    .as_array_mut()
+                    .unwrap()
+                    .push(json!({"role":"system","content":"reminder"}));
             }
         }
         return body;

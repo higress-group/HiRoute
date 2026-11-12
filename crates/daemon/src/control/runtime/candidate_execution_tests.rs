@@ -532,6 +532,7 @@ fn cpa_profiles_prefer_same_protocol_and_messages_falls_back_to_responses() {
     };
     let faces = [
         ProtocolFace {
+            tool_override: None,
             protocol: UpstreamProtocol::Responses,
             request_path: "/v1/responses".into(),
             authentication: GatewayAuthenticationSemanticsV1::Bearer,
@@ -541,6 +542,7 @@ fn cpa_profiles_prefer_same_protocol_and_messages_falls_back_to_responses() {
             adapter_revision: None,
         },
         ProtocolFace {
+            tool_override: None,
             protocol: UpstreamProtocol::ChatCompletions,
             request_path: "/v1/chat/completions".into(),
             authentication: GatewayAuthenticationSemanticsV1::Bearer,
@@ -550,6 +552,7 @@ fn cpa_profiles_prefer_same_protocol_and_messages_falls_back_to_responses() {
             adapter_revision: None,
         },
         ProtocolFace {
+            tool_override: None,
             protocol: UpstreamProtocol::Messages,
             request_path: "/v1/messages".into(),
             authentication: GatewayAuthenticationSemanticsV1::Bearer,
@@ -687,6 +690,7 @@ fn cpa_messages_only_face_is_not_dropped_by_absent_responses() {
         "messages-model",
         ConnectorRuntimeKind::CpaBridge,
         &[ProtocolFace {
+            tool_override: None,
             protocol: UpstreamProtocol::Messages,
             request_path: "/v1/messages".into(),
             authentication: GatewayAuthenticationSemanticsV1::Bearer,

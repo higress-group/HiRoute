@@ -110,6 +110,7 @@ fn project_source_with_origins(
             &source.provenance,
             &source.target,
             &source.authentication,
+            &source.additional_native_endpoints,
             &model.upstream_model_id,
             &model.capabilities,
             &api_fields,

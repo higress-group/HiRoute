@@ -159,6 +159,7 @@ impl RoleAllConfig {
 pub struct RoleAllHandle {
     control: ManagedControlHandle,
     gateway: ManagedGatewayHandle,
+    observation: Arc<GatewayObservation>,
     cpa: Option<Arc<ManagedCpaRuntimeSet>>,
     _runtime: ProductionControlRuntime,
     upgrade: Arc<hiroute_host_runtime::UpgradeDrain>,
@@ -387,8 +388,8 @@ impl RoleAllHandle {
     }
 
     pub fn shutdown(&self) {
-        // Reverse startup order: reject new control work before stopping request traffic. The
-        // Gateway-owned bounded observation producers drain as their runtime is dropped.
+        // Reject new control work before stopping request traffic. join waits
+        // for admitted execution facts before the stores and process can exit.
         self.control.shutdown();
         self._runtime.shutdown_workers();
         self.gateway.shutdown();
@@ -414,6 +415,9 @@ impl RoleAllHandle {
         self.gateway
             .join(remaining(deadline, "Gateway")?)
             .map_err(|error| RoleAllError::Component("Gateway", error.to_string()))?;
+        self.observation
+            .drain_execution_facts(remaining(deadline, "Execution facts")?)
+            .map_err(|error| RoleAllError::Component("Execution facts", error.to_string()))?;
         if let Some(cpa) = &self.cpa {
             match cpa.shutdown() {
                 Ok(_) | Err(hiroute_cpa_bridge::CpaLifecycleError::NotStarted) => {}
@@ -629,7 +633,7 @@ fn start_role_all_with_runtime(
         ProductionGatewayRuntime::compose_with_replay_root(
             ports,
             Arc::new(PublicationPlannerInputAuthority),
-            observation,
+            Arc::clone(&observation),
             config.replay_root(),
         )
         .with_run_request_authority(runtime.delegation_run_authority())
@@ -730,6 +734,7 @@ fn start_role_all_with_runtime(
     Ok(RoleAllHandle {
         control,
         gateway,
+        observation,
         cpa,
         _runtime: runtime,
         upgrade,
