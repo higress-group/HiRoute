@@ -3,6 +3,9 @@ use std::collections::BTreeMap;
 use hiroute_domain::*;
 use hiroute_integrations::TrustedReleaseCatalog;
 
+#[path = "current_model_metadata/domestic.rs"]
+mod domestic;
+
 fn assert_no_numeric_cost_leaf(value: &serde_json::Value) {
     match value {
         serde_json::Value::Number(number) => {

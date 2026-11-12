@@ -2,17 +2,17 @@ use hiroute_domain::OfficialModelSnapshotV1;
 use hiroute_integrations::TrustedReleaseCatalog;
 
 fn current() -> OfficialModelSnapshotV1 {
-    let manifest = include_bytes!("../../../assets/release-facts/current/bundle/manifest.json");
+    let manifest = include_bytes!("../../../../assets/release-facts/current/bundle/manifest.json");
     TrustedReleaseCatalog::load_bundled_release_facts(
         manifest,
         manifest,
-        include_bytes!("../../../assets/release-facts/current/bundle/connector-registry.json"),
-        include_bytes!("../../../assets/release-facts/current/bundle/model-data.json"),
+        include_bytes!("../../../../assets/release-facts/current/bundle/connector-registry.json"),
+        include_bytes!("../../../../assets/release-facts/current/bundle/model-data.json"),
     )
     .expect("accept the exact current bundled catalog")
     .with_embedded_official_data(
         serde_json::from_slice(include_bytes!(
-            "../../../assets/release-facts/current/bundle/official-model-data.json"
+            "../../../../assets/release-facts/current/bundle/official-model-data.json"
         ))
         .unwrap(),
     )
