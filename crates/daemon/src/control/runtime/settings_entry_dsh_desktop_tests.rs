@@ -50,26 +50,55 @@ fn desktop_preview_and_apply_distinguish_custom_profile_from_failed_probe() {
         assert_eq!(error.message_key, "error.dsh_desktop_custom_profile");
         assert!(response.operation.is_none());
     }
+    let mut malformed = json!({
+        "dsh":{"profile":{"bundles":["@deepseek-ai/dsh-base","@deepseek-ai/dsh-web-app"]}},
+        "dependencies":null
+    });
+    for dependencies in [json!(null), json!([])] {
+        malformed["dependencies"] = dependencies;
+        fs::write(&manifest, serde_json::to_vec(&malformed).unwrap()).unwrap();
+        let failure = preview();
+        let error = failure.error.unwrap();
+        assert_eq!(
+            error.code,
+            hiroute_application_api::ErrorCode::ActionRequired
+        );
+        assert_eq!(error.message_key, "error.dsh_desktop_manifest_invalid");
+        assert!(failure.operation.is_none());
+    }
     fs::remove_file(manifest).unwrap();
-    fs::write(
-        scanner.dsh_desktop_executable_target().unwrap(),
-        b"#!/bin/sh\nif [ \"$3\" = --version ]; then echo 0.2.2-rc.1; else exit 23; fi\n",
-    )
-    .unwrap();
+    let executable = scanner.dsh_desktop_executable_target().unwrap();
+    for (probe, message_key) in [
+        ("exit 23", "error.dsh_desktop_probe_failed"),
+        ("exit 0", "error.dsh_desktop_probe_failed"),
+        (r"printf '\377'", "error.dsh_desktop_probe_failed"),
+        (
+            r"printf '%s\n' '- id: skill'",
+            "error.dsh_desktop_model_adapter_missing",
+        ),
+    ] {
+        fs::write(
+            &executable,
+            format!(
+                "#!/bin/sh\nif [ \"$3\" = --version ]; then echo 0.2.2-rc.1; else {probe}; fi\n"
+            ),
+        )
+        .unwrap();
+        let failure = preview();
+        let error = failure.error.unwrap();
+        assert_eq!(
+            error.code,
+            hiroute_application_api::ErrorCode::ActionRequired
+        );
+        assert_eq!(error.message_key, message_key);
+        assert!(failure.operation.is_none());
+    }
     let scan = fixture.service.dispatch_wire(request(
         "ScanAgents",
         json!({"context_id":fixture.context}),
         None,
     ));
     assert_eq!(scan.data.unwrap()["agents"][0]["version"], "0.2.2-rc.1");
-    let failure = preview();
-    let error = failure.error.unwrap();
-    assert_eq!(
-        error.code,
-        hiroute_application_api::ErrorCode::ActionRequired
-    );
-    assert_eq!(error.message_key, "error.dsh_desktop_probe_failed");
-    assert!(failure.operation.is_none());
     assert_eq!(fs::read(&fixture.native_config).unwrap(), original);
 }
 

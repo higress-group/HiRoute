@@ -27,6 +27,15 @@ impl DshDesktopModelCheckError {
             _ => fallback,
         }
     }
+
+    #[cfg(any(unix, windows))]
+    fn composition_error(error: super::dsh_native::DshCompositionError) -> Self {
+        use super::dsh_native::DshCompositionError;
+        match error {
+            DshCompositionError::InvalidOutput => Self::Probe,
+            DshCompositionError::MissingRequiredPlugin => Self::MissingAdapter,
+        }
+    }
 }
 
 #[cfg(not(windows))]
@@ -261,16 +270,22 @@ impl FilesystemAgentScannerV1 {
         if !bytes.is_empty() {
             let value: serde_json::Value =
                 serde_json::from_slice(&bytes).map_err(|_| Check::Manifest)?;
-            if !value.is_object() {
+            let bundles = &value["dsh"]["profile"]["bundles"];
+            if !bundles
+                .as_array()
+                .is_some_and(|entries| entries.iter().all(serde_json::Value::is_string))
+            {
                 return Err(Check::Manifest);
             }
+            let has_dependencies = match value.get("dependencies") {
+                Some(serde_json::Value::Object(entries)) => !entries.is_empty(),
+                Some(_) => return Err(Check::Manifest),
+                None => false,
+            };
             // This is the shipped Desktop composition. Custom bundle loading is not
             // established by the public CLI's default dump and must not be asserted.
-            if value["dsh"]["profile"]["bundles"]
-                != serde_json::json!(["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"])
-                || value
-                    .get("dependencies")
-                    .is_some_and(|v| !v.as_object().is_some_and(|v| v.is_empty()))
+            if bundles != &serde_json::json!(["@deepseek-ai/dsh-base", "@deepseek-ai/dsh-web-app"])
+                || has_dependencies
             {
                 return Err(Check::CustomProfile);
             }
@@ -304,7 +319,7 @@ impl FilesystemAgentScannerV1 {
         let output =
             super::dsh_native::dsh_public_probe(command, false).map_err(|_| Check::Probe)?;
         super::dsh_native::check_composition(&output, &["llm-pi-ai"])
-            .map_err(|_| Check::MissingAdapter)?;
+            .map_err(Check::composition_error)?;
         if !self.dsh_desktop_model_configuration_is_current(&before)? {
             return Err(Check::SourceChanged);
         }
@@ -329,7 +344,7 @@ impl FilesystemAgentScannerV1 {
         let output =
             super::dsh_native::dsh_public_probe(command, false).map_err(|_| Check::Probe)?;
         super::dsh_native::check_composition(&output, &["skill-filesystem", "tool-skill", "skill"])
-            .map_err(|_| Check::MissingAdapter)?;
+            .map_err(Check::composition_error)?;
         if before != self.dsh_desktop_contract(true)?.0 {
             return Err(Check::SourceChanged);
         }
