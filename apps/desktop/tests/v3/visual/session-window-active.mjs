@@ -4,6 +4,11 @@ import { connectPage, evaluate, navigate, waitFor } from './cdp-client.mjs';
 
 const port = Number(process.argv[2]);
 const baseUrl = process.argv[3];
+const transport = process.env.HIROUTE_BROWSER_TRANSPORT ?? 'tauri';
+if (!['tauri', 'console'].includes(transport)) throw new Error('Unknown browser host transport');
+const fixtureUrl = new URL('session-window.html', baseUrl);
+fixtureUrl.searchParams.set('transport', transport);
+const ready = `Boolean(window.sessionWindow)${transport === 'console' ? " && window.fixtureTransport === 'console'" : ''}`;
 const outputRoot = path.resolve(process.argv[4]);
 if (!Number.isInteger(port) || !baseUrl || !process.argv[4]) {
   throw new Error('Usage: node session-window-active.mjs <cdp-port> <base-url> <output-directory>');
@@ -13,8 +18,8 @@ try {
   await mkdir(outputRoot, { recursive: true });
   const client = await connectPage(port);
   try {
-    await navigate(client, new URL('session-window.html', baseUrl).href, { width: 1280, height: 900 });
-    await waitFor(client, 'Boolean(window.sessionWindow)', { timeout: 7000 });
+    await navigate(client, fixtureUrl.href, { width: 1280, height: 900 });
+    await waitFor(client, ready, { timeout: 7000 });
     const count = await evaluate(client, `import('/session-window-scenarios.mjs').then(module => module.sessionWindowScenarioCount)`);
     if (!Number.isInteger(count) || count < 22) throw new Error('Required session scenarios are missing');
     const batches = Array.from({ length: Math.ceil(count / 4) }, (_, index) => [index * 4, Math.min(count, (index + 1) * 4)]);
@@ -28,8 +33,8 @@ try {
     }
     const semanticCaptures = [];
     for (const [width, height] of [[1200, 813], [755, 600]]) {
-      await navigate(client, new URL('session-window.html', baseUrl).href, { width, height });
-      await waitFor(client, 'Boolean(window.sessionWindow)');
+      await navigate(client, fixtureUrl.href, { width, height });
+      await waitFor(client, ready);
       const batch = await evaluate(client, `import('/session-window-scenarios.mjs').then(module => module.runSemanticCaptureScenario())`);
       if (batch.failed) throw new Error('Semantic capture scenario failed before visual inspection');
       for (const language of ['zh', 'en']) {
@@ -47,8 +52,8 @@ try {
     }
     const agentLabels = [];
     for (const [width, height] of [[1200, 813], [755, 600]]) for (const language of ['zh', 'en']) {
-      await navigate(client, new URL('session-window.html', baseUrl).href, { width, height });
-      await waitFor(client, 'Boolean(window.sessionWindow)');
+      await navigate(client, fixtureUrl.href, { width, height });
+      await waitFor(client, ready);
       await evaluate(client, `(() => {
         const control = window.sessionWindow;
         control.reset(); control.language = ${JSON.stringify(language)};
@@ -78,8 +83,8 @@ try {
     for (const [width, height] of [[1200, 813], [755, 600]]) {
       for (const language of ['zh', 'en']) {
         for (const state of ['searching', 'results', 'empty', 'pending', 'error']) {
-          await navigate(client, new URL('session-window.html', baseUrl).href, { width, height });
-          await waitFor(client, 'Boolean(window.sessionWindow)');
+          await navigate(client, fixtureUrl.href, { width, height });
+          await waitFor(client, ready);
           await evaluate(client, `(() => {
             const control = window.sessionWindow;
             control.reset(); control.language = ${JSON.stringify(language)};

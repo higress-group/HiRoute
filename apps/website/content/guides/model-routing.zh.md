@@ -29,6 +29,7 @@ CLI 参考：https://hiroute.ai/zh/docs/cli/
 - 调整信任度、自定义分支和其他设置：routing show · routing options → routing preview
 - 发布路由并接入 Agent：routing apply · agents connect preview → agents connect apply
 - 查看实际选模、质量与费用：sessions timeline · observation plan-quality samples · observation plan-trust · value show
+- 在 HiRoute 0.6.1 及以上版本中，首页或会话正在更新时可保持页面打开，等待读取自动恢复。
 
 界面与 CLI 连接同一个 HiRoute 服务，共用配置和执行记录。先读取现状并复用已有配置；参数以本机命令 --help 和 hiroute schema show --command-id COMMAND_ID --include-schema 为准。按内置技能完成所需预览、应用与核验，最后说明结果。
 ```
@@ -154,6 +155,8 @@ CLI 参考：https://hiroute.ai/zh/docs/cli/
 ## 5. 查看实际效果
 
 在“会话”中打开一个会话，“路由时间线”按轮次展示每一轮实际使用的模型组和模型、简单概率与阶段评分，以及低分保护在哪一轮触发、在哪一轮解除。选中一轮，可以看到这一阶段开始时的选择依据，以及每个请求的用量、缓存命中和 API 等价估算；“查看对话”切换到对话内容，“查看模型表现”打开这条路由的模型表现。
+
+从 HiRoute 0.6.1 起，首页和会话的读取遇到短暂中断后会自动恢复。更新时保持页面打开即可。如果需要重新读取已显示的历史，页面会恢复仍然有效的选择。
 
 <figure>
   <a href="/decision-assets/readme-session-zh-CN.png"><img src="/decision-assets/readme-session-zh-CN.png" alt="会话路由时间线显示实际执行模型与阶段评分" loading="lazy" /></a>

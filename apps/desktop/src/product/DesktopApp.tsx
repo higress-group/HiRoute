@@ -118,11 +118,12 @@ function failureHelp(code: string, language: 'zh' | 'en', operation?: DesktopOpe
 export function DesktopApp() {
   const preferences = usePresentationPreferences();
   const { language } = preferences;
-  const home = useDesktopHome();
   const [trialIntent, setTrialIntent] = useState<{ modelId?: string; bindingId?: string } | null>(null);
   const [trialModelsOpen, setTrialModelsOpen] = useState(false);
   const trialOpen = Boolean(trialIntent) && !trialModelsOpen;
   const [page, setPage] = useState<Page>('home');
+  const homeObservationActive = page === 'home' && !trialOpen;
+  const home = useDesktopHome(homeObservationActive);
   const [modelTab, setModelTab] = useState<'general' | 'decisions'>('general');
   // Managing an API connection from a decision draft keeps that draft mounted behind the model page.
   const [decisionDetour, setDecisionDetour] = useState(false), [sourceRefreshKey, setSourceRefreshKey] = useState(0);
@@ -373,7 +374,6 @@ export function DesktopApp() {
   }
 
   function openPage(next: Page) {
-    if (next === 'home' && page !== 'home') void Promise.allSettled([home.refreshActivity(), home.refreshValue()]);
     setVisited(current => current.has(next) ? current : new Set([...current, next]));
     setPage(next);
     if (next !== 'models') { decisionReturn.current = null; setReturningToRoute(false); setDecisionDetour(false); }
@@ -781,6 +781,7 @@ export function DesktopApp() {
         {trialIntent && <div className="trial-page-host" hidden={trialModelsOpen}><TrialQuickStart active={!trialModelsOpen} onOpenModels={() => void addTrialModel()} onOpenPerformance={plan => { setTrialIntent(null); void showRouting({ key: `trial/${randomId()}`, plan, initialView: 'performance' }); }} onOpenSessions={sessionId => { void (async () => { if (!await allowPageChange('sessions') || !await leaveTrial()) return; setSessionIntent({ key: `sessions/${randomId()}`, sessionId }); openPage('sessions'); })(); }} initialModelId={trialIntent.modelId} initialBindingId={trialIntent.bindingId} language={language} mutable={mutationAllowed} snapshot={home.desktopSnapshot} operation={operation} onRepresentedOperations={setTrialOperationIds} onOperation={value => acceptOperation(value, { kind: 'routing' })} onRefresh={async () => { setObserving(true); home.invalidateCatalog(); await home.refreshDesktop(); setRefreshVersion(value => value + 1); }} onClose={() => setTrialIntent(null)} onOpenAgent={id => { setTrialIntent(null); setAgentIntent({ key: `agents/${randomId()}`, agentId: id }); openPage('agents'); }} /></div>}
         <div hidden={trialOpen || page !== 'home'}><Home
             language={language}
+            observationActive={homeObservationActive}
             reads={home.reads}
             operation={homeOperation}
             trustSuggestions={trustSuggestions}

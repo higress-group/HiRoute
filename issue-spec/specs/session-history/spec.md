@@ -469,11 +469,21 @@ Current observation v2 callers may explicitly request `read_failure_details=true
 to receive the same typed bounded-read failures, including Home sessions and usage.
 Omitted/false retains each view's released failure shape and canonical request
 identity. The option participates in the exact protected request digest; it grants
-no access and changes neither reader limits nor data semantics. Home shares the
-bounded observation queue, retries only reader-busy failures at most twice after
-the initial attempt, and cancels obsolete queued/retry work when refreshed or
-unmounted. Genuine failures and exhausted retries retain the last loaded data and
-an explicit per-domain Retry action; unavailable reads never become empty success.
+no access and changes neither reader limits nor data semantics.
+
+Home activity and usage and the Sessions read surfaces SHALL share the bounded
+observation queue. A visible read SHALL recover from typed retryable reader busy,
+storage timeout or temporary storage/transport unavailability with bounded
+backoff. It SHALL keep the last valid data for the same scope and present a
+loading or updating state until recovery. An invalid continuation SHALL rebuild
+the pinned query from its first page. The affected results remain hidden until
+the new range is established, and loaded pages and content chunks from different
+ranges SHALL NOT be combined. Hidden windows pause new reads, and leaving or
+replacing the scope cancels queued work and prevents old replies from being
+committed. Content invalidation SHALL hide the affected body and prevent pending
+reads from restoring it. A genuine authority, protocol, corruption or capacity
+failure retains its applicable error or recovery action. Unavailable reads
+SHALL NOT become empty success or establish write authority.
 
 Extension scores without a floor MUST NOT be classified as below-floor or meets-floor and MUST NOT be relabelled unscored solely because no floor exists. Their valid complete scores still contribute to mean scores and scoring coverage.
 

@@ -2,7 +2,8 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } f
 import { Disclosure } from '../ui';
 import { formatEstimateMoney } from './estimate-money';
 import { safeDiagnosticCode } from '../error-code';
-import { observationRead } from './observation-client';
+import { observationAccessLost, observationCancelled, observationFailureCode } from './observation-failure';
+import { observationRecoveryText, recoverObservation, type ObservationRecoveryStatus } from './observation-recovery';
 import { formatTokenCount } from './usage-presentation';
 import { ContentExcerpt } from './Sessions';
 import { selectionReasonLabel } from './selection-reasons';
@@ -61,6 +62,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
   const [turns, setTurns] = useState<TimelineTurn[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [recovery, setRecovery] = useState<ObservationRecoveryStatus>();
   const [loaded, setLoaded] = useState(false);
   const [retry, setRetry] = useState(0);
   const [allRequests, setAllRequests] = useState(false);
@@ -69,31 +71,79 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
   const [viewport, setViewport] = useState({ from: 0, to: 1 });
   const [overviewFocus, setOverviewFocus] = useState<string | null>(null);
   const watermark = useRef<string | null>(null);
-  const blockedScope = useRef(false);
+  const blockedRead = useRef(false);
   const probed = useRef(false);
   const lastRead = useRef(-Infinity);
-  const failures = useRef(0);
+  const pagesLoaded = useRef(0);
+  const hadTurns = useRef(false);
   const stored = useRef(new Map<string, TimelineTurn>());
   const scroller = useRef<HTMLDivElement>(null);
   const timeline = useRef<HTMLElement>(null);
   const pendingFocus = useRef<{ from: Element; owner: string; attribute: 'data-overview-turn' | 'data-turn-id' } | null>(null);
-  useEffect(() => { blockedScope.current = false; setError(''); }, [session]);
-  useEffect(() => { watermark.current = null; probed.current = false; lastRead.current = -Infinity; failures.current = 0; stored.current.clear(); setTurns([]); setSelected(null); setOverviewFocus(null); setLoaded(false); setArrivals(new Set()); setUnseen([]); }, [session, refreshVersion]);
+  const restoreViewport = useRef<{ id: string; offset: number } | null>(null);
+  useLayoutEffect(() => {
+    blockedRead.current = false; setError(''); setRecovery(undefined);
+    watermark.current = null; probed.current = false; lastRead.current = -Infinity; pagesLoaded.current = 0;
+    hadTurns.current = false; restoreViewport.current = null; pendingFocus.current = null;
+    stored.current.clear(); setTurns([]); setSelected(null); setOverviewFocus(null); setLoaded(false); setArrivals(new Set()); setUnseen([]);
+  }, [session, refreshVersion]);
   useEffect(() => {
     if (!arrivals.size) return;
     const timer = window.setTimeout(() => setArrivals(new Set()), 600);
     return () => window.clearTimeout(timer);
   }, [arrivals]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!active) return;
     const controller = new AbortController(); let inFlight = false; let timer = 0;
-    const schedule = (delay: number) => { window.clearTimeout(timer); if (!controller.signal.aborted) timer = window.setTimeout(() => void load(), delay); };
+    const signal = controller.signal;
+    const schedule = (delay: number) => { window.clearTimeout(timer); if (!signal.aborted && !document.hidden) timer = window.setTimeout(() => void load(), delay); };
+    function discardTurns() {
+      watermark.current = null; pagesLoaded.current = 0;
+      stored.current.clear(); setTurns([]); setLoaded(false); setArrivals(new Set()); setUnseen([]);
+    }
     async function load() {
-      if (inFlight || blockedScope.current || controller.signal.aborted || document.visibilityState !== 'visible' || (!displayed && probed.current)) return;
+      if (inFlight || blockedRead.current || signal.aborted || document.hidden || (!displayed && probed.current)) return;
       inFlight = true;
+      let rebuilding = false;
+      let replayPages = 1;
       try {
-        const page = await observationRead<TimelinePage>('routing_timeline', { session_id: session, after_watermark: watermark.current, limit: 50, include_presentation: true, include_decision_failure: true }, controller.signal);
-        if (controller.signal.aborted) return;
+        const pages = await recoverObservation(async read => {
+          const results: TimelinePage[] = [];
+          let after = watermark.current;
+          const seen = new Set([after]);
+          do {
+            const page: TimelinePage = await read('routing_timeline', { session_id: session, after_watermark: after, limit: 50, include_presentation: true, include_decision_failure: true });
+            results.push(page);
+            if (page.complete) break;
+            after = page.watermark;
+            if (!after || seen.has(after)) throw { code: 'RESPONSE_DATA_INVALID' };
+            seen.add(after);
+          } while (results.length < replayPages);
+          return results;
+        }, { signal, onRecovery: setRecovery, onRebuild: () => {
+          if (!rebuilding) {
+            replayPages = pagesLoaded.current + 1;
+            rebuilding = true;
+            const pane = scroller.current;
+            if (pane) {
+              const left = pane.getBoundingClientRect().left;
+              const labelWidth = pane.querySelector('.routing-lane-label')?.getBoundingClientRect().width ?? 0;
+              const card = [...pane.querySelectorAll<HTMLElement>('.routing-turn[data-turn-id]')].find(item => item.getBoundingClientRect().right > left + labelWidth);
+              if (card?.dataset.turnId) restoreViewport.current = { id: card.dataset.turnId, offset: card.getBoundingClientRect().left - left };
+            }
+            const focused = document.activeElement;
+            if (focused && timeline.current?.contains(focused)) {
+              const overview = focused.closest('[data-overview-turn]');
+              const control = overview ?? focused.closest('.routing-turn[data-turn-id]');
+              const attribute = overview ? 'data-overview-turn' : 'data-turn-id';
+              const owner = control?.getAttribute(attribute);
+              if (owner) pendingFocus.current = { from: focused, owner, attribute };
+            }
+          }
+          discardTurns();
+        } });
+        if (signal.aborted) return;
+        const page = { ...pages.at(-1)!, turns: pages.flatMap(item => item.turns) };
         let changed = false;
         const fresh = watermark.current !== null && probed.current ? page.turns.filter(turn => !stored.current.has(turn.turn_id)).map(turn => turn.turn_id) : [];
         const owners = new Map(page.turns.flatMap(turn => turn.requests.map(request => [request.request_id, turn.turn_id] as const)));
@@ -130,28 +180,33 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
         }
         if (fresh.length) { setArrivals(previous => new Set([...previous, ...fresh])); setUnseen(previous => [...new Set([...previous, ...fresh])]); }
         if (changed) setTurns([...stored.current.values()].sort((a, b) => a.started_at_ms - b.started_at_ms || a.turn_id.localeCompare(b.turn_id)));
-        watermark.current = page.watermark; failures.current = 0; setError(''); setLoaded(true);
+        if (rebuilding) {
+          const ids = new Set(stored.current.keys());
+          setSelected(current => current && ids.has(current) ? current : null);
+          setOverviewFocus(current => current && ids.has(current) ? current : null);
+        }
+        // Empty live polls and updates to known turns do not increase the
+        // amount of history we replay on the next rebuild.
+        pagesLoaded.current += pages.filter(item => item.turns.length > 0).length * Number(rebuilding || !probed.current || fresh.length > 0);
+        hadTurns.current = stored.current.size > 0;
+        watermark.current = page.watermark; setRecovery(undefined); setError(''); setLoaded(true);
         if (!page.complete) schedule(0);
         else { probed.current = true; if (displayed) schedule(2000); }
       } catch (e) {
-        if (controller.signal.aborted) return;
-        const code = safeDiagnosticCode(e, 'OBSERVATION_UNAVAILABLE');
-        blockedScope.current = code.toLowerCase().includes('scope_too_large');
-        const stale = code.toLowerCase().includes('stale') && watermark.current !== null;
-        if (stale) { watermark.current = null; stored.current.clear(); setTurns([]); setLoaded(false); setArrivals(new Set()); setUnseen([]); }
+        if (observationCancelled(e, signal)) return;
+        const code = observationFailureCode(e) ?? safeDiagnosticCode(e, 'OBSERVATION_UNAVAILABLE');
+        blockedRead.current = true;
+        probed.current = true;
+        if (observationAccessLost(e)) { discardTurns(); hadTurns.current = false; }
+        setRecovery(undefined);
         setError(code);
-        if (stale) schedule(0);
-        else {
-          probed.current = true;
-          // Keep one visible read in flight; repeated transient failures back off,
-          // while actual capacity limits require an explicit retry.
-          const delay = Math.min(30_000, 2000 * 2 ** Math.min(failures.current++, 4));
-          if (displayed && !blockedScope.current) schedule(delay);
-        }
       } finally { inFlight = false; lastRead.current = performance.now(); }
     }
     const visible = () => { if (document.visibilityState === 'visible') void load(); else window.clearTimeout(timer); };
-    const invalidate = () => { controller.abort(); stored.current.clear(); watermark.current = null; probed.current = false; lastRead.current = -Infinity; setTurns([]); setLoaded(false); setArrivals(new Set()); setUnseen([]); setRetry(n => n + 1); };
+    const invalidate = () => {
+      controller.abort(); discardTurns(); blockedRead.current = false; probed.current = false; lastRead.current = -Infinity;
+      hadTurns.current = false; restoreViewport.current = null; pendingFocus.current = null; setRecovery(undefined); setRetry(n => n + 1);
+    };
     // Showing the pane continues the two-second cadence instead of repeating the probe that just ran.
     const since = performance.now() - lastRead.current;
     document.addEventListener('visibilitychange', visible); window.addEventListener('hiroute-content-invalidated', invalidate);
@@ -160,16 +215,17 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
   }, [session, active, displayed, refreshVersion, retry]);
   useLayoutEffect(() => {
     const focus = pendingFocus.current;
+    if (!turns.length && recovery) return;
     pendingFocus.current = null;
     if (!focus || !displayed || !timeline.current) return;
     // A removed control loses focus to the body. Never take it from another control.
     if (document.activeElement !== document.body && document.activeElement !== focus.from) return;
     [...timeline.current.querySelectorAll<HTMLElement | SVGGElement>(`[${focus.attribute}]`)]
       .find(element => element.getAttribute(focus.attribute) === focus.owner)?.focus();
-  }, [turns, displayed]);
+  }, [turns, displayed, recovery]);
   useEffect(() => { const turn = turns.find(t => t.requests.some(r => r.request_id === requestId)); if (turn) setSelected(turn.turn_id); }, [requestId, turns]);
-  const blocked = error.toLowerCase().includes('scope_too_large');
-  const availability: TimelineAvailability = turns.length ? 'turns' : blocked ? 'blocked' : error ? 'unavailable' : loaded ? 'empty' : 'loading';
+  const blocked = error === 'SCOPE_TOO_LARGE';
+  const availability: TimelineAvailability = turns.length || (recovery && hadTurns.current) ? 'turns' : blocked ? 'blocked' : error ? 'unavailable' : loaded ? 'empty' : 'loading';
   useEffect(() => { onAvailability?.(availability); }, [availability]);
   const markVisible = useCallback(() => {
     const pane = scroller.current;
@@ -193,9 +249,15 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
   // Set the initial position before interaction; later arrivals retain an explicitly selected turn.
   useLayoutEffect(() => {
     if (!displayed || !scroller.current) return;
-    if (!selected) { scroller.current.scrollLeft = scroller.current.scrollWidth; setUnseen([]); }
+    const pane = scroller.current;
+    const saved = restoreViewport.current;
+    if (saved && turns.length) {
+      const card = [...pane.querySelectorAll<HTMLElement>('.routing-turn[data-turn-id]')].find(item => item.dataset.turnId === saved.id);
+      if (card) pane.scrollLeft += card.getBoundingClientRect().left - pane.getBoundingClientRect().left - saved.offset;
+      restoreViewport.current = null;
+    } else if (!selected && !recovery) { pane.scrollLeft = pane.scrollWidth; setUnseen([]); }
     markVisible();
-  }, [turns.length, selected, displayed, markVisible]);
+  }, [turns.length, selected, displayed, markVisible, recovery]);
   useEffect(() => {
     if (!displayed || !scroller.current) return;
     const observer = new ResizeObserver(markVisible); observer.observe(scroller.current);
@@ -369,7 +431,7 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
         {selectedTurn.boundary !== 'unknown' && <Disclosure label={text('查看边界依据', 'View boundary evidence')} language={language}><p className="muted">{selectedTurn.boundary === 'new_user_message'
           ? text('会话开始或网关确认的对话延续都可能触发重新判断。客户端自动追加的后台消息也可能满足此规则。', 'A session opening or gateway-confirmed continuing history may trigger a fresh decision. Client-generated background messages can also meet this rule.')
           : text('上下文中的消息步骤比上一份可比较记录少，按压缩归因。回退或共享会话的后台、子代理请求也可能满足此条件。', 'The context has fewer message steps than the prior comparable checkpoint, so this is attributed to compaction. Rewinds or background and subagent requests sharing a session can also meet this condition.')}</p></Disclosure>}
-        {selectedTurn.requests[0] && <blockquote className="routing-quote"><ContentExcerpt active={active && displayed} contentCleared={contentCleared || clearedRequestIds.includes(selectedTurn.requests[0].request_id)} request={selectedTurn.requests[0].request_id} requestRunning={selectedTurn.requests[0].outcome === null} language={language} fallback={text('这一轮的消息暂不可用', 'This turn’s message is unavailable')} limit={140} revision={selectedTurn.content_digest} /></blockquote>}
+        {selectedTurn.requests[0] && <blockquote className="routing-quote"><ContentExcerpt recoverReads active={active && displayed} contentCleared={contentCleared || clearedRequestIds.includes(selectedTurn.requests[0].request_id)} request={selectedTurn.requests[0].request_id} requestRunning={selectedTurn.requests[0].outcome === null} language={language} fallback={text('这一轮的消息暂不可用', 'This turn’s message is unavailable')} limit={140} revision={selectedTurn.content_digest} /></blockquote>}
         <div className="routing-detail-block"><span>{text('阶段开始时的模型选择', 'Model selection at the start of this stage')}</span>{pending(selectedTurn) ? <p>{text('判断中…', 'Choosing a model…')}</p> : historicalExplanation(selectedTurn)}</div>
         <div className="routing-detail-block"><span>{text('胜任评分', 'Competence score')}</span><div><span className={`routing-score ${scoreTone(selectedTurn)}`}>{score(selectedTurn)}</span></div><p>{scoreExplanation(selectedTurn)}</p></div>
         <p className="routing-detail-facts">{[
@@ -420,9 +482,9 @@ export function RoutingTimeline({ session, language, active, displayed, refreshV
   </button>;
 
   return <section className="routing-timeline" ref={timeline} aria-label={text('路由时间线', 'Routing timeline')}>
-    <div className="routing-live" role="status"><span className={`routing-live-dot${running && !error ? ' running' : ''}`} />{error ? text('更新延迟', 'Update delayed') : running ? text(`实时 · 第 ${turns.length} 轮正在执行`, `Live · agent turn ${turns.length} is running`) : text('实时', 'Live')}<span className="muted">{error ? blocked ? text('等待手动重试', 'Waiting for Retry') : text('可见时自动重试', 'Retries automatically while visible') : text('可见时每 2 秒更新', 'Updates every 2 s while visible')}</span></div>
-    {error && <div className="callout warn" role="alert" data-error-code={error}><span>{blocked ? text('这条会话超出完整读取范围，暂时无法显示时间线。', 'This session exceeds the complete-read limit; its timeline is unavailable.') : turns.length ? text('更新暂时不可用，显示上次读取的内容。', 'Updates are temporarily unavailable. Showing the last successful read.') : text('暂时无法读取，正在自动重试。', 'The read is temporarily unavailable. Retrying automatically.')}</span><button className="btn" onClick={() => { blockedScope.current = false; failures.current = 0; lastRead.current = -Infinity; setRetry(n => n + 1); }}>{text('重试', 'Retry')}</button></div>}
-    {!loaded && !error && <p className="muted" role="status">{text('正在读取轮次…', 'Reading turns…')}</p>}
+    <div className="routing-live" role="status" data-observation-recovery={recovery}><span className={`routing-live-dot${running && !error ? ' running' : ''}`} />{error || recovery ? text('更新延迟', 'Update delayed') : running ? text(`实时 · 第 ${turns.length} 轮正在执行`, `Live · agent turn ${turns.length} is running`) : text('实时', 'Live')}<span className="muted">{recovery ? observationRecoveryText(recovery, language) : error ? text('等待读取', 'Waiting to read') : text('可见时每 2 秒更新', 'Updates every 2 s while visible')}</span></div>
+    {error && <div className="callout warn" role="alert" data-error-code={error}><span>{blocked ? text('这条会话超出完整读取范围，暂时无法显示时间线。', 'This session exceeds the complete-read limit; its timeline is unavailable.') : turns.length ? text('更新暂时不可用，显示上次读取的内容。', 'Updates are temporarily unavailable. Showing the last successful read.') : text('暂时无法读取时间线。', 'The timeline is temporarily unavailable.')}</span><button className="btn" onClick={() => { blockedRead.current = false; lastRead.current = -Infinity; setRetry(n => n + 1); }}>{text('重试', 'Retry')}</button></div>}
+    {!loaded && !error && !recovery && <p className="muted" role="status">{text('正在读取轮次…', 'Reading turns…')}</p>}
     {loaded && !turns.length && <p className="muted">{text('还没有可显示的轮次。', 'No recorded turns yet.')}</p>}
     {turns.length > 0 && <div className="routing-tiles">
       {[...totals.values()].map(({ cost, lane }) => <div className="routing-tile" key={`${cost.model_configuration_id}/${cost.currency}/${cost.valuation_kind}`}><span title={cost.model_configuration_id ?? undefined}>{names.get(cost.model_configuration_id ?? '') ?? modelLabel(cost.model_configuration_id, null, modelLabels, language).text} · {costBasis(cost)}{cost.model_configuration_id && <span className="sr-only"> · {text('配置 ID', 'Configuration ID')}: {cost.model_configuration_id}</span>}</span><strong className={tone(lane)}>{amount(cost.known_micros, cost.currency)}</strong>{cost.unknown_contributions > 0 && <small>{cost.known_micros === null ? text('记录不足，暂不能估算', 'Not enough evidence to estimate') : text('已知小计 · 另有未知部分', 'Known subtotal · Plus an unknown portion')}</small>}</div>)}

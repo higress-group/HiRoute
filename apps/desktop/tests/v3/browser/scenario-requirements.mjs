@@ -85,7 +85,7 @@ export const productShellRequired = [
   'desktop.trial.connected-models-and-models-return',
   'desktop.home.observation-reader-bound',
   'desktop.home.observation-busy-recovers',
-  'desktop.home.observation-busy-exhausted',
+  'desktop.home.observation-busy-recovers-after-repeated-failures',
   'desktop.home.observation-terminal-no-retry',
   'desktop.home.observation-superseded-retry',
   'desktop.home.service-refresh-authority',

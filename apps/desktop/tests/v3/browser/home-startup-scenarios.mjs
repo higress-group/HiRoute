@@ -1,5 +1,11 @@
 import { scenario } from './scenario-selection.mjs';
 
+const busyRead = () => ({ source: 'backend', envelope: { error: {
+  category: 'unavailable', code: 'OBSERVATION_UNAVAILABLE', retryable: true,
+  details_schema: 'hiroute.observation.read-failure/v1',
+  observation_read: { reason: 'reader_busy', retry_after_ms: 100, action: 'retry' },
+} } });
+
 export function homeStartupScenarios({ until, control }) {
   const assert = (value, message) => { if (!value) throw new Error(message); };
   const settled = () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -40,10 +46,7 @@ export function homeStartupScenarios({ until, control }) {
         c.reset(); await until(() => health()?.querySelector('.good'), 'initial Home ready'); await settled();
         c.handlers.observation_read = payload => {
           if (payload.request?.intent?.view === 'sessions') assert(payload.request.read_failure_details === true, 'Home did not opt into typed busy errors');
-          if (payload.request?.intent?.view === 'sessions' && ++attempts === 1) throw {
-            source: 'backend', envelope: { error: { category: 'unavailable', code: 'E_UNAVAILABLE',
-              observation_read: { reason: 'reader_busy', retry_after_ms: 100 } } },
-          };
+          if (payload.request?.intent?.view === 'sessions' && ++attempts === 1) throw busyRead();
           return c.fixtureResponse('observation_read', payload);
         };
         c.remount();
@@ -51,23 +54,27 @@ export function homeStartupScenarios({ until, control }) {
         assert(health()?.querySelector('.good'), 'A busy session read lost actual service readiness');
       } finally { c.reset(); await settled(); }
     }),
-    scenario('desktop.home.observation-busy-exhausted', ['home-startup'], 'Persistent busy reads stop after a bounded retry and remain explicitly unavailable', async () => {
-      const c = control(); let attempts = 0;
+    scenario('desktop.home.observation-busy-recovers-after-repeated-failures', ['home-startup'], 'Home completes after three busy replies without showing a read error or requiring an action', async () => {
+      const c = control(); const attempts = []; let errorShown = false;
+      const observer = new MutationObserver(() => { errorShown ||= Boolean(document.querySelector('.home-read-error')); });
       try {
         c.reset(); await until(() => health()?.querySelector('.good'), 'initial Home ready'); await settled();
         c.handlers.observation_read = payload => {
-          if (payload.request?.intent?.view === 'sessions') {
-            attempts++;
-            throw { source: 'backend', envelope: { error: { category: 'unavailable', code: 'E_UNAVAILABLE',
-              observation_read: { reason: 'reader_busy', retry_after_ms: 100 } } } };
+          if (payload.request?.intent?.view === 'sessions' && payload.request.intent.query.session_id == null) {
+            attempts.push(performance.now());
+            if (attempts.length < 4) throw busyRead();
+            return { next_cursor: null, sessions: [{ session_id: 'observation-session/recovered', agent_id: 'codex', request_count: 1, last_request_at_ms: Date.now() - 1000, content_completeness: 'complete' }] };
           }
           return c.fixtureResponse('observation_read', payload);
         };
+        observer.observe(document.body, { childList: true, subtree: true });
         c.remount();
-        await until(() => document.querySelector('.home-read-error'), 'persistent busy warning');
-        assert(attempts === 2, `Home did not use exactly one automatic retry: ${attempts}`);
-        assert(document.querySelector('.home-read-error button')?.textContent.includes('会话'), 'Persistent failure has no exact-domain retry');
-      } finally { c.reset(); await settled(); }
+        await until(() => errorShown || (attempts.length >= 4 && document.querySelector('.v3-recent')), 'Home completed the busy read');
+        assert(!errorShown, `Home exposed a read error after ${attempts.length} attempts`);
+        assert(attempts.length === 4, `Unexpected Home attempt count: ${attempts.length}`);
+        assert([400, 1000, 2000].every((delay, index) => attempts[index + 1] - attempts[index] >= delay - 10), 'Busy recovery was not paced');
+        assert(health()?.querySelector('.good'), 'Busy recovery changed service readiness');
+      } finally { observer.disconnect(); c.reset(); await settled(); }
     }),
     scenario('desktop.home.observation-terminal-no-retry', ['home-startup'], 'A non-busy Home read error remains visible without automatic replay', async () => {
       const c = control(); let attempts = 0;
@@ -85,10 +92,9 @@ export function homeStartupScenarios({ until, control }) {
         assert(attempts === 1, 'Home replayed a non-busy read failure');
       } finally { c.reset(); await settled(); }
     }),
-    scenario('desktop.home.observation-superseded-retry', ['home-startup'], 'A newer focus refresh cancels obsolete busy retries', async () => {
+    scenario('desktop.home.observation-superseded-retry', ['home-startup'], 'Focus coalesces a pending read and leaving Home cancels its recovery', async () => {
       const c = control(); let attempts = 0; let rejectFirst;
-      const busy = { source: 'backend', envelope: { error: { category: 'unavailable', code: 'E_UNAVAILABLE',
-        observation_read: { reason: 'reader_busy', retry_after_ms: 100 } } } };
+      const busy = busyRead();
       try {
         c.reset(); await until(() => health()?.querySelector('.good'), 'initial Home ready'); await settled();
         c.handlers.observation_read = payload => {
@@ -98,11 +104,16 @@ export function homeStartupScenarios({ until, control }) {
         c.remount();
         await until(() => rejectFirst, 'first session read held');
         window.dispatchEvent(new Event('focus'));
-        await until(() => attempts === 2 && !document.querySelector('.home-read-error'), 'replacement focus read');
+        window.dispatchEvent(new Event('focus'));
+        await settled();
+        assert(attempts === 1, 'Focus started another read of the same Home domain');
+        document.querySelector('button[aria-label="智能路由"]').click();
+        await until(() => routeButton(), 'left Home');
         rejectFirst(busy); rejectFirst = null;
         await new Promise(resolve => setTimeout(resolve, 450));
-        assert(attempts === 2, 'Obsolete Home read retried after a newer refresh');
-        assert(!document.querySelector('.home-read-error'), 'Obsolete failure replaced the current successful read');
+        assert(attempts === 1, 'Obsolete Home read retried after navigation');
+        document.querySelector('button[aria-label="首页"]').click();
+        await until(() => attempts === 2 && !document.querySelector('.home-read-error'), 'current Home read completed on return');
       } finally { rejectFirst?.(busy); c.reset(); await settled(); }
     }),
     scenario('desktop.home.no-full-agent-scan', ['home-startup'], 'Cold Home uses a lightweight Agent summary', async () => {
