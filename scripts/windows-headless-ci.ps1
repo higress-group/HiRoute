@@ -224,7 +224,8 @@ function Invoke-LibraryTests {
         'agents::windows_collaboration_tests::actual_windows_codex_native_skill_executes_the_public_cli',
         'agents::windows_collaboration_tests::actual_windows_claude_native_authentication_without_tools',
         'agents::windows_collaboration_tests::actual_windows_claude_native_skill_executes_the_public_cli',
-        'agents::windows_collaboration_tests::actual_windows_qoder_native_skill_executes_the_public_cli_without_synthesized_account')
+        'agents::windows_collaboration_tests::actual_windows_qoder_native_skill_executes_the_public_cli_without_synthesized_account',
+        'model_feed::transport::tests::model_feed_live_https_gzip_smoke')
     }
     if ($Package -eq 'hiroute-cpa-bridge') {
       $optIn = @(
@@ -262,7 +263,7 @@ function Invoke-LibraryTests {
       $harness += '--nocapture'
     }
     @{ source_revision = $ExpectedSha; package = $Package; explicit_opt_in_or_child_fixtures = $optIn;
-       reason = 'Selected installations, helper children, private stopped field corpora and controlled persistence/performance runs require explicit inputs or assessment. Any unregistered ignored case still fails this inventory.'
+       reason = 'Selected installations, live services, helper children, private stopped field corpora and controlled persistence/performance runs require explicit inputs or assessment. Any unregistered ignored case still fails this inventory.'
     } | ConvertTo-Json -Depth 5 | Out-File -Encoding utf8 "$evidence/$name-selection.json"
     Invoke-RequiredTests $name @('-p',$Package,'--lib') $required $harness
   } catch { $failures.Add($_.Exception.Message); Write-Warning $_.Exception.Message }
@@ -465,6 +466,7 @@ if ($Scope -eq 'components') {
   }
 } else {
   Invoke-RequiredTests 'agent-acp-notifications' @('-p','hiroute-daemon','--lib','delegation::acp::notification_tests::') @(
+    'delegation::acp::notification_tests::legacy_claude_image_update_preserves_prompt_response',
     'delegation::acp::notification_tests::startup_and_loaded_history_notifications_do_not_make_current_output_incomplete',
     'delegation::acp::notification_tests::wrong_session_notification_during_prompt_still_marks_output_incomplete')
   Invoke-RequiredTests 'agent-live-history' @('-p','hiroute-daemon','--lib','delegation::lifecycle::tests::terminal::') @(Get-WindowsLiveHistoryCases)
