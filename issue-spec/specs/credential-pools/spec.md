@@ -160,6 +160,12 @@ MUST identify these as HiRoute local estimates for traffic it controls, rather
 than a fetched provider credit balance. Provider credit eligibility remains in
 the existing subscription guidance.
 
+The installed CLI SHALL describe the typed requests for `compute budgets get`
+and `compute budgets preview` in the command descriptors and help. Each command
+accepts one JSON request from `--request-stdin` or `--request-file PATH`. Get
+returns the allowance view and pagination cursor. Preview is read-only and
+returns the spec, digest and expected revisions for `compute connection apply`.
+
 Released decision test calls retain their original result shape. Exhaustion or
 unavailability of the ordinary inference budget cannot produce a failure in a
 new decision test.

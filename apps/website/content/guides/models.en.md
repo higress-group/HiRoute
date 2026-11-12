@@ -25,7 +25,8 @@ Command pointers (choose only what the goal needs; prefix each with hiroute):
 - Scan local settings, connect a subscription or API: compute scan · compute connection prepare / authorize / login / test
 - Select models and save a connection: compute connection preview → compute connection apply
 - Combine the same model from several sources: routing options → routing preview → routing apply
-- Set key allowances in the connection details. Read or edit model prices with prices effective · prices override preview / apply.
+- Read or edit key allowances: compute budgets get · compute budgets preview → compute connection apply
+- Read or edit model prices: prices effective · prices override preview / apply
 - Set a connection proxy: compute network show / preview / apply
 
 The UI and CLI connect to the same HiRoute service and share configuration and execution records. Inspect and reuse existing state. Get exact parameters from the installed command’s --help and hiroute schema show --command-id COMMAND_ID --include-schema. Follow the built-in Skill for the required preview, apply and verification, then report the result.
@@ -87,6 +88,8 @@ In an API connection's details, open **API keys and allowances**, turn on **Limi
 - **Share an existing allowance:** several keys draw from one allowance.
 
 Leave **Initial available amount** blank to start with the full amount, or enter the remainder if some credits were already spent.
+
+For CLI versions whose `compute budgets get --help` lists the JSON input options, follow the [CLI steps for reading and editing allowances](https://github.com/higress-group/HiRoute/blob/main/docs/standalone-cli.md#inspect-and-preview-api-key-allowances).
 
 Allowances estimate ordinary inference spending through HiRoute. For known prices, HiRoute reserves funds before forwarding a request and settles the charge when the request finishes. Decision model calls and their connection tests do not use this local allowance, even if they reuse the same API key. The provider can still bill or limit both types of traffic. Set the applicable input, output and cache rates in the same currency under **Edit pricing**. A request with unknown prices can proceed and stays unpriced in the records, outside the spending total. When the allowance cannot cover a known charge, HiRoute tries another key or the next candidate.
 

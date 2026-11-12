@@ -15,7 +15,7 @@ pub struct CommandSchemasV1 {
     pub example_guidance: &'static str,
 }
 
-fn schema<T: JsonSchema>(serialize: bool) -> Value {
+pub(crate) fn schema<T: JsonSchema>(serialize: bool) -> Value {
     let settings = SchemaSettings::draft2020_12();
     let settings = if serialize {
         settings.for_serialize()
@@ -441,6 +441,8 @@ pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
         examples: examples(command_id),
         example_guidance: if command_id == "compute.connection.test" {
             "Templates show syntax, not a successful check. Save the native template as native-request.json or the registered template as registered-request.json. For a registered option, run hiroute compute connection options --output json, choose an option with registered_check_available=true, and replace the entire request.expected_catalog with data.catalog from that response. Register the credential with hiroute protected-input register --candidate <REF> --secret-fd <FD> --output json; after registered=true, use that REF for request.input_candidate.candidate_ref and the matching candidate_ref (request.candidate_ref for registered, request.draft.candidate_ref for native), with input_candidate.candidate_revision=1 for this protected-input protocol. Use your own lineage_ref/check_id and edit_revision for this check. Native API templates also require your actual endpoint, protocol profile and authentication semantics. Keep secret bytes in the separate protected-input channel. inference_model_id=null performs no model inference; a selected inference model can consume quota. Read the result's reachability, authentication, directory and inference fields: a successful command or selectable candidate does not establish provider verification. For a key-authenticated option with neither an inventory path nor a selected inference model, no remote probe runs; reachability=not_run, authentication=unknown, directory=not_run and inference=not_run leave connectivity and the API key unverified. The current bundled OpenRouter template follows this path. Catalog example digests/revisions are placeholders and cannot authorize a check."
+        } else if command_id == "compute.budgets.preview" {
+            "Save the example as key-budget-preview.json. Use compute list to fill in the saved source ID, its current model refs and Key ID, and the snapshot revisions. The example configures a new fixed allowance. To edit an existing allowance, query the source with compute budgets get and find the definition bound to the Key. Copy its budget_id, display_name and complete policy, including currency and renewal, into the assignment. Set expected_revision to the definition's revision, omit initial_remaining_micros, and change only the fields you intend to edit. Review the preview before submitting its exact spec, accept_digest and expected_revisions with a stable idempotency_key to compute connection apply."
         } else {
             "Examples show syntax. Resolve resource IDs from current queries. For Apply, copy the exact Preview spec/change, digest and expected revisions; keep one submission key. Example digests and revisions do not authorize writes."
         },
@@ -449,6 +451,30 @@ pub fn command_schemas(command_id: &str) -> Option<CommandSchemasV1> {
 
 fn examples(command_id: &str) -> Vec<Value> {
     match command_id {
+        "compute.budgets.get" => vec![json!({})],
+        "compute.budgets.preview" => vec![json!({
+            "change": {
+                "schema": hiroute_domain::COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V3,
+                "default_preferences": {},
+                "change": {
+                    "schema": COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2,
+                    "subject": {"kind": "saved_source", "source_id": "source/example"},
+                    "expected_revisions": {"target": 0},
+                    "selected_model_refs": ["model/example"],
+                    "intent": "save_ready",
+                    "key_edits": []
+                }
+            },
+            "key_budget_edits": [{
+                "key": {"kind": "saved", "key_id": "key/example"},
+                "assignment": {
+                    "intent": "configure",
+                    "expected_revision": 0,
+                    "display_name": "API credits",
+                    "policy": {"currency": "USD", "amount_micros": 1_000_000}
+                }
+            }]
+        })],
         "compute.connection.test" => connection_test_examples(),
         "decision.services.apply" => {
             let change = json!({"id":"service/example", "expected_revision":0, "service":{

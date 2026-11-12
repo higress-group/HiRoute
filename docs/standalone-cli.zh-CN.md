@@ -524,6 +524,30 @@ hiroute operations find --request-stdin --output json < operation-find.json
 
 同一 key 与同一内容会返回原 Operation；同一 key 与不同内容会稳定拒绝，不会重复写入。
 
+## 查询和预览 API Key 额度
+
+先确认已安装版本的 `hiroute compute budgets get --help` 列出了 JSON 输入选项。
+传入 `{}` 可查询所有来源的第一页，也可以用
+`hiroute compute list --output json` 返回的 `source_id` 筛选来源。
+如果结果给出 `data.next_cursor`，把它用作下一次请求的 `cursor`。
+
+```sh
+printf '%s\n' '{}' | hiroute compute budgets get --request-stdin --output json
+hiroute schema show --command-id compute.budgets.preview --include-schema --output json
+```
+
+用已安装版本的模板和当前来源、模型、Key 及版本信息填写
+`key-budget-preview.json`。编辑已有额度时，按来源查询 Key 绑定的额度，
+将其定义中的 `budget_id`、`display_name` 和完整 `policy` 复制到
+`assignment`。用该定义的 `revision` 填写 `expected_revision`，
+省略 `initial_remaining_micros`，再修改目标字段。
+
+运行
+`hiroute compute budgets preview --request-file key-budget-preview.json --output json`。
+核对预览后，将其中的 `spec`、`accept_digest` 和 `expected_revisions` 原样传给
+`hiroute compute connection apply`，并附上固定的 `idempotency_key`。
+Operation 成功后重新查询额度。
+
 ## 发现并保存订阅来源
 
 ```sh

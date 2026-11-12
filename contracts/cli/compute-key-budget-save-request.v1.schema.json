@@ -1,0 +1,987 @@
+{
+  "$defs": {
+    "ComputeCandidateRefV2": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_ref": {
+          "type": "string"
+        },
+        "candidate_revision": {
+          "description": "Server-issued revision of the complete candidate facts. This is never a UI edit counter.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "candidate_ref",
+        "candidate_revision"
+      ],
+      "type": "object"
+    },
+    "ComputeKeyEditV2": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "add",
+              "type": "string"
+            },
+            "input_candidate": {
+              "$ref": "#/$defs/ComputeCandidateRefV2"
+            }
+          },
+          "required": [
+            "action",
+            "input_candidate"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "replace",
+              "type": "string"
+            },
+            "expected_generation": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "input_candidate": {
+              "$ref": "#/$defs/ComputeCandidateRefV2"
+            },
+            "key_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "key_id",
+            "expected_generation",
+            "input_candidate"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "remove",
+              "type": "string"
+            },
+            "expected_generation": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "key_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "key_id",
+            "expected_generation"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "set_enabled",
+              "type": "string"
+            },
+            "enabled": {
+              "type": "boolean"
+            },
+            "expected_generation": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "key_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "key_id",
+            "expected_generation",
+            "enabled"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "set_order",
+              "type": "string"
+            },
+            "key_ids": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "action",
+            "key_ids"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ComputeManagementChangeV2": {
+      "additionalProperties": false,
+      "properties": {
+        "edit": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ComputeManagementEditV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Explicit lifecycle intent. Omitted legacy saves retain replacement semantics and bytes."
+        },
+        "expected_revisions": {
+          "$ref": "#/$defs/RevisionSetV1"
+        },
+        "intent": {
+          "$ref": "#/$defs/ComputeManagementIntentV2"
+        },
+        "key_edits": {
+          "items": {
+            "$ref": "#/$defs/ComputeKeyEditV2"
+          },
+          "type": "array"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "selected_model_refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "subject": {
+          "$ref": "#/$defs/ComputeManagementSubjectV2"
+        },
+        "validation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ComputeValidationRefV2"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "schema",
+        "subject",
+        "expected_revisions",
+        "selected_model_refs",
+        "intent"
+      ],
+      "type": "object"
+    },
+    "ComputeManagementChangeV3": {
+      "additionalProperties": false,
+      "properties": {
+        "api_link": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ComputeSubscriptionApiLinkIntentV1"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "change": {
+          "$ref": "#/$defs/ComputeManagementChangeV2"
+        },
+        "default_preferences": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "context_tokens": {
+                "$ref": "#/$defs/ModelDefaultPreferenceV1"
+              },
+              "max_output_tokens": {
+                "$ref": "#/$defs/ModelDefaultPreferenceV1"
+              },
+              "native_reasoning": {
+                "$ref": "#/$defs/ModelDefaultPreferenceV1"
+              },
+              "streaming": {
+                "$ref": "#/$defs/ModelDefaultPreferenceV1"
+              },
+              "tool": {
+                "$ref": "#/$defs/ModelDefaultPreferenceV1"
+              },
+              "vision": {
+                "$ref": "#/$defs/ModelDefaultPreferenceV1"
+              }
+            },
+            "type": "object"
+          },
+          "type": "object"
+        },
+        "schema": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema",
+        "change",
+        "default_preferences"
+      ],
+      "type": "object"
+    },
+    "ComputeManagementEditV1": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "rename",
+              "type": "string"
+            },
+            "display_name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "action",
+            "display_name"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "append_models",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "remove_models",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "const": "delete",
+              "type": "string"
+            }
+          },
+          "required": [
+            "action"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ComputeManagementIntentV2": {
+      "enum": [
+        "save_ready",
+        "save_disabled"
+      ],
+      "type": "string"
+    },
+    "ComputeManagementSubjectV2": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "candidate": {
+              "$ref": "#/$defs/ComputeCandidateRefV2"
+            },
+            "kind": {
+              "const": "candidate",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "candidate"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "saved_source",
+              "type": "string"
+            },
+            "source_id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "source_id"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ComputeSubscriptionApiLinkIntentV1": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "api_source_id": {
+              "type": "string"
+            },
+            "intent": {
+              "const": "associate",
+              "type": "string"
+            }
+          },
+          "required": [
+            "intent",
+            "api_source_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "intent": {
+              "const": "remove",
+              "type": "string"
+            }
+          },
+          "required": [
+            "intent"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ComputeValidationRefV2": {
+      "additionalProperties": false,
+      "properties": {
+        "approval_operation": {
+          "$ref": "#/$defs/OperationReferenceV1"
+        },
+        "validation_ref": {
+          "type": "string"
+        },
+        "validation_revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "approval_operation",
+        "validation_ref",
+        "validation_revision"
+      ],
+      "type": "object"
+    },
+    "KeyBudgetAssignmentV1": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "intent": {
+              "const": "unlimited",
+              "type": "string"
+            }
+          },
+          "required": [
+            "intent"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "budget_id": {
+              "type": "string"
+            },
+            "expected_revision": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "intent": {
+              "const": "share",
+              "type": "string"
+            }
+          },
+          "required": [
+            "intent",
+            "budget_id",
+            "expected_revision"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "budget_id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "display_name": {
+              "type": "string"
+            },
+            "expected_revision": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "initial_remaining_micros": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "intent": {
+              "const": "configure",
+              "type": "string"
+            },
+            "policy": {
+              "$ref": "#/$defs/KeyBudgetPolicyV1"
+            }
+          },
+          "required": [
+            "intent",
+            "expected_revision",
+            "display_name",
+            "policy"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "KeyBudgetEditV1": {
+      "additionalProperties": false,
+      "properties": {
+        "assignment": {
+          "$ref": "#/$defs/KeyBudgetAssignmentV1"
+        },
+        "key": {
+          "$ref": "#/$defs/KeyBudgetSelectorV1"
+        }
+      },
+      "required": [
+        "key",
+        "assignment"
+      ],
+      "type": "object"
+    },
+    "KeyBudgetPeriodV1": {
+      "enum": [
+        "daily",
+        "weekly",
+        "monthly",
+        "yearly"
+      ],
+      "type": "string"
+    },
+    "KeyBudgetPolicyV1": {
+      "additionalProperties": false,
+      "properties": {
+        "amount_micros": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "currency": {
+          "type": "string"
+        },
+        "renewal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/KeyBudgetRenewalV1"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "currency",
+        "amount_micros"
+      ],
+      "type": "object"
+    },
+    "KeyBudgetRenewalModeV1": {
+      "enum": [
+        "reset",
+        "accumulate"
+      ],
+      "type": "string"
+    },
+    "KeyBudgetRenewalV1": {
+      "additionalProperties": false,
+      "properties": {
+        "anchor_local": {
+          "description": "Original local calendar anchor; month-end clamping never changes this anchor.",
+          "type": "string"
+        },
+        "balance_cap_micros": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "mode": {
+          "$ref": "#/$defs/KeyBudgetRenewalModeV1"
+        },
+        "period": {
+          "$ref": "#/$defs/KeyBudgetPeriodV1"
+        },
+        "timezone": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "period",
+        "mode",
+        "anchor_local",
+        "timezone"
+      ],
+      "type": "object"
+    },
+    "KeyBudgetSelectorV1": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "key_id": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "saved",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "key_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "candidate_ref": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "input",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "candidate_ref"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ModelDefaultPreferenceV1": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "intent": {
+              "const": "custom",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/ModelDefaultValueV1"
+            }
+          },
+          "required": [
+            "intent",
+            "value"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "intent": {
+              "const": "follow_metadata",
+              "type": "string"
+            }
+          },
+          "required": [
+            "intent"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "intent": {
+              "const": "preserve_saved",
+              "type": "string"
+            }
+          },
+          "required": [
+            "intent"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "intent": {
+              "const": "follow_official",
+              "type": "string"
+            },
+            "locator": {
+              "$ref": "#/$defs/OfficialModelLocatorV1"
+            }
+          },
+          "required": [
+            "intent",
+            "locator"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ModelDefaultValueV1": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "$ref": "#/$defs/NativeReasoningCapabilityV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "NativeNetworkEditV1": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_network_revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "policy": {
+          "$ref": "#/$defs/NativeNetworkPolicyV1"
+        }
+      },
+      "required": [
+        "expected_network_revision",
+        "policy"
+      ],
+      "type": "object"
+    },
+    "NativeNetworkPolicyV1": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "const": "direct",
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "const": "inherit",
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "const": "manual",
+              "type": "string"
+            },
+            "no_proxy": {
+              "default": "",
+              "type": "string"
+            },
+            "proxy_url": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode",
+            "proxy_url"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "NativeReasoningCapabilityV1": {
+      "description": "Exact model-native reasoning capability. The order of `profiles` is native low-to-high order,\nnot a cross-model effort scale.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "fixed",
+              "type": "string"
+            },
+            "profile": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "profile"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "toggle",
+              "type": "string"
+            },
+            "parameter": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "parameter"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "default_profile": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "const": "discrete",
+              "type": "string"
+            },
+            "parameter": {
+              "type": "string"
+            },
+            "profiles": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "parameter",
+            "profiles"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "budget",
+              "type": "string"
+            },
+            "maximum_tokens": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "minimum_tokens": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "parameter": {
+              "type": "string"
+            },
+            "step_tokens": {
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "kind",
+            "parameter",
+            "minimum_tokens",
+            "maximum_tokens",
+            "step_tokens"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "OfficialModelLocatorV1": {
+      "additionalProperties": false,
+      "properties": {
+        "connector_id": {
+          "type": "string"
+        },
+        "endpoint_profile_id": {
+          "type": "string"
+        },
+        "model_configuration_id": {
+          "type": "string"
+        },
+        "protocol_endpoint_id": {
+          "type": "string"
+        },
+        "upstream_model_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "model_configuration_id",
+        "upstream_model_id",
+        "connector_id",
+        "endpoint_profile_id",
+        "protocol_endpoint_id"
+      ],
+      "type": "object"
+    },
+    "OperationReferenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "cancellable": {
+          "type": "boolean"
+        },
+        "operation_id": {
+          "type": "string"
+        },
+        "sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "state",
+        "sequence",
+        "cancellable"
+      ],
+      "type": "object"
+    },
+    "RevisionSetV1": {
+      "additionalProperties": false,
+      "properties": {
+        "dependencies": {
+          "additionalProperties": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "type": "object"
+        },
+        "target": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "hiroute://contracts/cli/compute-key-budget-save-request.v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "change": {
+      "$ref": "#/$defs/ComputeManagementChangeV3"
+    },
+    "key_budget_edits": {
+      "items": {
+        "$ref": "#/$defs/KeyBudgetEditV1"
+      },
+      "type": "array"
+    },
+    "network_edit": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NativeNetworkEditV1"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "change",
+    "key_budget_edits"
+  ],
+  "title": "ComputeKeyBudgetSaveRequestV1",
+  "type": "object"
+}

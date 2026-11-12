@@ -25,7 +25,8 @@ CLI 参考：https://hiroute.ai/zh/docs/cli/
 - 扫描本机、连接订阅或 API：compute scan · compute connection prepare / authorize / login / test
 - 选择模型并保存接入：compute connection preview → compute connection apply
 - 把同名模型加入同一路由：routing options → routing preview → routing apply
-- 在接入详情中设置 API Key 额度。用 prices effective · prices override preview / apply 查看或修改模型价格。
+- 查询或调整 API Key 额度：compute budgets get · compute budgets preview → compute connection apply
+- 查询或调整模型价格：prices effective · prices override preview / apply
 - 设置接入代理：compute network show / preview / apply
 
 界面与 CLI 连接同一个 HiRoute 服务，共用配置和执行记录。先读取现状并复用已有配置；参数以本机命令 --help 和 hiroute schema show --command-id COMMAND_ID --include-schema 为准。按内置技能完成所需预览、应用与核验，最后说明结果。
@@ -87,6 +88,8 @@ Agent 选用一个路由名称，HiRoute 按你排列的候选顺序尝试。将
 - **共用已有额度**：多个 Key 共用同一份额度。
 
 “首次可用金额”可以留空，表示从完整金额开始；如果赠金已经用掉一部分，可以填写剩余金额。
+
+如果已安装版本的 `compute budgets get --help` 列出了 JSON 输入选项，可以按 [CLI 额度操作步骤](https://github.com/higress-group/HiRoute/blob/main/docs/standalone-cli.zh-CN.md#查询和预览-api-key-额度)查询和调整额度。
 
 额度用于估算经过 HiRoute 的普通推理花费。单价已知时，HiRoute 在转发前预留额度，请求完成后结算。决策模型调用和连接测试即使复用同一个 API Key，也不占用这份本地额度。服务商仍可对两类调用计费或限额。请在模型详情的“调整价格”中设置同币种的适用输入、输出与缓存单价。价格未知的请求仍可执行，保留为未计价记录，不计入已用花费。额度不足以支付已知费用时，HiRoute 会尝试其他 Key 或下一个候选。
 

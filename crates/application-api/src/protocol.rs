@@ -886,6 +886,8 @@ pub(crate) fn command_request_schema(command_id: &str) -> &'static str {
         "agents.check" => "hiroute.agent-check-request/v1",
         "agents.scan" => "hiroute.agent-scan-request/v1",
         "compute.list" | "compute.show" => "hiroute.compute-management-query/v2",
+        "compute.budgets.get" => "hiroute.compute-key-budgets-query/v1",
+        "compute.budgets.preview" => "hiroute.compute-key-budget-save-request/v1",
         "compute.connection.preview" => "hiroute.compute-connection-preview-request/union",
         "compute.connection.prepare" => "hiroute.prepare-discovered-model-connection-request/v1",
         "compute.connection.options" => "hiroute.compute-connection-options-request/v1",
@@ -1041,6 +1043,8 @@ pub(crate) fn command_stdin_channels(command_id: &str) -> &'static [&'static str
         | "prices.override.preview"
         | "prices.override.apply"
         | "compute.credential.add"
+        | "compute.budgets.get"
+        | "compute.budgets.preview"
         | "models.show"
         | "compute.scan"
         | "agents.scan"
@@ -1171,7 +1175,7 @@ pub(crate) fn command_usage(command_id: &str, joined_path: &str) -> String {
         "agent.launch" => "hiroute agent launch --agent claude-code --context <CONTEXT_ID> -- <CLAUDE_SESSION_ARGS...>".to_owned(),
         "schema.show" => "hiroute schema show --command-id <stable-command-id> [--include-schema] --non-interactive --output json".to_owned(),
         "operations.find" => "hiroute operations find --request-stdin --output json".to_owned(),
-        "models.show" | "prices.effective" | "prices.override.preview" | "prices.override.apply" | "compute.credential.add" => format!("hiroute {joined_path} --request-stdin --output json"),
+        "models.show" | "prices.effective" | "prices.override.preview" | "prices.override.apply" | "compute.credential.add" | "compute.budgets.get" | "compute.budgets.preview" => format!("hiroute {joined_path} --request-stdin --output json"),
         "compute.connection.options" => "hiroute compute connection options [--request-file <PATH> | --request-stdin] --output json".to_owned(),
         "compute.list" => "hiroute compute list --output json".to_owned(),
         "compute.show" => "hiroute compute show <SOURCE_ID> --output json".to_owned(),
@@ -1239,6 +1243,8 @@ pub(crate) fn command_arguments(command_id: &str) -> String {
         "agent.launch" => "--agent claude-code and --context <CONTEXT_ID> are required, followed by the exact -- delimiter. Session arguments after -- are passed as native OsString values. The last --settings object or file supplies the managed overlay, matching native repeated-option precedence (unrelated fields survive; routing, authentication, and provider entries stay managed). --model, --setting-sources, and --fallback-model pass through unchanged. Cloud-provider, authentication, and routing override arguments are rejected before Local Control access or spawn.".to_owned(),
         "schema.list" => "Global --output json and --request-id options only.".to_owned(),
         "schema.show" => "Required: --command-id <stable-command-id>. --include-schema returns complete bundled request/response definitions and examples for management commands; omission retains the descriptor. Global --output json and --request-id options are supported.".to_owned(),
+        "compute.budgets.get" => "Use {} for the first page of allowances. Set source_id for a single source, or omit it and pass data.next_cursor as cursor to continue an unfiltered listing. See schema show --command-id compute.budgets.get --include-schema.".to_owned(),
+        "compute.budgets.preview" => "Include the current source change and key_budget_edits. See schema show --command-id compute.budgets.preview --include-schema for the key-budget-preview.json template. Review the result before applying it with compute connection apply.".to_owned(),
         "setup.apply" => "The setup document is read from --spec-fd. Digest, expected revision, and idempotency key are mandatory. Mutation authority is accepted only from the protected inherited capability channel.".to_owned(),
         "agents.check" => "Configuration, native-authentication and collaboration are bounded local checks admitted by the owner-only same-UID transport and make no upstream model call. Live requires --target JSON containing context_id, surface, expected_applied_revision and client_model_ids, --allow-model-call and a separately delivered one-shot capability bound to that target. Targets are forbidden on local checks; provider, credential, prompt and URL overrides are forbidden.".to_owned(),
         "compute.connection.preview" => "--request-stdin accepts exactly one registered v1 projection, compute-management v2 save/edit, or subscription-check v2 preview request. The optional edit action is rename (display_name), append_models (checked candidate; preserves existing models), remove_models (saved source; selected refs are removals), or delete (saved source; no selected refs). Omitting edit retains released save semantics. Referenced models, including disabled routes and retained versions, cannot be deleted. Preview has no durable side effect and returns the exact digest and revisions required by Apply.".to_owned(),

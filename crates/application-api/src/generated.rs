@@ -41,6 +41,12 @@ fn pretty_json(value: &Value) -> String {
     pretty(&hiroute_domain::canonicalize_json(value.clone()))
 }
 
+fn typed_request_schema<T: schemars::JsonSchema>(filename: &str) -> String {
+    let mut schema = crate::command_schemas::schema::<T>(false);
+    schema["$id"] = json!(format!("hiroute://contracts/cli/{filename}"));
+    pretty_json(&schema)
+}
+
 fn coverage_manifest() -> Value {
     let commands = planned_manifest().commands;
     json!({
@@ -385,7 +391,17 @@ fn value_query_schema() -> Value {
 }
 
 pub fn generated_contract_files() -> Vec<GeneratedContractFile> {
+    const KEY_BUDGETS_QUERY: &str = "compute-key-budgets-query.v1.schema.json";
+    const KEY_BUDGET_SAVE_REQUEST: &str = "compute-key-budget-save-request.v1.schema.json";
     let mut files = BTreeMap::from([
+        (
+            KEY_BUDGETS_QUERY,
+            typed_request_schema::<crate::ComputeKeyBudgetsQueryV1>(KEY_BUDGETS_QUERY),
+        ),
+        (
+            KEY_BUDGET_SAVE_REQUEST,
+            typed_request_schema::<crate::ComputeKeyBudgetSaveRequestV1>(KEY_BUDGET_SAVE_REQUEST),
+        ),
         (
             "routing-timeline-selection.v1.schema.json",
             pretty_json(&{
@@ -663,6 +679,8 @@ mod tests {
                 "agent-plan-catalog-query.v2.schema.json",
                 "agent-scan-request.v1.schema.json",
                 "compute-connection-options-request.v1.schema.json",
+                "compute-key-budget-save-request.v1.schema.json",
+                "compute-key-budgets-query.v1.schema.json",
                 "compute-scan-request.union.schema.json",
                 "console-launch-request.v1.schema.json",
                 "console-token-create.v1.schema.json",
