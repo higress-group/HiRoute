@@ -550,6 +550,16 @@ function RequestBody({ request, active, contentCleared, summary, attemptModels, 
   const [busy, setBusy] = useState(false);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [recovery, setRecovery] = useState<ObservationRecoveryStatus>();
+  const [partRecovery, setPartRecovery] = useState<Record<string, ObservationRecoveryStatus>>({});
+  const reportPartRecovery = useCallback((id: string, status?: ObservationRecoveryStatus) => {
+    setPartRecovery(current => {
+      if (current[id] === status) return current;
+      if (status) return { ...current, [id]: status };
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+  }, []);
   const [contentEpoch, setContentEpoch] = useState(0);
   const generation = useRef(0);
   const loadedPages = useRef(0);
@@ -559,7 +569,7 @@ function RequestBody({ request, active, contentCleared, summary, attemptModels, 
   function discardCatalog() {
     ancestryController.current?.abort();
     pendingAncestry.current = null;
-    setCatalog([]); setEvents({}); setCursor(null); setCatalogLoaded(false);
+    setCatalog([]); setEvents({}); setPartRecovery({}); setCursor(null); setCatalogLoaded(false);
     setContentEpoch(epoch => epoch + 1);
   }
   async function load(next: string | null = null) {
@@ -661,14 +671,16 @@ function RequestBody({ request, active, contentCleared, summary, attemptModels, 
     if (!items.length) return null;
     return <React.Fragment key={`${contentEpoch}:${occurrence.key}`}>
       {index === finalAssistantIndex && summary?.within_request_fallback === true && <button className="switch-marker" type="button" onClick={onOpenFacts}><UiIcon name="refresh" /><strong>{attemptModels.length > 1 ? attemptModels.join(' → ') : text('记录到请求内模型回退', 'Recorded model fallback within a request')}</strong><span>{attemptModels.length > 1 ? text('记录到请求内模型回退', 'Recorded model fallback within a request') : text('查看运行记录', 'View run record')}</span><UiIcon name="chevronRight" /></button>}
-      <MessageOccurrence active={active} language={language} request={request} items={items} technical={occurrence.technical} modelLabel={index === finalAssistantIndex ? summary?.final_native_model ?? attemptModels.at(-1) : null} onEvent={receiveEvent} />
+      <MessageOccurrence onRecovery={reportPartRecovery} active={active} language={language} request={request} items={items} technical={occurrence.technical} modelLabel={index === finalAssistantIndex ? summary?.final_native_model ?? attemptModels.at(-1) : null} onEvent={receiveEvent} />
     </React.Fragment>;
   };
   const toolBlocks = toolEvents.map(event => <div className="tool-block" key={event.logicalId}><strong>{event.name || text('工具调用', 'Tool call')}</strong><span>{event.arguments ? summarizeToolArguments(event.arguments) : event.phase === 'ready' ? text('参数已就绪，执行结果尚未取得。', 'Arguments ready; execution result not received.') : text('已请求，执行结果尚未取得。', 'Requested; execution result not received.')}</span></div>);
+  const pendingParts = Object.values(partRecovery);
+  const visibleRecovery = pendingParts.includes('slow') ? 'slow' : recovery ?? pendingParts[0];
   return <section className="transcript-body">{error && <div className="callout bad" role="alert" data-error-code={error}><UiIcon name="warning" /><span>{text('正文暂时无法读取，请重试。', 'Content is temporarily unavailable. Try again.')}</span><button className="btn" type="button" disabled={busy} onClick={() => void load(null)}>{text('重试', 'Retry')}</button></div>}
-    <ReadingRecovery status={recovery} language={language} />
+    <ReadingRecovery status={visibleRecovery} language={language} />
     {contentIncomplete && <div className="callout warn completeness-banner" role="status"><UiIcon name="warning" /><div><strong>{text('会话内容的保存记录不完整', 'The saved conversation record is incomplete')}</strong><p>{text('此处只能展示已保存的内容，不代表 Agent 收到的回答不完整。运行记录仍然可用。', 'Only retained content is shown here. This does not establish that the Agent received an incomplete answer. Run records remain available.')}</p></div></div>}
-    {anchor && catalog.some(item => item.content_id === anchor.content_id && !isPrivateContentKind(item.kind) && !isCleared(item.state)) && <MessageOccurrence active={active} key={contentEpoch} language={language} request={request} items={[{ content_id: anchor.content_id, role: text('搜索命中', 'Search hit'), kind: 'text', state: 'complete', direction: '', media_type: '', message_occurrence_id: '' }]} anchor={{ contentId: anchor.content_id, offset: anchor.original_text_offset }} />}
+    {anchor && catalog.some(item => item.content_id === anchor.content_id && !isPrivateContentKind(item.kind) && !isCleared(item.state)) && <MessageOccurrence onRecovery={reportPartRecovery} active={active} key={contentEpoch} language={language} request={request} items={[{ content_id: anchor.content_id, role: text('搜索命中', 'Search hit'), kind: 'text', state: 'complete', direction: '', media_type: '', message_occurrence_id: '' }]} anchor={{ contentId: anchor.content_id, offset: anchor.original_text_offset }} />}
     {displayRuns.map(run => <React.Fragment key={run.start}>{run.technical
       ? <Disclosure className="transcript-context" label={text(`系统与工具上下文（${run.end - run.start} 项）`, `System and tool context (${run.end - run.start})`)} language={language}>{occurrences.slice(run.start, run.end).map((occurrence, index) => renderOccurrence(occurrence, index + run.start))}</Disclosure>
       : occurrences.slice(run.start, run.end).map((occurrence, index) => <React.Fragment key={occurrence.key}>{renderOccurrence(occurrence, index + run.start)}{index + run.start === firstAssistantOccurrenceIndex && toolBlocks}</React.Fragment>)}
@@ -713,7 +725,7 @@ function groupOccurrences(contents: Content[]): { key: string; role: string; tec
   return runs;
 }
 
-function MessageOccurrence({ request, active, items, anchor, language, modelLabel, technical = false, onEvent }: { onEvent?: (id: string, event: ReadableEvent | null) => void; request: string; active: boolean; items: Content[]; anchor?: { contentId: string; offset: number }; language: 'zh' | 'en'; modelLabel?: string | null; technical?: boolean }) {
+function MessageOccurrence({ request, active, items, anchor, language, modelLabel, technical = false, onEvent, onRecovery }: { onEvent?: (id: string, event: ReadableEvent | null) => void; onRecovery: (id: string, status?: ObservationRecoveryStatus) => void; request: string; active: boolean; items: Content[]; anchor?: { contentId: string; offset: number }; language: 'zh' | 'en'; modelLabel?: string | null; technical?: boolean }) {
   const [visibility, setVisibility] = useState<Record<string, boolean>>({});
   const [partIncomplete, setPartIncomplete] = useState<Record<string, boolean>>({});
   const [contextParts, setContextParts] = useState<Record<string, boolean>>({});
@@ -733,14 +745,19 @@ function MessageOccurrence({ request, active, items, anchor, language, modelLabe
   const responseText = coalesceResponseText(Object.values(events));
   const visible = potential || responseText.some(part => part.text.length > 0) || Object.values(visibility).some(Boolean);
   const incomplete = items.some(item => !['available', 'complete'].includes(item.state)) || Object.values(partIncomplete).some(Boolean);
-  return <article hidden={!visible} aria-hidden={!visible} className={`message ${!technical && role === 'assistant' ? 'assistant' : !technical && role === 'user' && !contextOnly ? 'user' : 'system'}`}><span className="message-avatar">{technical ? '·' : role === 'assistant' ? 'AI' : role === 'user' && !contextOnly ? 'YOU' : '·'}</span><div><div className="message-role">{roleLabel}{modelLabel && !importedContext && <span className="badge info no-dot">{modelLabel}</span>}{incomplete && <span className="badge warn no-dot">{language === 'zh' ? '内容不完整' : 'Incomplete'}</span>}</div>{items.map(item => <MessagePart active={active} key={item.content_id} request={request} item={item} anchor={anchor?.contentId === item.content_id ? anchor.offset : undefined} language={language} onEvent={reportEvent} onVisibility={reportVisibility} onIncomplete={reportIncomplete} onContext={reportContext} />)}{responseText.map(part => <div className="message-content" key={`${part.kind}-${part.index}-${part.version ?? ''}`}>{part.version && <span className="oc-meta">{language === 'zh' ? (part.version === 'accepted' ? '已接受的内容' : '有冲突的结束版本') : (part.version === 'accepted' ? 'Accepted content' : 'Conflicting final version')}</span>}{part.text}</div>)}</div></article>;
+  return <article hidden={!visible} aria-hidden={!visible} className={`message ${!technical && role === 'assistant' ? 'assistant' : !technical && role === 'user' && !contextOnly ? 'user' : 'system'}`}><span className="message-avatar">{technical ? '·' : role === 'assistant' ? 'AI' : role === 'user' && !contextOnly ? 'YOU' : '·'}</span><div><div className="message-role">{roleLabel}{modelLabel && !importedContext && <span className="badge info no-dot">{modelLabel}</span>}{incomplete && <span className="badge warn no-dot">{language === 'zh' ? '内容不完整' : 'Incomplete'}</span>}</div>{items.map(item => <MessagePart onRecovery={onRecovery} active={active} key={item.content_id} request={request} item={item} anchor={anchor?.contentId === item.content_id ? anchor.offset : undefined} language={language} onEvent={reportEvent} onVisibility={reportVisibility} onIncomplete={reportIncomplete} onContext={reportContext} />)}{responseText.map(part => <div className="message-content" key={`${part.kind}-${part.index}-${part.version ?? ''}`}>{part.version && <span className="oc-meta">{language === 'zh' ? (part.version === 'accepted' ? '已接受的内容' : '有冲突的结束版本') : (part.version === 'accepted' ? 'Accepted content' : 'Conflicting final version')}</span>}{part.text}</div>)}</div></article>;
 }
 
-function MessagePart({ request, active, item, anchor, language, onEvent, onVisibility, onIncomplete, onContext }: { onEvent?: (id: string, event: ReadableEvent | null) => void; onVisibility(id: string, visible: boolean): void; onIncomplete(id: string, incomplete: boolean): void; onContext(id: string, contextOnly: boolean): void; request: string; active: boolean; item: Content; anchor?: number; language: 'zh' | 'en' }) {
+function MessagePart({ request, active, item, anchor, language, onEvent, onVisibility, onIncomplete, onContext, onRecovery }: { onEvent?: (id: string, event: ReadableEvent | null) => void; onRecovery: (id: string, status?: ObservationRecoveryStatus) => void; onVisibility(id: string, visible: boolean): void; onIncomplete(id: string, incomplete: boolean): void; onContext(id: string, contextOnly: boolean): void; request: string; active: boolean; item: Content; anchor?: number; language: 'zh' | 'en' }) {
   const [offset, setOffset] = useState(0); const marker = useRef<HTMLElement>(null);
   const [text, setText] = useState(''); const [cursor, setCursor] = useState<string | null>(null);
   const [state, setState] = useState(item.state); const [error, setError] = useState(''); const [busy, setBusy] = useState(false);
   const [recovery, setRecovery] = useState<ObservationRecoveryStatus>();
+  useEffect(() => {
+    if (!recovery) return;
+    onRecovery(item.content_id, recovery);
+    return () => onRecovery(item.content_id);
+  }, [item.content_id, onRecovery, recovery]);
   const generation = useRef(0); const controller = useRef(new AbortController());
   const loadedPages = useRef(0);
   const loadedScope = useRef<string | null>(null);
@@ -807,7 +824,7 @@ function MessagePart({ request, active, item, anchor, language, onEvent, onVisib
   if (item.role === 'user' && !marked && !event && !cursor) {
     if (context.context) visible = <><Disclosure className="message-context" label={language === 'zh' ? 'Agent 附加上下文' : 'Agent-added context'} language={language}>{context.context}</Disclosure>{context.body}</>;
   }
-  return <>{busy && <p className="oc-meta" role="status" data-observation-recovery={recovery}>{recovery ? observationRecoveryText(recovery, language) : language === 'zh' ? '正在读取正文…' : 'Loading content…'}</p>}{error && <div className="callout bad" role="alert" data-error-code={error}><span>{text ? (language === 'zh' ? '更多正文暂时无法读取，已加载内容仍保留。' : 'More content is temporarily unavailable. Loaded content is retained.') : (language === 'zh' ? '这段正文暂时无法读取。' : 'This content is temporarily unavailable.')}</span><button className="btn" type="button" onClick={() => void load(text ? cursor : null)}>{language === 'zh' ? '重试' : 'Retry'}</button></div>}{!event && text && item.media_type.includes('hiroute.model-stream-event') && <p className="oc-meta">{language === 'zh' ? '暂不能结构化显示，以下为已取得的原文。' : 'Structured display is unavailable; captured content follows.'}</p>}{marked && <p className="oc-meta">{language === 'zh' ? '已定位到搜索命中位置。' : 'Located the search match.'}</p>}{text && <div className="message-content">{visible}</div>}{!error && cursor && <button className="btn btn-quiet" disabled={busy} onClick={() => void load(cursor)}>{language === 'zh' ? '继续读取' : 'Load more'}</button>}</>;
+  return <>{busy && !recovery && <p className="oc-meta" role="status">{ language === 'zh' ? '正在读取正文…' : 'Loading content…'}</p>}{error && <div className="callout bad" role="alert" data-error-code={error}><span>{text ? (language === 'zh' ? '更多正文暂时无法读取，已加载内容仍保留。' : 'More content is temporarily unavailable. Loaded content is retained.') : (language === 'zh' ? '这段正文暂时无法读取。' : 'This content is temporarily unavailable.')}</span><button className="btn" type="button" onClick={() => void load(text ? cursor : null)}>{language === 'zh' ? '重试' : 'Retry'}</button></div>}{!event && text && item.media_type.includes('hiroute.model-stream-event') && <p className="oc-meta">{language === 'zh' ? '暂不能结构化显示，以下为已取得的原文。' : 'Structured display is unavailable; captured content follows.'}</p>}{marked && <p className="oc-meta">{language === 'zh' ? '已定位到搜索命中位置。' : 'Located the search match.'}</p>}{text && <div className="message-content">{visible}</div>}{!error && cursor && <button className="btn btn-quiet" disabled={busy} onClick={() => void load(cursor)}>{language === 'zh' ? '继续读取' : 'Load more'}</button>}</>;
 }
 
 export function ObservationValue({ session = null, language = 'zh' }: { session?: string | null; language?: 'zh' | 'en' }) {
@@ -861,9 +878,14 @@ type Value = { pending_requests: number; provisional_requests: number; unknown_t
 
 function MaintenanceStatus({ language }: { language: 'zh' | 'en' }) {
   const [status, setStatus] = useState<{ running: boolean; index_running: boolean; error_count: number } | null>(null);
-  const [error, setError] = useState('');
-  useEffect(() => { let alive = true; void read<{ running: boolean; index_running: boolean; error_count: number }>('status', {}).then(value => { if (alive) setStatus(value); }).catch(e => { if (alive) setError(errorCode(e)); }); return () => { alive = false; }; }, []);
-  if (error) return null;
+  useLayoutEffect(() => {
+    const controller = new AbortController();
+    const signal = controller.signal;
+    void readObservation<{ running: boolean; index_running: boolean; error_count: number }>('status', {}, { signal })
+      .then(value => { if (!signal.aborted) setStatus(value); })
+      .catch(() => { /* Maintenance is optional feedback for the page. */ });
+    return () => controller.abort();
+  }, []);
   if (!status) return null;
   return !status.running || !status.index_running || status.error_count > 0 ? <div className="callout warn session-page-feedback" role="status"><UiIcon name="clock" /><span>{language === 'zh' ? '部分会话仍在整理，搜索或清理结果可能稍后更新。' : 'Some sessions are still being prepared. Search or cleanup results may update shortly.'}</span></div> : null;
 }

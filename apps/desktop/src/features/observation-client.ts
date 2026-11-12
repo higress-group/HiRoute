@@ -31,7 +31,7 @@ export async function observationReadOnce<T>(view: string, query: object, signal
         read_failure_details: true,
         intent: { view, query: view === 'facts' || view === 'plan_quality' ? { ...query, include_routing_observations: true } : query },
       },
-    }, { recoveringObservation: visibleOnly });
+    });
   } finally {
     const next = queue.shift();
     if (next) next();

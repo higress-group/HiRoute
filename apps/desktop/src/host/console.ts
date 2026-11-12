@@ -65,18 +65,18 @@ export async function readConsoleSession(): Promise<ConsoleIdentity> {
 export async function logoutConsole(): Promise<void> { try { await request('/session', { method: 'DELETE' }); } finally { clearConsoleSession(); window.dispatchEvent(new Event(CONSOLE_EXPIRED_EVENT)); } }
 export const plaintextConsole = () => transport === 'network_plaintext';
 export const consoleCapabilities = () => capabilities;
-export const consoleTransport = {
+export const consoleTransport: HostTransport = {
   capabilities: consoleCapabilities,
-  async call<T>(command: string, args: Record<string, unknown> = {}, recoveringObservation = false): Promise<T> {
+  async call<T>(command: string, args: Record<string, unknown> = {}): Promise<T> {
     if (command === 'startup_status') {
       // The console starts after daemon admission. Confirm the live session
       // instead of turning an earlier request error into a startup failure.
       await readConsoleSession();
       return { state: 'ready', recovery_available: false } as T;
     }
-    // A recovering observation read owns a network interruption locally.
+    // Observation reads report a network interruption to their page owner.
     // Authentication failures still expire the session in request().
     return request<T>(`/command/${encodeURIComponent(command)}`, { method: 'POST', body: JSON.stringify(args) },
-      true, !(recoveringObservation && command === 'observation_read'));
+      true, command !== 'observation_read');
   },
-} satisfies HostTransport;
+};

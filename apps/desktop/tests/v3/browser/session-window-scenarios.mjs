@@ -363,6 +363,26 @@ const scenarios = [
     assert(!text().includes('Old body first chunk'), 'A stale chunk returned after rebuild');
     assert(reads('content').map(call => queryOf(call).cursor).join(',') === ',old-body,,new-body', 'Unexpected body continuation reads');
   }],
+  ['a recovering structured response reports loading before it has a visible message', async () => {
+    let attempts = 0;
+    await fresh(control => {
+      seedSimple(control);
+      control.catalog['request/simple/0'] = [{
+        content_id: 'structured-answer', role: 'assistant', kind: 'text_delta', state: 'complete', direction: 'response_delivered',
+        media_type: 'application/vnd.hiroute.model-stream-event+json;version=1', message_occurrence_id: 'response',
+      }];
+      control.views.content = () => {
+        if (++attempts < 3) throw { code: 'OBSERVATION_UNAVAILABLE', retryable: true,
+          details_schema: 'hiroute.observation.read-failure/v1', observation_read: { reason: 'reader_busy', retry_after_ms: 100 } };
+        return { state: 'available', chunks: [{ text: JSON.stringify({ schema_version: 'hiroute.model-stream-event/v1', sequence: 1,
+          event: { kind: 'text_delta', index: 0, text: 'Structured response recovered' } }), original_byte_offset: 0 }], next_cursor: null };
+      };
+    });
+    await until(() => document.querySelector('.transcript-body [data-observation-recovery="retrying"]'), 'structured body has a visible recovery status');
+    assert(!document.querySelector('.transcript-body [role="alert"]'), 'Transient structured read displayed an error');
+    await until(() => text().includes('Structured response recovered'), 'structured response body');
+    assert(attempts === 3 && !document.querySelector('.transcript-body [data-observation-recovery]'), 'The body did not complete its recovery');
+  }],
   ['content invalidation masks a visible body and discards a pending continuation', async () => {
     const lateBody = deferred();
     let deleted = false;

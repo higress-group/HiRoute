@@ -203,6 +203,8 @@ test('the real console transport leaves a recovering read on its page and still 
   assert.deepEqual(await result, { sessions: ['ready'] });
   assert.deepEqual(events, []);
   fail = true;
+  await assert.rejects(invoke('observation_read', { request: { intent: { view: 'status', query: {} } } }), { code: 'CONSOLE_UNAVAILABLE' });
+  assert.deepEqual(events, [], 'The maintenance status can fail without disconnecting the console');
   await assert.rejects(invoke('desktop_snapshot'), { code: 'CONSOLE_UNAVAILABLE' });
   assert.deepEqual(events, [CONSOLE_UNAVAILABLE_EVENT]);
   fail = false;
@@ -210,5 +212,5 @@ test('the real console transport leaves a recovering read on its page and still 
   await assert.rejects(read(), { code: 'CONSOLE_AUTH_REQUIRED' });
   assert.deepEqual(events, [CONSOLE_UNAVAILABLE_EVENT, CONSOLE_EXPIRED_EVENT]);
   assert.equal(storage.has('hiroute.console.session'), false);
-  assert.deepEqual(calls.map(path => path.split('/').at(-1)), ['observation_read', 'observation_read', 'desktop_snapshot', 'observation_read']);
+  assert.deepEqual(calls.map(path => path.split('/').at(-1)), ['observation_read', 'observation_read', 'observation_read', 'desktop_snapshot', 'observation_read']);
 });

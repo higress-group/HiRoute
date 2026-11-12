@@ -214,6 +214,13 @@ export function DesktopApp() {
     window.addEventListener('hiroute-native-connection-unavailable', refresh);
     return () => window.removeEventListener('hiroute-native-connection-unavailable', refresh);
   }, [home.invalidateService, home.invalidateObservations, home.refreshDesktop]);
+  useEffect(() => {
+    if (observationConnectionLost && home.desktopSnapshot?.native_connection === 'ready'
+      && home.reads.service.status === 'ready' && !home.reads.service.data.nativeConnectionLost) {
+      authorityLost.current = false;
+      setObservationConnectionLost(false);
+    }
+  }, [observationConnectionLost, home.desktopSnapshot, home.reads.service]);
   const startupFailure = home.startup?.state === 'failed' ? home.startup : null;
   const startupMessage = startupFailureText(startupFailure?.code, startupFailure?.storage_recovery, language, 'macos');
   const upgradePhase = home.startup?.state === 'starting' ? home.startup.upgrade_phase : undefined;
