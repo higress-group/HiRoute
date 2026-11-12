@@ -147,15 +147,15 @@ pub(super) fn run(product: &InstalledProduct) {
         "collaboration":{"intent":"keep"},"access_token":{"intent":"keep"}});
     apply(product, "connect", &spec, "desktop-plugin-configure");
     let configured = zeroize::Zeroizing::new(std::fs::read(&patch).unwrap());
-    let rows: Vec<Value> = serde_yaml::from_slice(&configured).unwrap();
-    assert!(
-        !rows.iter().any(|row| row["id"] == "llm-pi-ai"),
-        "plugin bundle provider must remain effective"
-    );
-    let providers = rows
+    let appended = configured
+        .strip_prefix(baseline.as_bytes())
+        .and_then(|bytes| bytes.strip_prefix(b"- "))
+        .expect("Save appends one independent insert to the original profile");
+    let row: Value = serde_json::from_slice(appended).unwrap();
+    let providers = row["insert"]
+        .as_array()
+        .unwrap()
         .iter()
-        .filter_map(|row| row["insert"].as_array())
-        .flatten()
         .find(|entry| entry["id"] == "hiroute-routing")
         .unwrap()["config"]["providers"]
         .as_object()

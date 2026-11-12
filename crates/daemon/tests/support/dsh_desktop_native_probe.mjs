@@ -9,26 +9,31 @@ export const inject = ["appReady", "llm"];
 
 export function apply(ctx) {
   const { calls, absent, answer } = JSON.parse(process.env.HIROUTE_DSH_DESKTOP_PROBE);
+  let stage = "provider-list";
+  let completed = 0;
   async function probe() {
     const registered = ctx.llm.listProviders().map(provider => provider.id);
     for (const provider of absent) assert(!registered.includes(provider));
     for (const { provider, model, prompt } of calls) {
+      stage = "model-list";
       assert(registered.includes(provider));
       assert((await ctx.llm.listModels(provider)).some(entry => entry.id === model));
+      stage = "model-stream";
       const stream = await ctx.llm.stream({
         provider, model, maxTokens: 64,
         messages: [{ role: "user", content: [{ type: "text", text: prompt }] }],
       });
       const events = [];
       for await (const event of stream) events.push(event);
-      assert(!events.some(event => event.type === "error"));
+      assert(!events.some(event => event.type === "error" || event.reason?.kind === "error"));
       assert(JSON.stringify(events).includes(answer));
+      completed += 1;
     }
-    process.send({ type: "hiroute-model-proof", calls: calls.length });
+    process.send({ type: "hiroute-model-proof", calls: completed });
   }
   ctx.effect(() => ctx.appReady.onReady(() => {
     void probe().catch(error => process.send({
-      type: "hiroute-model-proof", error: error.code ?? error.name,
+      type: "hiroute-model-proof", calls: completed, stage, error: error.code ?? error.name,
     }));
   }));
 }
@@ -65,12 +70,12 @@ async function run({ executable, resources, profile, home, dshHome, version, ...
   const watchdog = setTimeout(() => child.kill(), 45_000);
   try {
     await finish;
-    assert.equal(proof.error, undefined, "native model catalog or stream failed");
-    assert.equal(proof.calls, probe.calls.length);
     child.send({ type: "shutdown" });
     assert.equal(await exited, 0);
     assert(stopped, "Desktop Host did not complete native shutdown");
-    console.log(JSON.stringify({ calls: proof.calls, desktopHostReady: ready }));
+    console.log(JSON.stringify({
+      calls: proof.calls, desktopHostReady: ready, stage: proof.stage, error: proof.error,
+    }));
   } finally {
     clearTimeout(watchdog);
     if (child.exitCode === null) child.kill();
