@@ -44,11 +44,12 @@ pub(super) fn run(product: &InstalledProduct) {
     let observed = Arc::new(Mutex::new(Vec::new()));
     let requests = Arc::clone(&observed);
     let upstream = http::Server::start(move |request| {
-        assert!(request.authenticated(SECRET));
+        assert!(request.authenticated(&format!("Bearer {SECRET}")));
         assert_eq!(request.method, "POST");
         assert_eq!(request.path, "/v1/responses");
         assert_eq!(request.body["model"], MODEL);
         if request.body["stream"] == false {
+            assert_eq!(request.body["tools"][0]["name"], "hiroute_probe");
             return http::Reply::json(
                 200,
                 json!({"id":"desktop-check","object":"response","model":MODEL,"status":"completed",
