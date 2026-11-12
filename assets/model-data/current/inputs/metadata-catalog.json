@@ -1,6 +1,6 @@
 {
   "artifact_kind": "hiroute.model-metadata-current-source",
-  "as_of": "2026-11-11",
+  "as_of": "2026-11-12",
   "scope": {
     "catalog_generation": "current",
     "delivery": "client-bundled",
@@ -2215,6 +2215,15 @@
       "digest_state": "not-captured"
     },
     {
+      "source_key": "source-anthropic-lifecycle-20261112",
+      "authority": "platform.claude.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://platform.claude.com/docs/en/about-claude/model-deprecations",
+      "collected_on": "2026-11-12",
+      "bytes_digest": "sha256:a9ae4e4fe207f502d56d1383ecd3a53c2be06256aa36dcd681421b3e3349dd7e",
+      "digest_state": "captured"
+    },
+    {
       "source_key": "source-bailian-deepseek-current",
       "authority": "help.aliyun.com",
       "source_kind": "provider-documentation",
@@ -2278,6 +2287,15 @@
       "digest_state": "captured"
     },
     {
+      "source_key": "source-google-deprecations-20261112",
+      "authority": "aistudio.google.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://aistudio.google.com/docs/deprecations",
+      "collected_on": "2026-11-12",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
       "source_key": "source-grok47",
       "authority": "docs.x.ai",
       "source_kind": "provider-documentation",
@@ -2296,6 +2314,33 @@
       "digest_state": "captured"
     },
     {
+      "source_key": "source-kimi-code-20261112",
+      "authority": "www.kimi.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://www.kimi.com/code/docs/en/kimi-code/models.html",
+      "collected_on": "2026-11-12",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-kimi-models-global-20261112",
+      "authority": "platform.kimi.ai",
+      "source_kind": "provider-documentation",
+      "locator": "https://platform.kimi.ai/docs/models",
+      "collected_on": "2026-11-12",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-kimi-pricing-cn-20261112",
+      "authority": "platform.kimi.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://platform.kimi.com/docs/pricing/chat",
+      "collected_on": "2026-11-12",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
       "source_key": "source-minimax-chat-current",
       "authority": "platform.minimax.io",
       "source_kind": "provider-documentation",
@@ -2303,6 +2348,60 @@
       "collected_on": "2026-11-11",
       "bytes_digest": "sha256:4b0180b75055dbdff081b0fae3abb486e6c1fbe9259bec1e6b35c86b4b2e57c1",
       "digest_state": "captured"
+    },
+    {
+      "source_key": "source-minimax-cn-chat-20261112",
+      "authority": "platform.minimax.cn",
+      "source_kind": "provider-documentation",
+      "locator": "https://platform.minimax.cn/docs/api-reference/text-chat-openai",
+      "collected_on": "2026-11-12",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-minimax-cn-messages-20261112",
+      "authority": "platform.minimax.cn",
+      "source_kind": "provider-documentation",
+      "locator": "https://platform.minimax.cn/docs/api-reference/text-anthropic-api",
+      "collected_on": "2026-11-12",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-minimax-cn-overview-20261112",
+      "authority": "platform.minimax.cn",
+      "source_kind": "provider-documentation",
+      "locator": "https://platform.minimax.cn/docs/api-reference/api-overview",
+      "collected_on": "2026-11-12",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-minimax-cn-pricing-20261112",
+      "authority": "platform.minimax.cn",
+      "source_kind": "provider-documentation",
+      "locator": "https://platform.minimax.cn/docs/pricing/overview",
+      "collected_on": "2026-11-12",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-minimax-cn-responses-20261112",
+      "authority": "platform.minimax.cn",
+      "source_kind": "provider-documentation",
+      "locator": "https://platform.minimax.cn/docs/api-reference/responses-create",
+      "collected_on": "2026-11-12",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-minimax-cn-text-20261112",
+      "authority": "platform.minimax.cn",
+      "source_kind": "provider-documentation",
+      "locator": "https://platform.minimax.cn/docs/guides/text-generation",
+      "collected_on": "2026-11-12",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
     },
     {
       "source_key": "source-minimax-messages-current",
@@ -2338,6 +2437,15 @@
       "locator": "https://platform.minimax.io/docs/guides/text-generation",
       "collected_on": "2026-11-11",
       "bytes_digest": "sha256:6fee3fabc8b8505d36d09944b12ce9a3c3ee79911847cd144b13061a77de585c",
+      "digest_state": "captured"
+    },
+    {
+      "source_key": "source-mistral-medium-35-lifecycle-20261112",
+      "authority": "docs.mistral.ai",
+      "source_kind": "provider-documentation",
+      "locator": "https://docs.mistral.ai/models/mistral-medium-3-5-26-04",
+      "collected_on": "2026-11-12",
+      "bytes_digest": "sha256:76661c005d6dcf517885e57e1cfae1c1f623a468b3d6fca7e7a49a6807d1e5b3",
       "digest_state": "captured"
     },
     {
@@ -2431,6 +2539,15 @@
       "digest_state": "captured"
     },
     {
+      "source_key": "source-zai-flash-20261112",
+      "authority": "docs.z.ai",
+      "source_kind": "provider-documentation",
+      "locator": "https://docs.z.ai/guides/vlm/glm-5.3-flash",
+      "collected_on": "2026-11-12",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
       "source_key": "source-zai-flashx-current",
       "authority": "docs.z.ai",
       "source_kind": "provider-documentation",
@@ -2440,6 +2557,15 @@
       "digest_state": "captured"
     },
     {
+      "source_key": "source-zai-plan-models-20261112",
+      "authority": "docs.z.ai",
+      "source_kind": "provider-documentation",
+      "locator": "https://docs.z.ai/devpack/latest-model",
+      "collected_on": "2026-11-12",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
       "source_key": "source-zai-pricing-current",
       "authority": "docs.z.ai",
       "source_kind": "provider-documentation",
@@ -2447,6 +2573,24 @@
       "collected_on": "2026-11-11",
       "bytes_digest": "sha256:437d0333db0d9e5cb37646cb05e184c518e9a027e0bb8ab0b1e6f4d45cbd75a7",
       "digest_state": "captured"
+    },
+    {
+      "source_key": "source-zhipu-flash-20261112",
+      "authority": "docs.bigmodel.cn",
+      "source_kind": "provider-documentation",
+      "locator": "https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash",
+      "collected_on": "2026-11-12",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-zhipu-pricing-20261112",
+      "authority": "docs.bigmodel.cn",
+      "source_kind": "provider-documentation",
+      "locator": "https://docs.bigmodel.cn/cn/guide/start/pricing.md",
+      "collected_on": "2026-11-12",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
     }
   ],
   "access_products": [
@@ -3186,11 +3330,17 @@
       "product_kind": "api-payg",
       "region_scope": "China site",
       "billing": "payg",
-      "restriction": "China and international accounts/endpoints are separate",
+      "restriction": "China and international accounts/endpoints are separate; current recommended host is api.minimax.cn. This documentation refresh does not establish retirement of api.minimaxi.com. PAYG API keys and M Plan subscription keys have separate billing and entitlements.",
       "credential": "bearer API key",
       "interfaces": [
         {
           "interface_key": "minimax-payg-cn/anthropic-messages",
+          "protocol": "anthropic-messages",
+          "base_url": "https://api.minimax.cn/anthropic",
+          "request_path": "/v1/messages"
+        },
+        {
+          "interface_key": "minimax-payg-cn/anthropic-messages-legacy",
           "protocol": "anthropic-messages",
           "base_url": "https://api.minimaxi.com/anthropic",
           "request_path": "/v1/messages"
@@ -3198,16 +3348,33 @@
         {
           "interface_key": "minimax-payg-cn/openai-chat",
           "protocol": "openai-chat",
+          "base_url": "https://api.minimax.cn/v1",
+          "request_path": "/chat/completions"
+        },
+        {
+          "interface_key": "minimax-payg-cn/openai-chat-legacy",
+          "protocol": "openai-chat",
           "base_url": "https://api.minimaxi.com/v1",
           "request_path": "/chat/completions"
+        },
+        {
+          "interface_key": "minimax-payg-cn/openai-responses",
+          "protocol": "openai-responses",
+          "base_url": "https://api.minimax.cn/v1",
+          "request_path": "/responses"
         }
       ],
       "documented_upstream_model_ids": [
-        "MiniMax-M2.7"
+        "MiniMax-M2.7",
+        "MiniMax-M3",
+        "MiniMax-M3.1-Flash"
       ],
       "evidence_status": "verified-primary",
       "evidence_refs": [
-        "source-071"
+        "source-071",
+        "source-minimax-cn-overview-20261112",
+        "source-minimax-cn-responses-20261112",
+        "source-minimax-cn-text-20261112"
       ],
       "disposition": [
         "catalog-representable",
@@ -3705,7 +3872,8 @@
       "evidence_refs": [
         "source-034",
         "source-037",
-        "source-zai-codex-current"
+        "source-zai-codex-current",
+        "source-zai-plan-models-20261112"
       ],
       "disposition": [
         "catalog-representable",
@@ -3816,7 +3984,9 @@
       "evidence_refs": [
         "source-026",
         "source-027",
-        "source-140"
+        "source-140",
+        "source-zhipu-flash-20261112",
+        "source-zhipu-pricing-20261112"
       ],
       "disposition": [
         "catalog-representable",
@@ -3824,7 +3994,8 @@
       ],
       "documented_upstream_model_ids": [
         "glm-5.3",
-        "glm-5.3-flash"
+        "glm-5.3-flash",
+        "glm-5.3-flashx"
       ]
     }
   ],
@@ -4881,7 +5052,8 @@
       "modalities": {
         "text_input": "supported",
         "image_input": "supported",
-        "text_output": "supported"
+        "text_output": "supported",
+        "video_input": "supported"
       },
       "capabilities": {
         "tool": "supported",
@@ -4902,8 +5074,11 @@
       "evidence_refs": [
         "source-035",
         "source-036",
-        "source-191"
-      ]
+        "source-191",
+        "source-zai-flash-20261112",
+        "source-zhipu-flash-20261112"
+      ],
+      "data_note": "Official documentation also supports video and file inputs; files remain a documented capability, not an invented modality field."
     },
     {
       "model_key": "glm-5-3-flashx-global",
@@ -4936,9 +5111,10 @@
       "source_stability_note": "current-provider-documented",
       "evidence_refs": [
         "source-zai-flashx-current",
-        "source-zai-pricing-current"
+        "source-zai-pricing-current",
+        "source-zhipu-flash-20261112"
       ],
-      "data_note": "The overview labels context 1M and output 128K; no exact integer conversion is assumed. FlashX is not on Coding Plan. Legal is a separately priced text model; its limits and visual capabilities are not inherited from FlashX.",
+      "data_note": "The overview labels context 1M and output 128K; no exact integer conversion is assumed. FlashX is not on Coding Plan. Legal is a separately priced text model; its limits and visual capabilities are not inherited from FlashX. The shared official glm-5.3-flashx identity also appears on the China site; the historical global key suffix does not grant China account access, which remains product-scoped.",
       "context_state": "unknown",
       "max_output_state": "unknown"
     },
@@ -5599,7 +5775,7 @@
       "upstream_ids": [
         "kimi-k2.6"
       ],
-      "context_tokens": 256000,
+      "context_tokens": 262144,
       "max_output_tokens": null,
       "max_output_state": "unknown",
       "modalities": {
@@ -5619,7 +5795,8 @@
       "lifecycle": "active",
       "source_stability_note": "current-documented-platform",
       "evidence_refs": [
-        "source-064"
+        "source-064",
+        "source-kimi-pricing-cn-20261112"
       ],
       "data_note": "32768 is documented as a default, not a proven hard maximum; max output remains unknown and non-executable"
     },
@@ -5724,12 +5901,12 @@
         },
         {
           "upstream_id": "k3",
-          "tokens": 1000000,
+          "tokens": 1048576,
           "condition": "eligible Kimi Code plan"
         },
         {
           "upstream_id": "k3-256k",
-          "tokens": 256000,
+          "tokens": 262144,
           "condition": "Kimi Code fixed variant"
         }
       ],
@@ -5754,7 +5931,7 @@
           "high",
           "max"
         ],
-        "default": "max"
+        "note": "Product-specific defaults: Kimi Platform max; Kimi Code high. Code requests with thinking disabled route to a non-thinking K2.8 model, not a K3 non-thinking mode."
       },
       "identity_stability": "immutable-or-provider-stable",
       "lifecycle": "active",
@@ -5762,7 +5939,8 @@
       "evidence_refs": [
         "source-062",
         "source-075",
-        "source-173"
+        "source-173",
+        "source-kimi-code-20261112"
       ],
       "data_note": "Use one K3 identity and rating set; product-specific upstream IDs and caps belong to endpoint bindings, while K2.5 remains a distinct model"
     },
@@ -8503,12 +8681,13 @@
       ],
       "availability": {
         "state": "conditional",
-        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification"
+        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification. Adjustable reasoning effort is unsupported. Disabling thinking routes to non-thinking K2.8; do not attribute that response to this selected model identity."
       },
       "protocol_qualification": "runtime-required",
       "evidence_refs": [
         "source-075",
-        "source-168"
+        "source-168",
+        "source-kimi-code-20261112"
       ],
       "capability_overrides": {
         "context_tokens": 262144
@@ -8525,12 +8704,13 @@
       ],
       "availability": {
         "state": "conditional",
-        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification"
+        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification. Disabling thinking routes to non-thinking K2.8; do not attribute that response to this selected model identity."
       },
       "protocol_qualification": "runtime-required",
       "evidence_refs": [
         "source-075",
-        "source-168"
+        "source-168",
+        "source-kimi-code-20261112"
       ]
     },
     {
@@ -8584,14 +8764,15 @@
       ],
       "availability": {
         "state": "conditional",
-        "condition": "documented for the product; account, region, entitlement, and protocol still require qualification"
+        "condition": "documented for the product; account, region, entitlement, and protocol still require qualification. Kimi Code effort defaults to high, not the Platform max default. The eligible plan maximum context is 1048576 with image and video inputs. Disabling thinking routes to non-thinking K2.8; do not attribute that response to this selected model identity."
       },
       "protocol_qualification": "runtime-required",
       "evidence_refs": [
         "source-062",
         "source-074",
         "source-075",
-        "source-173"
+        "source-173",
+        "source-kimi-code-20261112"
       ]
     },
     {
@@ -8605,14 +8786,15 @@
       ],
       "availability": {
         "state": "conditional",
-        "condition": "documented for the product; account, region, entitlement, and protocol still require qualification"
+        "condition": "documented for the product; account, region, entitlement, and protocol still require qualification. Kimi Code effort defaults to high, not the Platform max default. Fixed 262144 context with image input; video input is not supported. Disabling thinking routes to non-thinking K2.8; do not attribute that response to this selected model identity."
       },
       "protocol_qualification": "runtime-required",
       "evidence_refs": [
         "source-062",
         "source-074",
         "source-075",
-        "source-173"
+        "source-173",
+        "source-kimi-code-20261112"
       ],
       "capability_overrides": {
         "context_tokens": 262144
@@ -8628,12 +8810,14 @@
       ],
       "availability": {
         "state": "conditional",
-        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification"
+        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification. Existing users only; unavailable to newly registered users, with retirement planned for the end of December 2026. Official wording differs between since October 31 and users registered before November 1; exact registration cutoff requires account verification."
       },
       "protocol_qualification": "runtime-required",
       "evidence_refs": [
         "source-064",
-        "source-142"
+        "source-142",
+        "source-kimi-models-global-20261112",
+        "source-kimi-pricing-cn-20261112"
       ]
     },
     {
@@ -8646,12 +8830,14 @@
       ],
       "availability": {
         "state": "conditional",
-        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification"
+        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification. Existing users only; unavailable to newly registered users, with retirement planned for the end of December 2026. Official wording differs between since October 31 and users registered before November 1; exact registration cutoff requires account verification."
       },
       "protocol_qualification": "runtime-required",
       "evidence_refs": [
         "source-142",
-        "source-168"
+        "source-168",
+        "source-kimi-models-global-20261112",
+        "source-kimi-pricing-cn-20261112"
       ]
     },
     {
@@ -8664,12 +8850,14 @@
       ],
       "availability": {
         "state": "conditional",
-        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification"
+        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification. Existing users only; unavailable to newly registered users, with retirement planned for the end of December 2026. Official wording differs between since October 31 and users registered before November 1; exact registration cutoff requires account verification."
       },
       "protocol_qualification": "runtime-required",
       "evidence_refs": [
         "source-142",
-        "source-168"
+        "source-168",
+        "source-kimi-models-global-20261112",
+        "source-kimi-pricing-cn-20261112"
       ]
     },
     {
@@ -8746,13 +8934,15 @@
       ],
       "availability": {
         "state": "conditional",
-        "condition": "documented for the product; account, region, entitlement, and protocol still require qualification"
+        "condition": "documented for the product; account, region, entitlement, and protocol still require qualification. Existing users only; unavailable to newly registered users, with retirement planned for the end of December 2026. Official wording differs between since October 31 and users registered before November 1; exact registration cutoff requires account verification."
       },
       "protocol_qualification": "runtime-required",
       "evidence_refs": [
         "source-062",
         "source-064",
-        "source-143"
+        "source-143",
+        "source-kimi-models-global-20261112",
+        "source-kimi-pricing-cn-20261112"
       ]
     },
     {
@@ -8765,12 +8955,14 @@
       ],
       "availability": {
         "state": "conditional",
-        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification"
+        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification. Existing users only; unavailable to newly registered users, with retirement planned for the end of December 2026. Official wording differs between since October 31 and users registered before November 1; exact registration cutoff requires account verification."
       },
       "protocol_qualification": "runtime-required",
       "evidence_refs": [
         "source-143",
-        "source-168"
+        "source-168",
+        "source-kimi-models-global-20261112",
+        "source-kimi-pricing-cn-20261112"
       ]
     },
     {
@@ -8783,12 +8975,14 @@
       ],
       "availability": {
         "state": "conditional",
-        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification"
+        "condition": "documented for this product; account, region, entitlement, and protocol still require qualification. Existing users only; unavailable to newly registered users, with retirement planned for the end of December 2026. Official wording differs between since October 31 and users registered before November 1; exact registration cutoff requires account verification."
       },
       "protocol_qualification": "runtime-required",
       "evidence_refs": [
         "source-143",
-        "source-168"
+        "source-168",
+        "source-kimi-models-global-20261112",
+        "source-kimi-pricing-cn-20261112"
       ]
     },
     {
@@ -8863,18 +9057,133 @@
       "model_key": "minimax-m2-7",
       "upstream_model_id": "MiniMax-M2.7",
       "interface_candidates": [
-        "minimax-payg-cn/anthropic-messages",
-        "minimax-payg-cn/openai-chat"
+        "minimax-payg-cn/anthropic-messages-legacy",
+        "minimax-payg-cn/openai-chat-legacy"
       ],
       "availability": {
         "state": "conditional",
-        "condition": "documented for the product; account, region, entitlement, and protocol still require qualification"
+        "condition": "documented for the product; account, region, entitlement, and protocol still require qualification. Historical minimaxi.com association only. Current Anthropic documentation lists M3 and M3.1 Flash only; M2.7 Messages eligibility is conflicting and needs account-specific verification, not a global retirement claim."
       },
       "protocol_qualification": "runtime-required",
       "evidence_refs": [
         "source-066",
         "source-067",
-        "source-071"
+        "source-071",
+        "source-minimax-cn-messages-20261112"
+      ]
+    },
+    {
+      "binding_key": "minimax-payg-cn/minimax-m3-1-flash/MiniMax-M3.1-Flash/anthropic-messages",
+      "product_key": "minimax-payg-cn",
+      "model_key": "minimax-m3-1-flash",
+      "upstream_model_id": "MiniMax-M3.1-Flash",
+      "upstream_identity_role": "canonical-callable-id",
+      "interface_candidates": [
+        "minimax-payg-cn/anthropic-messages"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Public documentation only; account, region, entitlement and protocol require qualification. M3 thinking defaults off; adaptive enables it. Flash always thinks and uses output_config.effort, default max."
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-minimax-cn-messages-20261112"
+      ]
+    },
+    {
+      "binding_key": "minimax-payg-cn/minimax-m3-1-flash/MiniMax-M3.1-Flash/openai-chat",
+      "product_key": "minimax-payg-cn",
+      "model_key": "minimax-m3-1-flash",
+      "upstream_model_id": "MiniMax-M3.1-Flash",
+      "upstream_identity_role": "canonical-callable-id",
+      "interface_candidates": [
+        "minimax-payg-cn/openai-chat"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Thinking defaults adaptive; M3 accepts disabled, Flash rejects disabled. reasoning_effort tunes Flash only. max_tokens/max_completion_tokens include thinking."
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-minimax-cn-chat-20261112"
+      ],
+      "capability_overrides": {
+        "max_output_tokens": 524288
+      }
+    },
+    {
+      "binding_key": "minimax-payg-cn/minimax-m3-1-flash/MiniMax-M3.1-Flash/openai-responses",
+      "product_key": "minimax-payg-cn",
+      "model_key": "minimax-m3-1-flash",
+      "upstream_model_id": "MiniMax-M3.1-Flash",
+      "upstream_identity_role": "canonical-callable-id",
+      "interface_candidates": [
+        "minimax-payg-cn/openai-responses"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Public documentation only; account, region, entitlement and protocol require qualification. M3 thinking defaults off; non-none reasoning.effort enables it without depth tuning. Flash always thinks, defaults max and rejects none. max_output_tokens includes reasoning."
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-minimax-cn-responses-20261112"
+      ]
+    },
+    {
+      "binding_key": "minimax-payg-cn/minimax-m3/MiniMax-M3/anthropic-messages",
+      "product_key": "minimax-payg-cn",
+      "model_key": "minimax-m3",
+      "upstream_model_id": "MiniMax-M3",
+      "upstream_identity_role": "canonical-callable-id",
+      "interface_candidates": [
+        "minimax-payg-cn/anthropic-messages"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Public documentation only; account, region, entitlement and protocol require qualification. M3 thinking defaults off; adaptive enables it. Flash always thinks and uses output_config.effort, default max."
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-minimax-cn-messages-20261112"
+      ]
+    },
+    {
+      "binding_key": "minimax-payg-cn/minimax-m3/MiniMax-M3/openai-chat",
+      "product_key": "minimax-payg-cn",
+      "model_key": "minimax-m3",
+      "upstream_model_id": "MiniMax-M3",
+      "upstream_identity_role": "canonical-callable-id",
+      "interface_candidates": [
+        "minimax-payg-cn/openai-chat"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Thinking defaults adaptive; M3 accepts disabled, Flash rejects disabled. reasoning_effort tunes Flash only. max_tokens/max_completion_tokens include thinking."
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-minimax-cn-chat-20261112"
+      ],
+      "capability_overrides": {
+        "max_output_tokens": 524288
+      }
+    },
+    {
+      "binding_key": "minimax-payg-cn/minimax-m3/MiniMax-M3/openai-responses",
+      "product_key": "minimax-payg-cn",
+      "model_key": "minimax-m3",
+      "upstream_model_id": "MiniMax-M3",
+      "upstream_identity_role": "canonical-callable-id",
+      "interface_candidates": [
+        "minimax-payg-cn/openai-responses"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Public documentation only; account, region, entitlement and protocol require qualification. M3 thinking defaults off; non-none reasoning.effort enables it without depth tuning. Flash always thinks, defaults max and rejects none. max_output_tokens includes reasoning."
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-minimax-cn-responses-20261112"
       ]
     },
     {
@@ -9675,7 +9984,8 @@
       "upstream_model_id": "glm-5.3-flash",
       "interface_candidates": [
         "zai-devpack-global/anthropic-messages",
-        "zai-devpack-global/openai-chat"
+        "zai-devpack-global/openai-chat",
+        "zai-devpack-global/openai-responses"
       ],
       "availability": {
         "state": "conditional",
@@ -9683,7 +9993,8 @@
       },
       "protocol_qualification": "runtime-required",
       "evidence_refs": [
-        "source-133"
+        "source-133",
+        "source-zai-plan-models-20261112"
       ]
     },
     {
@@ -9693,6 +10004,8 @@
       "upstream_model_id": "glm-5.3",
       "upstream_identity_role": "canonical-callable-id",
       "interface_candidates": [
+        "zai-devpack-global/anthropic-messages",
+        "zai-devpack-global/openai-chat",
         "zai-devpack-global/openai-responses"
       ],
       "availability": {
@@ -9701,7 +10014,8 @@
       },
       "protocol_qualification": "runtime-required",
       "evidence_refs": [
-        "source-zai-codex-current"
+        "source-zai-codex-current",
+        "source-zai-plan-models-20261112"
       ]
     },
     {
@@ -9852,6 +10166,25 @@
         "source-036",
         "source-132",
         "source-140"
+      ]
+    },
+    {
+      "binding_key": "zhipu-general-cn/glm-5-3-flashx-global/glm-5.3-flashx",
+      "product_key": "zhipu-general-cn",
+      "model_key": "glm-5-3-flashx-global",
+      "upstream_model_id": "glm-5.3-flashx",
+      "upstream_identity_role": "canonical-callable-id",
+      "interface_candidates": [
+        "zhipu-general-cn/openai-chat"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "China General API documentation only; target account, region and protocol require qualification. FlashX is not available on Coding Plan."
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-zhipu-flash-20261112",
+        "source-zhipu-pricing-20261112"
       ]
     },
     {
@@ -10521,6 +10854,107 @@
       ]
     },
     {
+      "pricing_key": "minimax-payg-cn/minimax-m3-1-flash/MiniMax-M3.1-Flash",
+      "product_key": "minimax-payg-cn",
+      "model_key": "minimax-m3-1-flash",
+      "upstream_model_id": "MiniMax-M3.1-Flash",
+      "currency": "CNY",
+      "unit": "per-1m-tokens",
+      "price_state": "exact",
+      "schedules": [
+        {
+          "schedule_key": "standard",
+          "condition": {
+            "kind": "service-tier",
+            "service_tier": "standard"
+          },
+          "application": "provider-defined",
+          "rates": {
+            "input": "1.00",
+            "output": "4.00",
+            "cache-read": "0.10"
+          }
+        }
+      ],
+      "evidence_refs": [
+        "source-minimax-cn-pricing-20261112"
+      ]
+    },
+    {
+      "pricing_key": "minimax-payg-cn/minimax-m3/MiniMax-M3",
+      "product_key": "minimax-payg-cn",
+      "model_key": "minimax-m3",
+      "upstream_model_id": "MiniMax-M3",
+      "currency": "CNY",
+      "unit": "per-1m-tokens",
+      "price_state": "exact",
+      "schedules": [
+        {
+          "schedule_key": "priority-long",
+          "condition": {
+            "kind": "prompt-token-threshold",
+            "service_tier": "priority",
+            "provider_threshold": "> 512k",
+            "threshold_token_unit": "unresolved"
+          },
+          "application": "provider-defined",
+          "rates": {
+            "input": "6.30",
+            "output": "25.20",
+            "cache-read": "1.26"
+          }
+        },
+        {
+          "schedule_key": "priority-short",
+          "condition": {
+            "kind": "prompt-token-threshold",
+            "service_tier": "priority",
+            "provider_threshold": "<= 512k",
+            "threshold_token_unit": "unresolved"
+          },
+          "application": "provider-defined",
+          "rates": {
+            "input": "3.15",
+            "output": "12.60",
+            "cache-read": "0.63"
+          }
+        },
+        {
+          "schedule_key": "standard-long",
+          "condition": {
+            "kind": "prompt-token-threshold",
+            "service_tier": "standard",
+            "provider_threshold": "> 512k",
+            "threshold_token_unit": "unresolved"
+          },
+          "application": "provider-defined",
+          "rates": {
+            "input": "4.20",
+            "output": "16.80",
+            "cache-read": "0.84"
+          }
+        },
+        {
+          "schedule_key": "standard-short",
+          "condition": {
+            "kind": "prompt-token-threshold",
+            "service_tier": "standard",
+            "provider_threshold": "<= 512k",
+            "threshold_token_unit": "unresolved"
+          },
+          "application": "provider-defined",
+          "rates": {
+            "input": "2.10",
+            "output": "8.40",
+            "cache-read": "0.42"
+          }
+        }
+      ],
+      "evidence_refs": [
+        "source-minimax-cn-pricing-20261112"
+      ]
+    },
+    {
       "pricing_key": "minimax-payg-global/minimax-m3-1-flash/MiniMax-M3.1-Flash",
       "product_key": "minimax-payg-global",
       "model_key": "minimax-m3-1-flash",
@@ -10930,6 +11364,33 @@
       ],
       "evidence_refs": [
         "source-zai-pricing-current"
+      ]
+    },
+    {
+      "pricing_key": "zhipu-general-cn/glm-5-3-flashx-global/glm-5.3-flashx",
+      "product_key": "zhipu-general-cn",
+      "model_key": "glm-5-3-flashx-global",
+      "upstream_model_id": "glm-5.3-flashx",
+      "currency": "CNY",
+      "unit": "per-1m-tokens",
+      "price_state": "exact",
+      "schedules": [
+        {
+          "schedule_key": "standard",
+          "condition": {
+            "kind": "service-tier",
+            "tier": "standard"
+          },
+          "application": "provider-defined",
+          "rates": {
+            "input": "2",
+            "output": "7",
+            "cache-read": "0.57"
+          }
+        }
+      ],
+      "evidence_refs": [
+        "source-zhipu-pricing-20261112"
       ]
     }
   ],
@@ -17182,6 +17643,80 @@
         },
         {
           "source_key": "source-218"
+        }
+      ]
+    },
+    {
+      "provider_record_key": "official/minimax-payg-cn",
+      "provider_id": "minimax-payg-cn",
+      "display_name": "MiniMax China Chat Completions",
+      "provenance_refs": [
+        {
+          "kind": "evidence-source",
+          "source_key": "source-minimax-cn-chat-20261112"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-minimax-cn-messages-20261112"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-minimax-cn-responses-20261112"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-minimax-cn-text-20261112"
+        }
+      ],
+      "description_candidates": [],
+      "aliases": [],
+      "base_url_candidates": [
+        "https://api.minimax.cn/v1"
+      ],
+      "protocol_candidates": [
+        "chat_completions"
+      ],
+      "unsupported_api_styles": [],
+      "unsupported_transport_locators": [],
+      "authentication_candidates": [
+        "api_key"
+      ],
+      "environment_variable_names": [],
+      "default_model_ids": [],
+      "discovery_modes": [],
+      "models_url_candidates": [],
+      "signup_url_candidates": [],
+      "metadata_completeness": {
+        "authentication": "complete",
+        "discovery": "missing",
+        "endpoint": "complete",
+        "identity": "complete"
+      },
+      "usable_for": [
+        "credential-setup-hint",
+        "custom-api-endpoint-prefill",
+        "provider-directory"
+      ],
+      "source_assertions": [
+        {
+          "name": "MiniMax China Chat Completions",
+          "base_url": "https://api.minimax.cn/v1",
+          "protocol": "chat_completions",
+          "authentication": "api_key"
+        }
+      ],
+      "source_locations": [
+        {
+          "source_key": "source-minimax-cn-chat-20261112"
+        },
+        {
+          "source_key": "source-minimax-cn-messages-20261112"
+        },
+        {
+          "source_key": "source-minimax-cn-responses-20261112"
+        },
+        {
+          "source_key": "source-minimax-cn-text-20261112"
         }
       ]
     },
@@ -25920,6 +26455,10 @@
         {
           "kind": "client-discovery-run",
           "source_key": "hermes-agent"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-anthropic-lifecycle-20261112"
         }
       ],
       "provider_id": "anthropic",
@@ -25949,9 +26488,13 @@
         "thinking_level_maps": []
       },
       "cost_hints": [],
-      "lifecycle": "active",
-      "status_candidates": [],
-      "replacement_upstream_ids": [],
+      "lifecycle": "retired",
+      "status_candidates": [
+        "Direct Claude API retired 2026-06-15, announced 2026-04-14."
+      ],
+      "replacement_upstream_ids": [
+        "claude-opus-4-8"
+      ],
       "roles": [
         "client-static-catalog"
       ],
@@ -25981,6 +26524,9 @@
           "path": "hermes_cli/models_catalog_static.py",
           "line": 206,
           "git_object_id": "6de68d51042e2d4d04c780ccc9cd325222bfe5ec"
+        },
+        {
+          "source_key": "source-anthropic-lifecycle-20261112"
         }
       ],
       "execution_fit": {
@@ -26012,10 +26558,6 @@
           "rule_key": "rule.anthropic.claude-4-line/v1"
         },
         "input_modalities": {
-          "basis": "inferred",
-          "rule_key": "rule.anthropic.claude-4-line/v1"
-        },
-        "lifecycle": {
           "basis": "inferred",
           "rule_key": "rule.anthropic.claude-4-line/v1"
         },
@@ -26636,6 +27178,10 @@
         {
           "kind": "client-discovery-run",
           "source_key": "hermes-agent"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-anthropic-lifecycle-20261112"
         }
       ],
       "provider_id": "anthropic",
@@ -26665,9 +27211,13 @@
         "thinking_level_maps": []
       },
       "cost_hints": [],
-      "lifecycle": "active",
-      "status_candidates": [],
-      "replacement_upstream_ids": [],
+      "lifecycle": "retired",
+      "status_candidates": [
+        "Direct Claude API retired 2026-06-15, announced 2026-04-14."
+      ],
+      "replacement_upstream_ids": [
+        "claude-sonnet-5-5"
+      ],
       "roles": [
         "client-static-catalog"
       ],
@@ -26697,6 +27247,9 @@
           "path": "hermes_cli/models_catalog_static.py",
           "line": 206,
           "git_object_id": "6de68d51042e2d4d04c780ccc9cd325222bfe5ec"
+        },
+        {
+          "source_key": "source-anthropic-lifecycle-20261112"
         }
       ],
       "execution_fit": {
@@ -26731,10 +27284,6 @@
           "basis": "inferred",
           "rule_key": "rule.anthropic.claude-4-line/v1"
         },
-        "lifecycle": {
-          "basis": "inferred",
-          "rule_key": "rule.anthropic.claude-4-line/v1"
-        },
         "max_output_tokens": {
           "basis": "inferred",
           "rule_key": "rule.anthropic.claude-4-line/v1"
@@ -26754,6 +27303,10 @@
         {
           "kind": "client-discovery-run",
           "source_key": "hermes-agent"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-anthropic-lifecycle-20261112"
         }
       ],
       "provider_id": "anthropic",
@@ -26783,9 +27336,13 @@
         "thinking_level_maps": []
       },
       "cost_hints": [],
-      "lifecycle": "active",
-      "status_candidates": [],
-      "replacement_upstream_ids": [],
+      "lifecycle": "deprecated",
+      "status_candidates": [
+        "Deprecated 2026-09-30; retirement scheduled 2026-11-30 on the direct Claude API."
+      ],
+      "replacement_upstream_ids": [
+        "claude-sonnet-5-5"
+      ],
       "roles": [
         "client-static-catalog"
       ],
@@ -26815,6 +27372,9 @@
           "path": "hermes_cli/models_catalog_static.py",
           "line": 205,
           "git_object_id": "6de68d51042e2d4d04c780ccc9cd325222bfe5ec"
+        },
+        {
+          "source_key": "source-anthropic-lifecycle-20261112"
         }
       ],
       "execution_fit": {
@@ -26846,10 +27406,6 @@
           "rule_key": "rule.anthropic.claude-4-line/v1"
         },
         "input_modalities": {
-          "basis": "inferred",
-          "rule_key": "rule.anthropic.claude-4-line/v1"
-        },
-        "lifecycle": {
           "basis": "inferred",
           "rule_key": "rule.anthropic.claude-4-line/v1"
         },
@@ -53960,7 +54516,8 @@
       },
       "input_modalities": [
         "image",
-        "text"
+        "text",
+        "video"
       ],
       "capability_hints": {
         "reasoning": "supported",
@@ -59737,7 +60294,8 @@
       },
       "input_modalities": [
         "image",
-        "text"
+        "text",
+        "video"
       ],
       "capability_hints": {
         "reasoning": "supported",
@@ -71660,7 +72218,8 @@
       },
       "input_modalities": [
         "image",
-        "text"
+        "text",
+        "video"
       ],
       "capability_hints": {
         "reasoning": "supported",
@@ -78827,7 +79386,8 @@
       },
       "input_modalities": [
         "image",
-        "text"
+        "text",
+        "video"
       ],
       "capability_hints": {
         "reasoning": "supported",
@@ -81077,6 +81637,232 @@
         "state": "native-text-representable"
       },
       "cost_hint_state": "recorded"
+    },
+    {
+      "model_record_key": "official/minimax-payg-cn/MiniMax-M3",
+      "provider_record_key": "official/minimax-payg-cn",
+      "provider_id": "minimax-payg-cn",
+      "provenance_refs": [
+        {
+          "kind": "evidence-source",
+          "source_key": "source-minimax-cn-chat-20261112"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-minimax-cn-messages-20261112"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-minimax-cn-responses-20261112"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-minimax-cn-text-20261112"
+        }
+      ],
+      "upstream_model_id": "MiniMax-M3",
+      "display_name": "MiniMax M3",
+      "context_tokens": {
+        "state": "known",
+        "value": 1000000
+      },
+      "max_output_tokens": {
+        "state": "known",
+        "value": 524288
+      },
+      "input_modalities": [
+        "image",
+        "text",
+        "video"
+      ],
+      "capability_hints": {
+        "reasoning": "supported",
+        "streaming": "supported",
+        "tool": "supported",
+        "vision": "supported"
+      },
+      "reasoning_rendering_hints": {
+        "reasoning_effort_maps": [],
+        "supported_reasoning_efforts": [],
+        "thinking_level_maps": []
+      },
+      "cost_hints": [],
+      "lifecycle": "active",
+      "status_candidates": [],
+      "replacement_upstream_ids": [],
+      "roles": [
+        "provider-documented-model"
+      ],
+      "normalized_model_matches": [
+        "minimax-m3"
+      ],
+      "metadata_completeness": {
+        "capabilities": "complete",
+        "cost": "missing",
+        "identity": "complete",
+        "lifecycle": "complete",
+        "limits": "complete",
+        "modalities": "complete",
+        "reasoning_rendering": "not-applicable"
+      },
+      "usable_for": [
+        "context-limit-prefill",
+        "custom-api-model-prefill",
+        "lifecycle-warning",
+        "model-directory",
+        "output-limit-prefill",
+        "reasoning-capability-prefill",
+        "request-limit-prefill",
+        "vision-capability-prefill"
+      ],
+      "source_assertions": [
+        {
+          "id": "MiniMax-M3",
+          "protocol": "openai-chat",
+          "maximum_output_tokens": 524288,
+          "recommended_output_tokens": 131072,
+          "thinking_default": "adaptive",
+          "effort_default": "not-depth-tunable"
+        }
+      ],
+      "source_locations": [
+        {
+          "source_key": "source-minimax-cn-chat-20261112"
+        },
+        {
+          "source_key": "source-minimax-cn-messages-20261112"
+        },
+        {
+          "source_key": "source-minimax-cn-responses-20261112"
+        },
+        {
+          "source_key": "source-minimax-cn-text-20261112"
+        }
+      ],
+      "execution_fit": {
+        "state": "native-text-representable"
+      },
+      "cost_hint_state": "not-recorded",
+      "reasoning_rendering_state": "not-applicable",
+      "field_provenance": {
+        "reasoning_rendering_hints": {
+          "basis": "inferred",
+          "rule_key": "rule.minimax.m3/v1"
+        }
+      }
+    },
+    {
+      "model_record_key": "official/minimax-payg-cn/MiniMax-M3.1-Flash",
+      "provider_record_key": "official/minimax-payg-cn",
+      "provider_id": "minimax-payg-cn",
+      "provenance_refs": [
+        {
+          "kind": "evidence-source",
+          "source_key": "source-minimax-cn-chat-20261112"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-minimax-cn-messages-20261112"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-minimax-cn-responses-20261112"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-minimax-cn-text-20261112"
+        }
+      ],
+      "upstream_model_id": "MiniMax-M3.1-Flash",
+      "display_name": "MiniMax M3.1 Flash",
+      "context_tokens": {
+        "state": "known",
+        "value": 1000000
+      },
+      "max_output_tokens": {
+        "state": "known",
+        "value": 524288
+      },
+      "input_modalities": [
+        "image",
+        "text",
+        "video"
+      ],
+      "capability_hints": {
+        "reasoning": "supported",
+        "streaming": "supported",
+        "tool": "supported",
+        "vision": "supported"
+      },
+      "reasoning_rendering_hints": {
+        "reasoning_effort_maps": [],
+        "supported_reasoning_efforts": [
+          "high",
+          "low",
+          "max",
+          "medium",
+          "xhigh"
+        ],
+        "thinking_level_maps": []
+      },
+      "cost_hints": [],
+      "lifecycle": "active",
+      "status_candidates": [],
+      "replacement_upstream_ids": [],
+      "roles": [
+        "provider-documented-model"
+      ],
+      "normalized_model_matches": [
+        "minimax-m3-1-flash"
+      ],
+      "metadata_completeness": {
+        "capabilities": "complete",
+        "cost": "missing",
+        "identity": "complete",
+        "lifecycle": "complete",
+        "limits": "complete",
+        "modalities": "complete",
+        "reasoning_rendering": "complete"
+      },
+      "usable_for": [
+        "context-limit-prefill",
+        "custom-api-model-prefill",
+        "lifecycle-warning",
+        "model-directory",
+        "output-limit-prefill",
+        "reasoning-capability-prefill",
+        "reasoning-rendering-hint",
+        "request-limit-prefill",
+        "vision-capability-prefill"
+      ],
+      "source_assertions": [
+        {
+          "id": "MiniMax-M3.1-Flash",
+          "protocol": "openai-chat",
+          "maximum_output_tokens": 524288,
+          "recommended_output_tokens": 131072,
+          "thinking_default": "adaptive",
+          "effort_default": "max"
+        }
+      ],
+      "source_locations": [
+        {
+          "source_key": "source-minimax-cn-chat-20261112"
+        },
+        {
+          "source_key": "source-minimax-cn-messages-20261112"
+        },
+        {
+          "source_key": "source-minimax-cn-responses-20261112"
+        },
+        {
+          "source_key": "source-minimax-cn-text-20261112"
+        }
+      ],
+      "execution_fit": {
+        "state": "native-text-representable"
+      },
+      "cost_hint_state": "not-recorded"
     },
     {
       "model_record_key": "official/minimax-payg-global/MiniMax-M3",
@@ -93712,6 +94498,10 @@
         {
           "kind": "client-discovery-run",
           "source_key": "openclaw"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-google-deprecations-20261112"
         }
       ],
       "provider_id": "google",
@@ -93752,9 +94542,13 @@
           "output": 0
         }
       ],
-      "lifecycle": "active",
-      "status_candidates": [],
-      "replacement_upstream_ids": [],
+      "lifecycle": "deprecated",
+      "status_candidates": [
+        "Deprecated; from 2026-12-01 this direct Gemini API ID automatically routes to gemini-3.5-flash-lite at the destination model pricing. Not yet retired."
+      ],
+      "replacement_upstream_ids": [
+        "gemini-3.5-flash-lite"
+      ],
       "roles": [
         "client-catalog"
       ],
@@ -93804,6 +94598,9 @@
           "path": "extensions/google/openclaw.plugin.json",
           "pointer": "/modelCatalog/providers/google/models/1",
           "git_object_id": "e38590372a807a727b4ae1282051de3376c9307b"
+        },
+        {
+          "source_key": "source-google-deprecations-20261112"
         }
       ],
       "execution_fit": {
@@ -93819,10 +94616,6 @@
           "rule_key": "rule.google.gemini/v1"
         },
         "execution_fit": {
-          "basis": "inferred",
-          "rule_key": "rule.google.gemini/v1"
-        },
-        "lifecycle": {
           "basis": "inferred",
           "rule_key": "rule.google.gemini/v1"
         },
@@ -93968,6 +94761,10 @@
         {
           "kind": "client-discovery-run",
           "source_key": "openclaw"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-google-deprecations-20261112"
         }
       ],
       "provider_id": "google",
@@ -94008,9 +94805,13 @@
           "output": 0
         }
       ],
-      "lifecycle": "active",
-      "status_candidates": [],
-      "replacement_upstream_ids": [],
+      "lifecycle": "deprecated",
+      "status_candidates": [
+        "Deprecated; from 2026-12-01 this direct Gemini API ID automatically routes to gemini-3.8-flash at the destination model pricing. Not yet retired."
+      ],
+      "replacement_upstream_ids": [
+        "gemini-3.8-flash"
+      ],
       "roles": [
         "client-catalog"
       ],
@@ -94060,6 +94861,9 @@
           "path": "extensions/google/openclaw.plugin.json",
           "pointer": "/modelCatalog/providers/google/models/0",
           "git_object_id": "e38590372a807a727b4ae1282051de3376c9307b"
+        },
+        {
+          "source_key": "source-google-deprecations-20261112"
         }
       ],
       "execution_fit": {
@@ -94075,10 +94879,6 @@
           "rule_key": "rule.google.gemini/v1"
         },
         "execution_fit": {
-          "basis": "inferred",
-          "rule_key": "rule.google.gemini/v1"
-        },
-        "lifecycle": {
           "basis": "inferred",
           "rule_key": "rule.google.gemini/v1"
         },
@@ -97455,6 +98255,10 @@
         {
           "kind": "client-discovery-run",
           "source_key": "openclaw"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-mistral-medium-35-lifecycle-20261112"
         }
       ],
       "provider_id": "mistral",
@@ -97491,9 +98295,13 @@
           "output": 7.5
         }
       ],
-      "lifecycle": "active",
-      "status_candidates": [],
-      "replacement_upstream_ids": [],
+      "lifecycle": "deprecated",
+      "status_candidates": [
+        "Deprecated 2026-10-31 on the direct Mistral API; no retirement date is inferred."
+      ],
+      "replacement_upstream_ids": [
+        "mistral-large-4"
+      ],
       "roles": [
         "client-catalog"
       ],
@@ -97542,6 +98350,9 @@
           "path": "extensions/mistral/openclaw.plugin.json",
           "pointer": "/modelCatalog/providers/mistral/models/4",
           "git_object_id": "78cd10ff65ab4bd755cc9e07993ec1ef76c31fe3"
+        },
+        {
+          "source_key": "source-mistral-medium-35-lifecycle-20261112"
         }
       ],
       "execution_fit": {
@@ -97557,10 +98368,6 @@
           "rule_key": "rule.mistral.medium/v1"
         },
         "execution_fit": {
-          "basis": "inferred",
-          "rule_key": "rule.mistral.medium/v1"
-        },
-        "lifecycle": {
           "basis": "inferred",
           "rule_key": "rule.mistral.medium/v1"
         },
@@ -123878,7 +124685,8 @@
         "capability_hints.vision": "supported",
         "input_modalities": [
           "image",
-          "text"
+          "text",
+          "video"
         ],
         "context_tokens": {
           "state": "known",
@@ -123903,10 +124711,12 @@
         }
       },
       "basis": "inferred",
-      "reason": "GLM-5.3 Flash is documented with a 1,000,000-token window, 131,072 max output, and image input (the Flash variant carries vision).",
+      "reason": "GLM-5.3 Flash is documented with a 1,000,000-token window, 131,072 max output, and image input (the Flash variant carries vision). Current provider documentation additionally establishes video input.",
       "evidence_refs": [
         "source-035",
-        "source-036"
+        "source-036",
+        "source-zai-flash-20261112",
+        "source-zhipu-flash-20261112"
       ],
       "collected_on": "2026-09-13"
     },

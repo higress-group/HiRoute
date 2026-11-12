@@ -1,7 +1,7 @@
 {
   "artifact_kind": "hiroute.model-metadata-client-discovery-runs",
-  "as_of": "2026-11-11",
-  "catalog_digest_compared": "sha256:52358d8a1ce88fa63cf59e757bc0cc39be986bb703145511f6c4b8773ec355c7",
+  "as_of": "2026-11-12",
+  "catalog_digest_compared": "sha256:a451a920e0e7b42f2b6a13e4e214f44035ca9ad3d654309341b9728cb04e7ecb",
   "policy": {
     "candidate_outputs_materialized": true,
     "metadata_records_materialized": true,
@@ -11,24 +11,24 @@
     "determinate_outcome_closure_script": ".agents/skills/model-metadata-maintainer/scripts/close_model_metadata.py"
   },
   "materialization": {
-    "model_metadata_record_count": 787,
-    "provider_metadata_record_count": 113,
+    "model_metadata_record_count": 789,
+    "provider_metadata_record_count": 114,
     "scenario_eligible_record_counts": {
       "adapter-planning": 4,
-      "context-limit-prefill": 777,
+      "context-limit-prefill": 779,
       "cost-hint-display": 240,
-      "credential-setup-hint": 113,
-      "custom-api-endpoint-prefill": 92,
-      "custom-api-model-prefill": 787,
-      "lifecycle-warning": 787,
-      "model-directory": 787,
+      "credential-setup-hint": 114,
+      "custom-api-endpoint-prefill": 93,
+      "custom-api-model-prefill": 789,
+      "lifecycle-warning": 789,
+      "model-directory": 789,
       "model-discovery-setup": 102,
-      "output-limit-prefill": 751,
-      "provider-directory": 113,
-      "reasoning-capability-prefill": 783,
-      "reasoning-rendering-hint": 385,
-      "request-limit-prefill": 750,
-      "vision-capability-prefill": 785
+      "output-limit-prefill": 753,
+      "provider-directory": 114,
+      "reasoning-capability-prefill": 785,
+      "reasoning-rendering-hint": 386,
+      "request-limit-prefill": 752,
+      "vision-capability-prefill": 787
     },
     "unique_upstream_model_id_count": 414
   },
@@ -126,6 +126,12 @@
       "client_signal": "Earlier pinned client snapshots and current canonical catalog omit newly documented provider IDs and product boundaries.",
       "provider_resolution": "Rechecked first-party model, protocol, lifecycle and pricing documentation on 2026-11-11 against current main and production feed revision 10. Pinned client scans and unrelated evidence dates are unchanged.",
       "catalog_result": "Add seven general/reasoning/coding identities and a dated DeepSeek 1017 channel identity; preserve model-scoped preview windows, product/protocol budgets, dated prices and lifecycle corrections. No account or wire qualification is claimed."
+    },
+    {
+      "change_key": "november-12-product-completion-and-lifecycle",
+      "client_signal": "Existing product metadata lacks China-specific current MiniMax and FlashX facts; two direct-provider client records retain outdated inferred lifecycle values.",
+      "provider_resolution": "Rechecked official product, pricing, Kimi access conditions and direct Anthropic/Mistral lifecycle documentation on 2026-11-12. Preserve pinned scan commits and raw assertions; no new scan or account qualification is claimed.",
+      "catalog_result": "Complete existing domestic PAYG products, GLM video and Coding Plan protocol associations, Kimi scoped limits and access conditions, and direct-provider lifecycle warnings. No new canonical model family, executable offer, or deferred model is added."
     },
     {
       "change_key": "november-personal-quotas-doubao-terra-kimi-pro",
