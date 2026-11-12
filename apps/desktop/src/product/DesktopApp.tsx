@@ -127,6 +127,7 @@ export function DesktopApp() {
   const [page, setPage] = useState<Page>('home');
   const [observationConnectionLost, setObservationConnectionLost] = useState(false);
   const authorityLost = useRef(false);
+  const checkingNativeStatus = useRef(false);
   const homeObservationActive = page === 'home' && !trialOpen && !observationConnectionLost;
   const home = useDesktopHome(homeObservationActive);
   const [modelTab, setModelTab] = useState<'general' | 'decisions'>('general');
@@ -201,21 +202,24 @@ export function DesktopApp() {
 
   useEffect(() => {
     const refresh = () => {
-      if (authorityLost.current) return;
-      authorityLost.current = true;
-      // Cut off the current read owners before a late reply can repaint records.
-      flushSync(() => {
-        setObservationConnectionLost(true);
-        home.invalidateObservations();
-        home.invalidateService(true);
-      });
-      void home.refreshDesktop();
+      if (!authorityLost.current) {
+        authorityLost.current = true;
+        // Cut off the current read owners before a late reply can repaint records.
+        flushSync(() => {
+          setObservationConnectionLost(true);
+          home.invalidateObservations(true);
+          home.invalidateService(true);
+        });
+      }
+      if (checkingNativeStatus.current) return;
+      checkingNativeStatus.current = true;
+      void home.refreshDesktop().finally(() => { checkingNativeStatus.current = false; });
     };
     window.addEventListener('hiroute-native-connection-unavailable', refresh);
     return () => window.removeEventListener('hiroute-native-connection-unavailable', refresh);
   }, [home.invalidateService, home.invalidateObservations, home.refreshDesktop]);
   useEffect(() => {
-    if (observationConnectionLost && home.desktopSnapshot?.native_connection === 'ready'
+    if (observationConnectionLost && home.desktopSnapshot?.native_connection === 'ready' && home.desktopSnapshot.trusted_authority
       && home.reads.service.status === 'ready' && !home.reads.service.data.nativeConnectionLost) {
       authorityLost.current = false;
       setObservationConnectionLost(false);

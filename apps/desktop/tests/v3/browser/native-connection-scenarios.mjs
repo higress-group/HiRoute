@@ -25,10 +25,12 @@ export function nativeConnectionScenarios({ fresh, click, until, text, calls, co
       await until(() => text().includes('暂时无法读取记录'), 'accurate observation error');
       const health = document.querySelector('.sidebar-health')?.textContent ?? '';
       assert(health.includes('需要恢复') && !health.includes('只读'), 'Lost authority masquerades as a healthy or intentionally read-only service');
-      const retry = [...document.querySelectorAll('button')].find(button => button.textContent.trim() === '重试');
-      assert(retry, 'Read retry missing'); retry.click();
-      await until(() => text().includes('暂时无法读取记录'), 'retry stays refused');
-      assert(calls('recover_native_connection').length === 0, 'Read retry silently restarted the service');
+      const observations = calls('observation_read').length;
+      const snapshots = calls('desktop_snapshot').length;
+      window.dispatchEvent(new Event('focus'));
+      await until(() => calls('desktop_snapshot').length > snapshots, 'current native connection check');
+      assert(calls('observation_read').length === observations, 'An authority-blocked page started another observation read');
+      assert(calls('recover_native_connection').length === 0, 'A read silently restored the connection');
       c().handlers.recover_native_connection = async payload => {
         assert(Object.keys(payload).length === 0, 'WebView supplied native authority or filesystem parameters');
         c().desktop.native_connection = 'ready'; c().desktop.trusted_authority = true;

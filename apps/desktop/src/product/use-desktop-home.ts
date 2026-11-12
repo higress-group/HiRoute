@@ -264,10 +264,14 @@ export function useDesktopHome(observationActive: boolean) {
     valueRead.current?.abort();
     activityRead.current = valueRead.current = null;
   }, []);
-  const invalidateObservations = useCallback(() => {
+  const invalidateObservations = useCallback((connectionLost = false) => {
     stopObservations();
-    setActivity(loading());
-    setValue(loading());
+    const unavailable = <T,>(): DomainReadSlot<T> => ({
+      ...loading<T>(),
+      read: { status: 'error', code: 'TRUSTED_AUTHORITY_UNAVAILABLE' },
+    });
+    setActivity(connectionLost ? unavailable() : loading());
+    setValue(connectionLost ? unavailable() : loading());
   }, [stopObservations]);
 
   useLayoutEffect(() => {
