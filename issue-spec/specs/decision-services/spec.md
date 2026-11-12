@@ -1080,13 +1080,18 @@ evaluation or permanently select Primary.
 
 Source uncertainty, association uncertainty and incomplete captured execution SHALL
 be separate evidence dimensions. Missing preceding context does not make a newly
-captured independent execution incomplete. Summary/peer/client transcript content
-SHALL NOT be imported as accepted model output. A routing activation or completed
-HTTP delivery does not prove logical task completion. A known continuation with no
-usable input may temporarily fall back, but later genuine A and B in the same
-session SHALL classify and capture, and B SHALL assess A's actual execution where
-retained. Retry IDs cannot heal a missing old execution. No additional model call,
-sidecar, disk history or session lock held across network execution is introduced.
+captured independent execution incomplete. A branch that joins after output in its
+current stage SHALL keep that stage partial for assessment and ineligible for
+failed-before-output retry inheritance. The branch SHALL save a comparable boundary
+for newly accepted responses when the capture requirements are met. Actual response
+capture loss SHALL prevent saving the affected boundary. Summary/peer/client
+transcript content SHALL NOT be imported as accepted model output. A routing
+activation or completed HTTP delivery does not prove logical task completion. A
+known continuation with no usable input may temporarily fall back, but later
+genuine A and B in the same session SHALL classify and capture, and B SHALL assess
+A's actual execution where retained. Retry IDs cannot heal a missing old execution.
+No additional model call, sidecar, disk history or session lock held across network
+execution is introduced.
 
 Assessment completeness SHALL require both complete captured membership and proven
 closure of every included execution stage. Freezing a revision after association
