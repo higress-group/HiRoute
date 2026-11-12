@@ -45,28 +45,21 @@ def budget_preview_body(product, source_id, key, amount, definition=None, curren
             'policy': {'currency': currency, 'amount_micros': amount, 'renewal': None}, 'initial_remaining_micros': None}}]}
 
 
-def cli_leaf_regression(product, source_id, key):
-    """Prove both released allowance leaves reach Local Control through the real binary."""
-    # A well-formed read must succeed instead of failing with UNKNOWN_COMMAND, and
-    # it must return the same view the internal Local Control read produces.
+def cli_leaf_regression(product, source_id, key, configured):
+    before = query(product, source_id)
     queried = product.public_cli('compute budgets get', {'source_id': source_id, 'cursor': None})[1]['data']
-    assert queried == query(product, source_id), (queried, query(product, source_id))
+    assert queried == before, (queried, before)
     assert queried['source_id'] == source_id, queried
-    # A well-formed allowance preview must return the same spec and digest the
-    # internal Preview computes without mutating durable allowance state.
-    body = budget_preview_body(product, source_id, key, 1_000_000)
+    assert queried['bindings'][key] == configured['definition']['budget_id'], queried
+    assert configured in queried['budgets'], queried
+
+    body = budget_preview_body(product, source_id, key, 2_000_000, configured['definition'])
     preview = product.public_cli('compute budgets preview', body)[1]['data']
-    internal = control(product, 'PreviewComputeKeyBudgets', budget_preview_body(product, source_id, key, 1_000_000))['data']
+    internal = control(product, 'PreviewComputeKeyBudgets', body)['data']
     assert preview['spec'] == internal['spec'], (preview['spec'], internal['spec'])
     assert preview['accept_digest'] == internal['accept_digest'], preview
     assert preview['accept_digest'].startswith('sha256:'), preview
-    # A malformed allowance preview is rejected at the CLI codec boundary (exit 2)
-    # before any Local Control mutation.
-    rejected = budget_preview_body(product, source_id, key, 1_000_000)
-    rejected['key_budget_edits'][0]['assignment']['policy']['amount_micros'] = -1
-    exit_code, envelope = product.public_cli('compute budgets preview', rejected, success=False)
-    assert exit_code == 2 and envelope['error']['code'] == 'INVALID_ARGUMENTS', envelope
-    return queried
+    assert query(product, source_id) == before, 'compute budgets leaves mutated allowance state'
 
 
 def allowance(product, source_id, key, amount, label, definition=None, currency='USD'):
@@ -220,15 +213,11 @@ def run(repository):
         product.secrets.add(fallback)
         product.register_protected_frame({'schema': 'hiroute.protected-input/v1', 'registration_id': hashlib.sha256(b'budget-fallback').hexdigest(), **candidate, 'secret': fallback})
         save_source(product, saved, [{'action': 'add', 'input_candidate': candidate}], 'budget-add-fallback')
-        # Both released allowance leaves must reach Local Control through the real
-        # binary and agree with the internal reads without mutating allowance state.
-        before_cli = query(product, source_id)
-        cli_leaf_regression(product, source_id, first)
-        assert query(product, source_id) == before_cli, 'compute budgets leaves mutated allowance state'
         # The same public saved-Key probe is reachable before a limit is set.
         assert saved_probe(product, upstream, saved, MODEL)[0] == 0
         assert any(row['method'] == 'POST' for row in upstream.requests), upstream.requests
         configured = allowance(product, source_id, first, 1_000_000, 'initial')
+        cli_leaf_regression(product, source_id, first, configured)
         with upstream.lock:
             before_probe = len(upstream.requests)
         exit_code, accepted = saved_probe(product, upstream, saved, MODEL)

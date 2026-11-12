@@ -251,6 +251,8 @@ pub(super) fn examples(command_id: &str, joined_path: &str) -> Vec<String> {
 }
 pub(super) fn example(command_id: &str, joined_path: &str) -> String {
     match command_id {
+        "compute.budgets.get" => "printf '%s\\n' '{}' | hiroute compute budgets get --request-stdin --output json".into(),
+        "compute.budgets.preview" => "hiroute compute budgets preview --request-file key-budget-preview.json --output json".into(),
         "compute.connection.test" => "hiroute compute connection test --request-stdin --output json < native-request.json".into(),
         "compute.connection.login" => "printf '%s' '{\"action\":\"start\",\"provider\":\"claude\"}' | hiroute compute connection login --request-stdin --output json".to_owned(),
         "worker.executors" => "hiroute worker executors --output json".to_owned(),

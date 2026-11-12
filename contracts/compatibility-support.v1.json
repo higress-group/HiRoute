@@ -107,6 +107,8 @@
     "hiroute.compute-connection-test-request/v2",
     "hiroute.compute-control-projection/v1",
     "hiroute.compute-discovery-evidence/v1",
+    "hiroute.compute-key-budget-save-request/v1",
+    "hiroute.compute-key-budgets-query/v1",
     "hiroute.compute-management-binding/v2",
     "hiroute.compute-management-change/v2",
     "hiroute.compute-management-change/v3",

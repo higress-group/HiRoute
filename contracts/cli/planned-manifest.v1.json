@@ -5,7 +5,7 @@
   },
   "product_contract_revision": "487a807c8dc25cfb24e8b097882cd3bb9716a009",
   "proposal_map_revision": "ab4da93cc49c6ec56a01e046230411ff1ca82300",
-  "descriptor_digest": "sha256:fd2332d721ddf86b3ec67e12be727bed674e2ad99909e64f9677660c7d5b98e8",
+  "descriptor_digest": "sha256:d9394ded9360545b03ea8fe2fde58ca465d063f95ae7e898157c9cf3bda14ea4",
   "visibility": "planned",
   "commands": [
     {
@@ -4618,24 +4618,27 @@
       "scope": "p0",
       "lifecycle": "released",
       "kind": "query",
-      "request_schema": "hiroute.empty-request/v1",
+      "request_schema": "hiroute.compute-key-budgets-query/v1",
       "response_schema": "hiroute.command-result/v1",
       "effect": "none",
       "network": "local_control_only",
       "model_call": "never",
-      "stdin_channels": [],
+      "stdin_channels": [
+        "request_stdin",
+        "request_file"
+      ],
       "idempotency": "not_applicable",
       "help": {
         "purpose": "Read Key allowance bindings, balances and periodic renewal.",
-        "usage": "hiroute compute budgets get [typed options] --non-interactive --output json",
-        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "usage": "hiroute compute budgets get (--request-stdin | --request-file <PATH>) --output json",
+        "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. Use {} for the first page of allowances. Set source_id for a single source, or omit it and pass data.next_cursor as cursor to continue an unfiltered listing. See schema show --command-id compute.budgets.get --include-schema.",
         "effects": "Read-only; no product side effect.",
         "network_and_model_use": "No model use; any external dependency is declared by the typed Application operation.",
         "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
         "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
         "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
         "examples": [
-          "hiroute compute budgets get --non-interactive --output json"
+          "printf '%s\\n' '{}' | hiroute compute budgets get --request-stdin --output json"
         ],
         "see_also": [
           "hiroute schema show --command-id compute.budgets.get"
@@ -4667,24 +4670,27 @@
       "scope": "p0",
       "lifecycle": "released",
       "kind": "preview",
-      "request_schema": "hiroute.empty-request/v1",
+      "request_schema": "hiroute.compute-key-budget-save-request/v1",
       "response_schema": "hiroute.command-result/v1",
       "effect": "none",
       "network": "local_control_only",
       "model_call": "never",
-      "stdin_channels": [],
+      "stdin_channels": [
+        "request_stdin",
+        "request_file"
+      ],
       "idempotency": "not_applicable",
       "help": {
         "purpose": "Preview an atomic source, Key and spending allowance save.",
-        "usage": "hiroute compute budgets preview [typed options] --non-interactive --output json",
-        "arguments_and_options": "Only the typed options declared by the generated request schema are accepted; arbitrary patches, URLs, shell, or plaintext Secret argv are forbidden.",
+        "usage": "hiroute compute budgets preview (--request-stdin | --request-file <PATH>) --output json",
+        "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. Include the current source change and key_budget_edits. See schema show --command-id compute.budgets.preview --include-schema for the key-budget-preview.json template. Review the result before applying it with compute connection apply.",
         "effects": "Stateless Preview: no ID, TTL, Operation, Secret, file, database, publication, or network write.",
         "network_and_model_use": "No model use and no non-fixture network access.",
         "automation": "Use stable command_id, status, typed data, warnings[].code, and next_actions[].command_id; never parse display text.",
         "output": "One hiroute.machine-envelope/v2 JSON object on stdout; diagnostics belong on stderr.",
         "exit_status": "0 success/accepted; 2 usage; 3 conflict/blocker; 4 capability denied; 5 not found; 6 unavailable; 7 action required; 8 needs attention.",
         "examples": [
-          "hiroute compute budgets preview --non-interactive --output json"
+          "hiroute compute budgets preview --request-file key-budget-preview.json --output json"
         ],
         "see_also": [
           "hiroute schema show --command-id compute.budgets.preview"

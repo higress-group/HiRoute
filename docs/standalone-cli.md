@@ -624,6 +624,25 @@ revision, including an empty configuration; it does not create routes or grant a
 Disabled routes, drafts and retained execution versions still block removal.
 Desktop exposes this action as **Update references** in the blocked deletion dialog.
 
+## Inspect and preview API key allowances
+
+Check that the installed `hiroute compute budgets get --help` lists the JSON
+input options. Send `{}` for the first page across sources, or supply a
+`source_id` from `hiroute compute list --output json` to filter by source. Use
+`data.next_cursor` as the next request's `cursor` when present.
+
+```sh
+printf '%s\n' '{}' | hiroute compute budgets get --request-stdin --output json
+hiroute schema show --command-id compute.budgets.preview --include-schema --output json
+```
+
+Use the installed template and current source, model, Key and revision data to
+prepare `key-budget-preview.json`. Preview with
+`hiroute compute budgets preview --request-file key-budget-preview.json --output json`.
+After reviewing the preview, send its exact `spec`, `accept_digest` and
+`expected_revisions` with a stable `idempotency_key` to
+`hiroute compute connection apply`. Read the allowance again after the Operation succeeds.
+
 ## Discover and save a subscription source
 
 ```sh
