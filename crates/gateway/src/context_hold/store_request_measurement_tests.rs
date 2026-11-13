@@ -1,5 +1,5 @@
 use super::*;
-use crate::context_hold::history::{measurement_count, visible_history};
+use crate::context_hold::history::{measurement_count, setup_measurement_count, visible_history};
 use crate::replay::{ReplayConfig, ReplayManager, ReplayStore};
 use hiroute_gateway_core::runtime::body::BudgetTree;
 
@@ -46,8 +46,11 @@ fn request_borrow_reuses_one_scan_and_preserves_the_uncached_continuity_oracle()
         };
         let now = Instant::now();
         let first = history_request(1, &[1]);
-        let first_history = visible_history(&first, &digest_key).unwrap();
+        let first_history =
+            crate::context_hold::visible_history_with_replay(&first, &digest_key, Some(&replay))
+                .unwrap();
         let measured = measurement_count();
+        let setup_measured = setup_measurement_count();
         let prepared = store
             .prepare_request(key(1), &first_history, &first, now)
             .unwrap();
@@ -55,6 +58,7 @@ fn request_borrow_reuses_one_scan_and_preserves_the_uncached_continuity_oracle()
             .commit_on_branch(prepared, &[7; 32], &first, &replay, now)
             .unwrap();
         assert_eq!(measurement_count() - measured, 1);
+        assert_eq!(setup_measurement_count() - setup_measured, 0);
         let prepared = oracle.prepare(key(1), &first_history, now).unwrap();
         oracle
             .commit_on_branch(prepared, &[7; 32], &first, &replay, now)
@@ -67,13 +71,17 @@ fn request_borrow_reuses_one_scan_and_preserves_the_uncached_continuity_oracle()
                 text: "changed first history message".into(),
             };
         }
-        let history = visible_history(&next, &digest_key).unwrap();
+        let history =
+            crate::context_hold::visible_history_with_replay(&next, &digest_key, Some(&replay))
+                .unwrap();
         let measured = measurement_count();
+        let setup_measured = setup_measurement_count();
         let prepared = store.prepare_request(key(1), &history, &next, now).unwrap();
         let actual = store
             .commit_on_branch(prepared, &[7; 32], &next, &replay, now)
             .unwrap();
         assert_eq!(measurement_count() - measured, 1);
+        assert_eq!(setup_measurement_count() - setup_measured, 0);
         let prepared = oracle.prepare(key(1), &history, now).unwrap();
         let expected = oracle
             .commit_on_branch(prepared, &[7; 32], &next, &replay, now)
@@ -94,8 +102,8 @@ fn request_borrow_reuses_one_scan_and_preserves_the_uncached_continuity_oracle()
 }
 
 #[test]
-fn a_different_source_boundary_semantic_view_or_key_keeps_the_original_rescan() {
-    for mismatch in 0..4 {
+fn a_different_source_boundary_semantic_view_key_or_replay_keeps_the_original_rescan() {
+    for mismatch in 0..5 {
         let (_root, replay) = replay();
         let store = ContextHoldStore::default();
         let digest_key = store.digest_key().unwrap();
@@ -117,18 +125,25 @@ fn a_different_source_boundary_semantic_view_or_key_keeps_the_original_rescan() 
             text: "routing-only alternate semantic view".into(),
         };
         let other_key = [61; 32];
-        let history = visible_history(
+        let (_other_root, other_replay) = self::replay();
+        let history = crate::context_hold::visible_history_with_replay(
             &next,
             if mismatch == 3 {
                 &other_key
             } else {
                 &digest_key
             },
+            Some(if mismatch == 4 {
+                &other_replay
+            } else {
+                &replay
+            }),
         )
         .unwrap()
         .with_semantic_request((mismatch == 2).then_some(&semantic))
         .unwrap();
         let measured = measurement_count();
+        let setup_measured = setup_measurement_count();
         let prepared = store.prepare_request(key(1), &history, &next, now).unwrap();
         let actual = store
             .commit_on_branch(
@@ -140,6 +155,11 @@ fn a_different_source_boundary_semantic_view_or_key_keeps_the_original_rescan() 
             )
             .unwrap();
         assert_eq!(measurement_count() - measured, 2, "mismatch={mismatch}");
+        assert_eq!(
+            setup_measurement_count() - setup_measured,
+            usize::from(matches!(mismatch, 1 | 3 | 4)),
+            "mismatch={mismatch}"
+        );
         assert_eq!(actual.history_continuity, HistoryContinuity::Continuing);
     }
 }

@@ -193,7 +193,7 @@ fn latest_user_streams_full_spilled_cjk_and_marker_literal_without_a_size_fallba
 #[test]
 fn optional_hold_preparation_miss_discloses_origin_without_disabling_classification() {
     use crate::context_hold::{
-        ContextHoldStore, ContextRequest, NativeUserOrigin, prepare_context,
+        ContextHoldStore, ContextRequest, NativeUserOrigin, PreparedContext, prepare_context,
     };
     use crate::replay::{ReplayConfig, ReplayManager};
     use crate::server::core_runtime::native_routing_view::NativeRoutingView;
@@ -240,7 +240,12 @@ fn optional_hold_preparation_miss_discloses_origin_without_disabling_classificat
             assert!(!view.origin_unverified());
             let holds = ContextHoldStore::default();
             let lock = busy.then(|| holds.lock_for_runtime_test());
-            let (identity, prepared, unavailable) = prepare_context(
+            let PreparedContext {
+                identity,
+                hold: prepared,
+                native_user_unavailable: unavailable,
+                retry_setup,
+            } = prepare_context(
                 &holds,
                 &[17; 32],
                 &authorized,
@@ -263,6 +268,10 @@ fn optional_hold_preparation_miss_discloses_origin_without_disabling_classificat
                 prepared.is_none(),
                 busy,
                 "real optional preparation must miss under lock"
+            );
+            assert!(
+                retry_setup.is_some(),
+                "affinity lock must not lose retry evidence"
             );
             assert!(
                 !unavailable,

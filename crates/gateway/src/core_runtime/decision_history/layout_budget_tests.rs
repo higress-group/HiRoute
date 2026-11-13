@@ -59,7 +59,12 @@ fn begin(
         .unwrap();
     let view = NativeRoutingView::prepare(&headers, request, &fixture.replay, &budget);
     assert!(!view.current_input_unavailable());
-    let (identity, prepared, _) = crate::context_hold::prepare_context(
+    let crate::context_hold::PreparedContext {
+        identity,
+        hold: prepared,
+        retry_setup,
+        ..
+    } = crate::context_hold::prepare_context(
         &fixture.runtime.context_holds,
         &[19; 32],
         authorized,
@@ -95,6 +100,7 @@ fn begin(
             HistoryInput {
                 request,
                 replay: &fixture.replay,
+                retry_setup,
                 current_input: view.current_input(),
                 current_input_position: view.current_input_position(),
                 current_input_unavailable: view.current_input_unavailable(),

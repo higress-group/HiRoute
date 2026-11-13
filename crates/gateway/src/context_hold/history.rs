@@ -16,6 +16,7 @@ use super::fingerprint::FingerprintBudget;
 #[cfg(test)]
 std::thread_local! {
     static MEASUREMENT_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    static SETUP_MEASUREMENT_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -23,12 +24,17 @@ pub(super) fn measurement_count() -> usize {
     MEASUREMENT_COUNT.with(std::cell::Cell::get)
 }
 
+#[cfg(test)]
+pub(super) fn setup_measurement_count() -> usize {
+    SETUP_MEASUREMENT_COUNT.with(std::cell::Cell::get)
+}
+
 #[derive(Clone)]
 pub(crate) struct HistoryEvidence<'a> {
     pub(crate) instruction_digest: [u8; 32],
     request: &'a ModelRequestIRV1,
     semantic_request: Option<&'a ModelRequestIRV1>,
-    key: &'a [u8; 32],
+    key: [u8; 32],
     replay: Option<&'a ReplayStore>,
 }
 
@@ -82,12 +88,25 @@ pub(crate) fn branch_anchors(
 }
 
 impl<'a> HistoryEvidence<'a> {
-    pub(super) fn matches_original(&self, request: &ModelRequestIRV1, key: &[u8; 32]) -> bool {
-        std::ptr::eq(self.request, request)
-            && self.key == key
-            && self
-                .semantic_request
-                .is_none_or(|semantic| std::ptr::eq(semantic, request))
+    pub(super) fn matches_request(&self, request: &ModelRequestIRV1, key: &[u8; 32]) -> bool {
+        std::ptr::eq(self.request, request) && &self.key == key
+    }
+
+    pub(super) fn matches_replay(&self, replay: &ReplayStore) -> bool {
+        self.replay
+            .is_some_and(|source| std::ptr::eq(source, replay))
+    }
+
+    pub(super) fn has_original_messages(&self) -> bool {
+        self.semantic_request
+            .is_none_or(|semantic| std::ptr::eq(semantic, self.request))
+    }
+
+    pub(super) fn original_messages(&self) -> Self {
+        Self {
+            semantic_request: None,
+            ..self.clone()
+        }
     }
 
     pub(super) fn preceding_assistant_index(&self) -> Option<usize> {
@@ -99,7 +118,7 @@ impl<'a> HistoryEvidence<'a> {
 
     #[cfg(test)]
     pub(crate) fn branch_anchors(&self, positions: &[usize]) -> Option<super::HistoryAnchors> {
-        branch_anchors(self.request, self.key, self.replay, positions)
+        branch_anchors(self.request, &self.key, self.replay, positions)
     }
 
     /// Borrow a verified routing-only view without changing strict execution evidence.
@@ -133,7 +152,7 @@ impl<'a> HistoryEvidence<'a> {
             self.request.native_history_layout()?;
         }
         let mut history = Encoder::new(
-            self.key,
+            &self.key,
             if self.request.native_only {
                 b"visible-history/v1/opaque-projection"
             } else {
@@ -141,7 +160,8 @@ impl<'a> HistoryEvidence<'a> {
             },
             self.replay,
         )?;
-        let mut semantic = Encoder::new(self.key, b"visible-history/v1/conversation", self.replay)?;
+        let mut semantic =
+            Encoder::new(&self.key, b"visible-history/v1/conversation", self.replay)?;
         history.items(self.request.messages.len())?;
         semantic.items(semantic_request.messages.len())?;
         let mut prefix_digest = match prefix_count {
@@ -222,14 +242,14 @@ mod budget_tests;
 #[cfg(test)]
 pub(crate) fn visible_history<'a>(
     request: &'a ModelRequestIRV1,
-    key: &'a [u8; 32],
+    key: &[u8; 32],
 ) -> Option<HistoryEvidence<'a>> {
     visible_history_with_replay(request, key, None)
 }
 
 pub(crate) fn visible_history_with_replay<'a>(
     request: &'a ModelRequestIRV1,
-    key: &'a [u8; 32],
+    key: &[u8; 32],
     replay: Option<&'a ReplayStore>,
 ) -> Option<HistoryEvidence<'a>> {
     if request.native_only {
@@ -242,9 +262,11 @@ pub(crate) fn visible_history_with_replay<'a>(
 /// that the complete native payload has a comparable provider-cache prefix.
 pub(crate) fn observed_history_with_replay<'a>(
     request: &'a ModelRequestIRV1,
-    key: &'a [u8; 32],
+    key: &[u8; 32],
     replay: Option<&'a ReplayStore>,
 ) -> Option<HistoryEvidence<'a>> {
+    #[cfg(test)]
+    SETUP_MEASUREMENT_COUNT.with(|count| count.set(count.get() + 1));
     let mut instructions = Encoder::new(key, b"visible-history/v1/instructions", replay)?;
     instructions.items(request.instructions.len())?;
     instructions.usize(request.instructions.len());
@@ -385,7 +407,7 @@ pub(crate) fn observed_history_with_replay<'a>(
         instruction_digest,
         request,
         semantic_request: None,
-        key,
+        key: *key,
         replay,
     })
 }

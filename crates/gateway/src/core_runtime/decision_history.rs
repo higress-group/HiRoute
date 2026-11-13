@@ -39,6 +39,7 @@ impl DecisionHistory {
 pub(super) struct HistoryInput<'a> {
     pub(super) request: &'a model_ir::ModelRequestIRV1,
     pub(super) replay: &'a ReplayStore,
+    pub(super) retry_setup: Option<[u8; 32]>,
     pub(super) current_input: Option<&'a [model_ir::ContentPart]>,
     pub(super) current_input_position: Option<CurrentInputPosition>,
     pub(super) current_input_unavailable: bool,
@@ -63,6 +64,17 @@ impl ProductionGatewayRuntime {
             HistoryInput {
                 request,
                 replay,
+                retry_setup: self
+                    .context_holds
+                    .digest_key()
+                    .and_then(|key| {
+                        crate::context_hold::observed_history_with_replay(
+                            request,
+                            &key,
+                            Some(replay),
+                        )
+                    })
+                    .map(|history| history.instruction_digest),
                 current_input: None,
                 current_input_position: None,
                 current_input_unavailable: false,
@@ -111,6 +123,7 @@ impl ProductionGatewayRuntime {
         let HistoryInput {
             request,
             replay,
+            retry_setup,
             current_input,
             current_input_position,
             current_input_unavailable,
@@ -131,9 +144,12 @@ impl ProductionGatewayRuntime {
         let user_origin_unverified = capture.origin_unverified;
         let uncaptured_native_prefix = capture.missing_prefix;
         let begin = async {
-            let mut analyzed = self
-                .agent_turn_history
-                .prepare_scoped_request(&key, request, replay)?;
+            let mut analyzed = self.agent_turn_history.prepare_scoped_request_with_setup(
+                &key,
+                request,
+                replay,
+                retry_setup,
+            )?;
             analyzed.set_branch_cursor(capture.branch_cursor.0, capture.branch_cursor.1);
             if current_input_unavailable {
                 let Some(CurrentInputPosition::Event(index)) = current_input_position else {

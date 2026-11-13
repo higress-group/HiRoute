@@ -324,6 +324,17 @@ fn run_reference(
                 decider.calls()
             );
         });
+        for request in regular.requests() {
+            let body = request
+                .windows(4)
+                .position(|bytes| bytes == b"\r\n\r\n")
+                .expect("provider request has an HTTP head");
+            let body: Value = serde_json::from_slice(&request[body + 4..]).unwrap();
+            assert!(
+                body["tools"] == wire["tools"],
+                "tool definitions must reach the model intact"
+            );
+        }
         let diagnostic_bytes = std::fs::read(
             fixture
                 .diagnostics_root
