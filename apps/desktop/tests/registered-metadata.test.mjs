@@ -317,6 +317,45 @@ test('Qwen4 preview check drafts retain explicit user budgets and require connec
   assert.equal(selected.catalog_configuration_id, null);
 });
 
+test('Qwen4 Messages plan metadata prepares a draft without granting qualification or replacing edits', async () => {
+  const { withRegisteredModels, buildCheckDraft } = await import('../src/features/model-connections/state.ts');
+  const tokenPlan = option('bailian.token-plan.cn.v1');
+  const messages = tokenPlan.endpoints.find(endpoint => endpoint.protocol === 'messages');
+  assert.ok(messages);
+  const candidates = registeredModelCandidates({ ...tokenPlan, endpoints: [{ ...messages, stable_preference: 0 }] }, bundle.metadata_catalog)
+    .filter(candidate => candidate.upstream_model_id === 'qwen4-max-preview');
+  assert.equal(candidates.length, 1);
+  const [draft] = withRegisteredModels([], candidates);
+  assert.equal(draft.membership, 'user_declared');
+  assert.equal(draft.catalog_configuration_id, null);
+  assert.equal(draft.capabilities.native_reasoning.value.default_profile, 'xhigh');
+  assert.ok(draft.capabilities.max_output_tokens.value <= 393_216);
+  const edited = { ...draft, capabilities: { ...draft.capabilities,
+    context_tokens: { value: 900_000, basis: 'user_declared' },
+    max_output_tokens: { value: 300_000, basis: 'user_declared' },
+  } };
+  const refreshed = withRegisteredModels([edited], candidates);
+  assert.equal(refreshed[0], edited);
+  const wire = buildCheckDraft({ provenance: { kind: 'user_configured', configuration_revision: 1 }, models: refreshed });
+  assert.deepEqual(wire.models[0].capabilities.context_tokens, edited.capabilities.context_tokens);
+  assert.deepEqual(wire.models[0].capabilities.max_output_tokens, edited.capabilities.max_output_tokens);
+  assert.equal(wire.models[0].catalog_configuration_id, null);
+});
+
+test('native-only Hydrogen never enters the installed Google OpenAI-compatible picker', () => {
+  const google = option('google.gemini-api-paid.global.v1');
+  assert.ok(google.endpoints.some(endpoint => endpoint.protocol === 'chat_completions'));
+  assert.ok(!ids(google.connection_option_id).includes('gemini-4-hydrogen'));
+  const catalog = bundle.metadata_catalog;
+  const native = catalog.provider_records.find(provider => provider.provider_record_key === 'official/gemini-api-native');
+  assert.ok(native);
+  const options = registry.connection_options.map(item => option(item.connection_option_id));
+  assert.equal(metadataProviderOption(native, options), null);
+  assert.deepEqual(metadataProviderCandidates(native, catalog, options), []);
+  assert.ok(!catalog.model_records.some(record => record.provider_record_key === 'official/gemini-api'
+    && record.upstream_model_id === 'gemini-4-hydrogen'));
+});
+
 
 test('MiniMax China prefill scopes output budgets to the selected current protocol', async () => {
   const { withRegisteredModels, buildCheckDraft } = await import('../src/features/model-connections/state.ts');
