@@ -48,6 +48,7 @@ pub(super) fn begin_input(
             HistoryInput {
                 request,
                 replay: &fixture.replay,
+                retry_setup: None,
                 current_input: current,
                 current_input_position: index,
                 current_input_unavailable: unavailable,

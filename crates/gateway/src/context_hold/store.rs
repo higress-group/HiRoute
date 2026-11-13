@@ -247,12 +247,9 @@ pub(crate) struct PreparedHold<'request> {
     history_key: Option<ContextHoldKey>,
     instruction_digest: [u8; 32],
     measured: HistoryDigests,
-    // An immutable request borrow prevents mutation/address reuse while its
-    // complete measurement is eligible for the later branch-scoped check.
-    measured_source: Option<(
-        &'request crate::server::core_runtime::model_ir::ModelRequestIRV1,
-        [u8; 32],
-    )>,
+    // Keep setup separate from the measured message view. A different view
+    // needs a fresh message scan, but cannot change the request's setup.
+    measured_source: Option<HistoryEvidence<'request>>,
     native: super::routing::NativeCheckpoint,
 }
 
@@ -456,7 +453,7 @@ impl ContextHoldStore {
     pub(crate) fn prepare_request<'request>(
         &self,
         key: ContextHoldKey,
-        history: &HistoryEvidence<'_>,
+        history: &HistoryEvidence<'request>,
         request: &'request crate::server::core_runtime::model_ir::ModelRequestIRV1,
         now: Instant,
     ) -> Option<PreparedHold<'request>> {
@@ -467,8 +464,8 @@ impl ContextHoldStore {
             history.measure(prefix.or_else(|| history.preceding_assistant_index()))
         })?;
         let digest_key = self.digest_key()?;
-        if history.matches_original(request, &digest_key) {
-            prepared.measured_source = Some((request, digest_key));
+        if history.matches_request(request, &digest_key) {
+            prepared.measured_source = Some(history.clone());
         }
         Some(prepared)
     }
@@ -515,10 +512,14 @@ impl ContextHoldStore {
         now: Instant,
     ) -> Option<HoldTicket> {
         let digest_key = self.digest_key()?;
-        let evidence = super::observed_history_with_replay(request, &digest_key, Some(replay))?;
-        let reusable = prepared
-            .measured_source
-            .is_some_and(|(source, key)| std::ptr::eq(source, request) && key == digest_key);
+        let source = prepared.measured_source.as_ref().filter(|source| {
+            source.matches_request(request, &digest_key) && source.matches_replay(replay)
+        });
+        let evidence = match source {
+            Some(source) => source.original_messages(),
+            None => super::observed_history_with_replay(request, &digest_key, Some(replay))?,
+        };
+        let reusable = source.is_some_and(HistoryEvidence::has_original_messages);
         let mut scoped =
             self.prepare_with_measure(prepared.key.on_branch(branch)?, &evidence, now, |prefix| {
                 if reusable

@@ -53,7 +53,9 @@ use crate::content_ref::{
     ContentRef, compact_ingress_document_with_markers, externalize_model_request,
     model_content_refs, parse_ingress_document, scan_ingress_document,
 };
-use crate::context_hold::{ContextHoldStore, ContextRequest, HoldCompletion, prepare_context};
+use crate::context_hold::{
+    ContextHoldStore, ContextRequest, HoldCompletion, PreparedContext, prepare_context,
+};
 use crate::replay::{ReplayError, ReplayManager, ReplayReader, ReplayStore, ReplayWriter};
 #[path = "core_runtime/credentials.rs"]
 mod credentials;
@@ -730,7 +732,12 @@ impl ProductionGatewayRuntime {
                 &budget,
             );
             let routing_request = routing_view.request(&canonical_request);
-            let (identity, prepared_hold, native_user_unavailable) = prepare_context(
+            let PreparedContext {
+                identity,
+                hold: prepared_hold,
+                native_user_unavailable,
+                retry_setup,
+            } = prepare_context(
                 &self.context_holds,
                 &self.observation.correlation_key(),
                 &authorized,
@@ -835,6 +842,7 @@ impl ProductionGatewayRuntime {
                         decision_history::HistoryInput {
                             request: &canonical_request,
                             replay: &replay,
+                            retry_setup,
                             current_input: routing_view.current_input(),
                             current_input_position: routing_view.current_input_position(),
                             current_input_unavailable: routing_view.current_input_unavailable(),

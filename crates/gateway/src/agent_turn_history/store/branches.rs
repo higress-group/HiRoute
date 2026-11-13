@@ -158,11 +158,28 @@ impl AgentTurnHistoryStore {
         entry.pending_tool_handoff.clone()
     }
 
+    #[cfg(test)]
     pub(crate) fn prepare_scoped_request(
         &self,
         scope: &AgentTurnHistoryKey,
         request: &ModelRequestIRV1,
         replay: &ReplayStore,
+    ) -> Result<super::super::projection::AnalyzedRequest, AgentTurnHistoryError> {
+        let retry_setup = crate::context_hold::observed_history_with_replay(
+            request,
+            &self.instance_nonce,
+            Some(replay),
+        )
+        .map(|history| history.instruction_digest);
+        self.prepare_scoped_request_with_setup(scope, request, replay, retry_setup)
+    }
+
+    pub(crate) fn prepare_scoped_request_with_setup(
+        &self,
+        scope: &AgentTurnHistoryKey,
+        request: &ModelRequestIRV1,
+        replay: &ReplayStore,
+        retry_setup: Option<[u8; 32]>,
     ) -> Result<super::super::projection::AnalyzedRequest, AgentTurnHistoryError> {
         let heads = {
             let inner = self.inner.lock();
@@ -187,12 +204,7 @@ impl AgentTurnHistoryStore {
         positions.dedup();
         let mut analyzed = analyze_request(request, replay)?;
         analyzed.measured = true;
-        analyzed.retry_setup = crate::context_hold::observed_history_with_replay(
-            request,
-            &self.instance_nonce,
-            Some(replay),
-        )
-        .map(|history| history.instruction_digest);
+        analyzed.retry_setup = retry_setup;
         let mut boundary_budget = crate::context_hold::fingerprint::FingerprintBudget::default();
         analyzed.boundaries = positions
             .iter()

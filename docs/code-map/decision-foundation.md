@@ -197,7 +197,13 @@ They also vary input and identifier independently: repeated IDs cannot hide new
 input, while explicit continuation evidence makes current input unavailable;
 a new-message cause does not authorize predecessor reuse or repair the old score.
 Request-local model setup remains in strict ContextHold, outside execution-prefix
-identity. A unique visible response projection can retain actual stage capture
+identity. Context preparation measures setup once per immutable request and
+shares it with branch affinity and native retry matching. The retry fingerprint
+does not depend on acquiring a ContextHold checkpoint. A changed message view
+or prefix can still require a separate message scan. The [dense tool schema
+listener case](../../tools/e2e-harness/tests/p0_gateway_runtime/local_work_benchmark.rs)
+checks exact forwarding and assessment of the actual predecessor within the
+existing decision deadline. A unique visible response projection can retain actual stage capture
 when retained native history is only partially modeled: [ingress coverage](../../crates/gateway/src/model_ir/native_history.rs)
 binds unknown prior items in full and checks only the accepted-output suffix.
 The [coverage regressions](../../crates/gateway/src/agent_turn_history/boundary/coverage_tests.rs)

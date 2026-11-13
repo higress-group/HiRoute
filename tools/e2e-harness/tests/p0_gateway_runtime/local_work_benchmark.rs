@@ -106,7 +106,7 @@ fn concurrent_tool_rich_history_preserves_capture_and_actual_predecessors() {
 
 #[test]
 fn dense_structural_request_is_forwarded_without_a_proxy_memory_quota() {
-    let properties = (0..18_000)
+    let properties = (0..30_000)
         .map(|index| (format!("field_{index}"), json!({"type":"string"})))
         .collect::<serde_json::Map<_, _>>();
     let wire = json!({
@@ -300,7 +300,41 @@ fn run_reference(
         } else {
             membership::verify_scoped_pairs(&facts, count)
         }
-        .expect("each follow-up must assess its own complete captured predecessor");
+        .unwrap_or_else(|error| {
+            let decisions: Vec<_> = facts
+                .iter()
+                .filter(|row| row["fact"]["kind"] == "route_decision")
+                .map(|row| {
+                    let fact = &row["fact"];
+                    json!({
+                        "source": fact["complexity"]["decision_source"],
+                        "fallback": fact["decision_failure"]["failure"]["kind"],
+                        "duration_us": fact["complexity"]["classification_duration_micros"],
+                    })
+                })
+                .collect();
+            let assessments = facts
+                .iter()
+                .filter(|row| row["fact"]["kind"] == "branch_assessment_recorded")
+                .count();
+            panic!(
+                "each follow-up must assess its own complete captured predecessor: {error}; \
+                 expected_requests={count}, decisions={decisions:?}, \
+                 assessments={assessments}, classifier_calls={}",
+                decider.calls()
+            );
+        });
+        for request in regular.requests() {
+            let body = request
+                .windows(4)
+                .position(|bytes| bytes == b"\r\n\r\n")
+                .expect("provider request has an HTTP head");
+            let body: Value = serde_json::from_slice(&request[body + 4..]).unwrap();
+            assert!(
+                body["tools"] == wire["tools"],
+                "tool definitions must reach the model intact"
+            );
+        }
         let diagnostic_bytes = std::fs::read(
             fixture
                 .diagnostics_root

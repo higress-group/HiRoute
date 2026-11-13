@@ -47,7 +47,14 @@ pub(crate) struct ContextRequest<'a, 'request> {
     pub(crate) request: &'request ModelRequestIRV1,
     pub(crate) semantic_request: Option<&'request ModelRequestIRV1>,
     pub(crate) user_origin_unverified: bool,
-    pub(crate) replay: &'a ReplayStore,
+    pub(crate) replay: &'request ReplayStore,
+}
+
+pub(crate) struct PreparedContext<'request> {
+    pub(crate) identity: ContextIdentityFacts,
+    pub(crate) hold: Option<PreparedHold<'request>>,
+    pub(crate) native_user_unavailable: bool,
+    pub(crate) retry_setup: Option<[u8; 32]>,
 }
 
 /// Native identity and routing enrichment read only these metadata roots. Keep
@@ -72,7 +79,7 @@ pub(crate) fn prepare_context<'request>(
     authorized: &AuthorizedRequestPlan,
     input: ContextRequest<'_, 'request>,
     now: Instant,
-) -> (ContextIdentityFacts, Option<PreparedHold<'request>>, bool) {
+) -> PreparedContext<'request> {
     let ContextRequest {
         ingress,
         headers,
@@ -103,13 +110,21 @@ pub(crate) fn prepare_context<'request>(
     // Known continuations/auxiliary calls must not reinterpret a synthetic User.
     // Unknown origin alone does not make a usable request unavailable.
     let mut native_user_unavailable = native.user_origin == routing::NativeUserOrigin::ExistingTurn;
-    let ticket = store.digest_key().and_then(|hold_key| {
+    let history = store.digest_key().and_then(|hold_key| {
         let history = if request.native_only {
             history::observed_history_with_replay(request, &hold_key, Some(replay))
         } else {
             visible_history_with_replay(request, &hold_key, Some(replay))
-        }?
-        .with_semantic_request(semantic_request)?;
+        }?;
+        Some((history, hold_key))
+    });
+    // The retry fingerprint belongs to this immutable request. Keep it even
+    // when the optional affinity checkpoint is busy or cannot be measured.
+    let retry_setup = history
+        .as_ref()
+        .map(|(history, _)| history.instruction_digest);
+    let ticket = history.and_then(|(history, hold_key)| {
+        let history = history.with_semantic_request(semantic_request)?;
         let key = ContextHoldKey::from_request(authorized, ingress, &identity, &hold_key)?;
         let mut prepared = store.prepare_request(key, &history, request, now)?;
         prepared.set_native(native);
@@ -122,5 +137,10 @@ pub(crate) fn prepare_context<'request>(
         )?);
         Some(prepared)
     });
-    (identity, ticket, native_user_unavailable)
+    PreparedContext {
+        identity,
+        hold: ticket,
+        native_user_unavailable,
+        retry_setup,
+    }
 }
