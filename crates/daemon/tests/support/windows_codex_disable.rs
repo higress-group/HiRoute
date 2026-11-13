@@ -54,7 +54,8 @@ fn actual_windows_codex_disables_edited_managed_settings() {
             "connect",
             &json!({"schema_version":{"major":2,"minor":0},"context_id":context,
             "model":{"intent":"configure","settings":{"mode":"codex_default","native_model_mode":"hiroute_only",
-                "allowed_plan_ids":[routing.plan.plan_id],"default_selection":{"kind":"plan","plan_id":routing.plan.plan_id}}}}),
+                "fixed_models":[],"allowed_plan_ids":[routing.plan.plan_id],
+                "default_selection":{"kind":"plan","plan_id":routing.plan.plan_id}}}}),
             &format!("windows-disable-{suffix}-configure"),
         );
         let configured = cli(
@@ -69,10 +70,7 @@ fn actual_windows_codex_disables_edited_managed_settings() {
             1,
         );
         assert_ne!(text, edited);
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .open(&target)
-            .unwrap();
+        let mut file = security::open_read_write(&target).unwrap();
         security::verify_owner_only_handle(&file, false).unwrap();
         file.set_len(0).unwrap();
         file.write_all(edited.as_bytes()).unwrap();
