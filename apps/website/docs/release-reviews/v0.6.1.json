@@ -1,0 +1,46 @@
+{
+  "schema": "hiroute.documentation-review/v1",
+  "tag": "v0.6.1",
+  "product_revision": "0cd49b8eb12ee643147f3ea482a72654379b3ab6",
+  "guides": {
+    "status": "updated",
+    "summary": "The bilingual README describes the 0.6.1 changes. The routing guides describe automatic recovery of visible observation reads and independent DeepSeek Harness Desktop plugin registration. The model and CLI guides describe API key allowances and the supported commands. Reviewed the existing installation and Quickstart steps across shipped platforms.",
+    "reviewed_files": [
+      "README.md",
+      "README.zh-CN.md",
+      "apps/website/content/guides/model-routing.en.md",
+      "apps/website/content/guides/model-routing.zh.md",
+      "apps/website/content/guides/deepseek-harness-model-routing.en.md",
+      "apps/website/content/guides/deepseek-harness-model-routing.zh.md",
+      "apps/website/content/guides/models.en.md",
+      "apps/website/content/guides/models.zh.md",
+      "apps/website/content/guides/cli.en.md",
+      "apps/website/content/guides/cli.zh.md",
+      "apps/website/content/guides/quickstart.en.md",
+      "apps/website/content/guides/quickstart.zh.md",
+      "apps/website/content/guides/install-macos.en.md",
+      "apps/website/content/guides/install-macos.zh.md",
+      "apps/website/content/guides/install-windows.en.md",
+      "apps/website/content/guides/install-windows.zh.md",
+      "apps/website/content/guides/install-linux.en.md",
+      "apps/website/content/guides/install-linux.zh.md",
+      "apps/website/content/guides/install-omarchy.en.md",
+      "apps/website/content/guides/install-omarchy.zh.md"
+    ],
+    "content_sha256": "d0ca81c0b20d07a413752ebf6a3ceafe941d71bfab665f9d9f02c22e2e57b7de"
+  },
+  "screenshots": {
+    "status": "unchanged",
+    "summary": "Recaptured the Home trial and DeepSeek Harness Web setup in dark mode in both languages. The controls and labels match the existing guides. The shared session images illustrate the ready routing timeline. The candidate preserves that view and adds recovery during interrupted reads. The installer steps still match the controls shown in the guides.",
+    "reviewed_files": [
+      "apps/website/public/guide-assets/trial-entry-en.webp",
+      "apps/website/public/guide-assets/trial-entry-zh.webp",
+      "apps/website/public/guide-assets/agent-guide-dsh-en.webp",
+      "apps/website/public/guide-assets/agent-guide-dsh-zh.webp",
+      "decision-extensions/assets/readme-session-en.png",
+      "decision-extensions/assets/readme-session-zh-CN.png",
+      "apps/website/docs/guide-assets.md"
+    ],
+    "content_sha256": "3c961ba674853157dec0ad0a22206e174722e759898fc693ff3d3f8d825f233f"
+  }
+}
