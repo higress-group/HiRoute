@@ -6,6 +6,9 @@ use hiroute_integrations::TrustedReleaseCatalog;
 #[path = "current_model_metadata/domestic.rs"]
 mod domestic;
 
+#[path = "current_model_metadata/november_13.rs"]
+mod november_13;
+
 fn assert_no_numeric_cost_leaf(value: &serde_json::Value) {
     match value {
         serde_json::Value::Number(number) => {
@@ -114,9 +117,9 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
             .all(|capability| !capability.capability_id.starts_with("cap.runtime.")),
         "incomplete bindings must not become executable capabilities"
     );
-    assert_eq!(data.metadata_catalog.provider_records.len(), 114);
-    assert_eq!(data.metadata_catalog.model_records.len(), 789);
-    assert_eq!(data.metadata_catalog.inference_rules.len(), 190);
+    assert_eq!(data.metadata_catalog.provider_records.len(), 115);
+    assert_eq!(data.metadata_catalog.model_records.len(), 790);
+    assert_eq!(data.metadata_catalog.inference_rules.len(), 191);
     for product_key in [
         "bailian-token-personal-cn-beijing",
         "bailian-token-team-cn-beijing",
@@ -890,7 +893,7 @@ fn qwen4_preview_survives_client_loading_without_promoting_paid_execution() {
         .iter()
         .filter(|b| b.model_key == model.model_key)
         .collect();
-    assert_eq!(bindings.len(), 8);
+    assert_eq!(bindings.len(), 10);
     for binding in bindings {
         assert!(binding.product_key.starts_with("bailian-token-"));
         assert_eq!(binding.interface_candidates.len(), 1);

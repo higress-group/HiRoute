@@ -50,6 +50,26 @@
   ],
   "model_rules": [
     {
+      "rule_key": "rule.google.hydrogen-native-transport/v1",
+      "record_kind": "model",
+      "collected_on": "2026-11-13",
+      "match": {
+        "provider_id_pattern": "^gemini-api-native$",
+        "upstream_model_id_pattern": "^gemini-4-hydrogen$"
+      },
+      "assignments": {
+        "execution_fit": {
+          "state": "unsupported",
+          "reason": "Native GenerateContent and Interactions are not supported by the installed text API adapters."
+        }
+      },
+      "reason": "The documented native APIs do not qualify an OpenAI-compatible endpoint. Keep this transport-scoped record descriptive until a native adapter is installed and qualified.",
+      "evidence_refs": [
+        "source-hydrogen-decode-20261113",
+        "source-hydrogen-model-20261113"
+      ]
+    },
+    {
       "rule_key": "rule.codex.gpt-6.1-sol-output/v1",
       "record_kind": "model",
       "collected_on": "2026-09-30",

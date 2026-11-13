@@ -1,6 +1,6 @@
 {
   "artifact_kind": "hiroute.model-metadata-current-source",
-  "as_of": "2026-11-12",
+  "as_of": "2026-11-13",
   "scope": {
     "catalog_generation": "current",
     "delivery": "client-bundled",
@@ -2314,6 +2314,51 @@
       "digest_state": "captured"
     },
     {
+      "source_key": "source-hydrogen-decode-20261113",
+      "authority": "aistudio.google.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://aistudio.google.com/docs/whats-new-gemini-4-hydrogen",
+      "collected_on": "2026-11-13",
+      "bytes_digest": "sha256:b59f4cd0966e3a2b8d0418ed698cf0d33672b5b44b99b0d5d538c8d352c1047c",
+      "digest_state": "captured"
+    },
+    {
+      "source_key": "source-hydrogen-model-20261113",
+      "authority": "aistudio.google.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://aistudio.google.com/docs/models/gemini-4-hydrogen",
+      "collected_on": "2026-11-13",
+      "bytes_digest": "sha256:a6092c96e31551c57259ccf4d51cdf894276e9f95a444d6dc2a858cfa0b6240f",
+      "digest_state": "captured"
+    },
+    {
+      "source_key": "source-hydrogen-pricing-20261113",
+      "authority": "aistudio.google.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://aistudio.google.com/docs/pricing#gemini-4-hydrogen",
+      "collected_on": "2026-11-13",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-hydrogen-release-20261113",
+      "authority": "aistudio.google.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://aistudio.google.com/docs/changelog",
+      "collected_on": "2026-11-13",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-hydrogen-thinking-20261113",
+      "authority": "aistudio.google.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://aistudio.google.com/docs/thinking",
+      "collected_on": "2026-11-13",
+      "bytes_digest": "sha256:69ace528ad9b40a59706c07b449107dcd9d5f56f60afbc4b9250f937c1e80bc1",
+      "digest_state": "captured"
+    },
+    {
       "source_key": "source-kimi-code-20261112",
       "authority": "www.kimi.com",
       "source_kind": "provider-documentation",
@@ -2485,6 +2530,15 @@
       "digest_state": "captured"
     },
     {
+      "source_key": "source-qwen4-claude-code-20261113",
+      "authority": "help.aliyun.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://help.aliyun.com/zh/model-studio/claude-code",
+      "collected_on": "2026-11-13",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
       "source_key": "source-qwen4-global",
       "authority": "docs.qwencloud.com",
       "source_kind": "provider-documentation",
@@ -2492,6 +2546,15 @@
       "collected_on": "2026-11-11",
       "bytes_digest": "sha256:9335c22f22c8b636644ab682d20c37171f8c61a2c4740206514b115036007022",
       "digest_state": "captured"
+    },
+    {
+      "source_key": "source-qwen4-messages-20261113",
+      "authority": "help.aliyun.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://help.aliyun.com/zh/model-studio/anthropic-api-messages",
+      "collected_on": "2026-11-13",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
     },
     {
       "source_key": "source-qwen4-personal",
@@ -3111,6 +3174,12 @@
           "protocol": "gemini-interactions",
           "request_path": "/interactions",
           "base_url": "https://generativelanguage.googleapis.com/v1beta"
+        },
+        {
+          "interface_key": "gemini-api/google-generate-content",
+          "protocol": "google-generate-content",
+          "base_url": "https://generativelanguage.googleapis.com/v1beta",
+          "request_path_template": "/models/{model}:generateContent"
         },
         {
           "interface_key": "gemini-api/openai-chat",
@@ -4914,6 +4983,51 @@
       ],
       "data_note": "Input, thinking and output share 1048576 tokens. 65536 is a synchronous default, not an independent output maximum. Long decode requires Interactions continuation or background execution; do not apply its behavior to OpenAI compatibility. No Free tier.",
       "max_output_state": "shared-total-budget"
+    },
+    {
+      "model_key": "gemini-4-hydrogen",
+      "publisher": "Google",
+      "display_name": "Gemini 4 Hydrogen",
+      "canonical_identity": "gemini-4-hydrogen",
+      "upstream_ids": [
+        "gemini-4-hydrogen"
+      ],
+      "context_tokens": 1048576,
+      "max_output_tokens": null,
+      "max_output_state": "shared-total-budget",
+      "modalities": {
+        "text_input": "supported",
+        "image_input": "supported",
+        "audio_input": "supported",
+        "video_input": "supported",
+        "pdf_input": "supported",
+        "text_output": "supported"
+      },
+      "capabilities": {
+        "tool": "supported",
+        "streaming": "supported",
+        "structured_output": "supported"
+      },
+      "reasoning": {
+        "kind": "discrete-fixed-on",
+        "profiles": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ],
+        "default": "high"
+      },
+      "identity_stability": "immutable-or-provider-stable",
+      "lifecycle": "active",
+      "source_stability_note": "current-provider-documented-native-apis",
+      "evidence_refs": [
+        "source-hydrogen-decode-20261113",
+        "source-hydrogen-model-20261113",
+        "source-hydrogen-pricing-20261113",
+        "source-hydrogen-release-20261113",
+        "source-hydrogen-thinking-20261113"
+      ]
     },
     {
       "model_key": "glm-4-7",
@@ -7662,6 +7776,27 @@
       ]
     },
     {
+      "binding_key": "bailian-token-personal-cn-beijing/qwen-4-max-preview/qwen4-max-preview/anthropic-messages",
+      "product_key": "bailian-token-personal-cn-beijing",
+      "model_key": "qwen-4-max-preview",
+      "upstream_model_id": "qwen4-max-preview",
+      "upstream_identity_role": "canonical-callable-id",
+      "interface_candidates": [
+        "bailian-token-personal-cn-beijing/anthropic-messages"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG."
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-qwen4-claude-code-20261113",
+        "source-qwen4-messages-20261113",
+        "source-qwen4-personal",
+        "source-qwen4-preview"
+      ]
+    },
+    {
       "binding_key": "bailian-token-personal-cn-beijing/qwen-4-max-preview/qwen4-max-preview/openai-chat",
       "product_key": "bailian-token-personal-cn-beijing",
       "model_key": "qwen-4-max-preview",
@@ -8175,6 +8310,27 @@
       ]
     },
     {
+      "binding_key": "bailian-token-team-cn-beijing/qwen-4-max-preview/qwen4-max-preview/anthropic-messages",
+      "product_key": "bailian-token-team-cn-beijing",
+      "model_key": "qwen-4-max-preview",
+      "upstream_model_id": "qwen4-max-preview",
+      "upstream_identity_role": "canonical-callable-id",
+      "interface_candidates": [
+        "bailian-token-team-cn-beijing/anthropic-messages"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG."
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-qwen4-claude-code-20261113",
+        "source-qwen4-messages-20261113",
+        "source-qwen4-preview",
+        "source-qwen4-team"
+      ]
+    },
+    {
       "binding_key": "bailian-token-team-cn-beijing/qwen-4-max-preview/qwen4-max-preview/openai-chat",
       "product_key": "bailian-token-team-cn-beijing",
       "model_key": "qwen-4-max-preview",
@@ -8631,6 +8787,53 @@
         "source-gemini4-decode",
         "source-gemini4-openai"
       ]
+    },
+    {
+      "binding_key": "gemini-api/gemini-4-hydrogen/gemini-4-hydrogen/gemini-interactions",
+      "product_key": "gemini-api",
+      "model_key": "gemini-4-hydrogen",
+      "upstream_model_id": "gemini-4-hydrogen",
+      "upstream_identity_role": "canonical-callable-id",
+      "interface_candidates": [
+        "gemini-api/gemini-interactions"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Documented native API only; account, region and protocol require qualification. Free-tier access is subject to account eligibility and quotas; paid Standard prices do not grant free entitlement."
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-hydrogen-decode-20261113",
+        "source-hydrogen-model-20261113",
+        "source-hydrogen-pricing-20261113",
+        "source-hydrogen-release-20261113",
+        "source-hydrogen-thinking-20261113"
+      ]
+    },
+    {
+      "binding_key": "gemini-api/gemini-4-hydrogen/gemini-4-hydrogen/google-generate-content",
+      "product_key": "gemini-api",
+      "model_key": "gemini-4-hydrogen",
+      "upstream_model_id": "gemini-4-hydrogen",
+      "upstream_identity_role": "canonical-callable-id",
+      "interface_candidates": [
+        "gemini-api/google-generate-content"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Documented native API only; account, region and protocol require qualification. Free-tier access is subject to account eligibility and quotas; paid Standard prices do not grant free entitlement."
+      },
+      "protocol_qualification": "runtime-required",
+      "evidence_refs": [
+        "source-hydrogen-decode-20261113",
+        "source-hydrogen-model-20261113",
+        "source-hydrogen-pricing-20261113",
+        "source-hydrogen-release-20261113",
+        "source-hydrogen-thinking-20261113"
+      ],
+      "capability_overrides": {
+        "max_output_tokens": 65536
+      }
     },
     {
       "binding_key": "groqcloud/groq-gpt-oss-120b/openai-gpt-oss-120b",
@@ -10647,6 +10850,35 @@
       ],
       "evidence_refs": [
         "source-gemini4-pricing"
+      ]
+    },
+    {
+      "pricing_key": "gemini-api/gemini-4-hydrogen/standard-paid",
+      "product_key": "gemini-api",
+      "model_key": "gemini-4-hydrogen",
+      "upstream_model_id": "gemini-4-hydrogen",
+      "currency": "USD",
+      "unit": "per-1m-tokens",
+      "price_state": "exact",
+      "schedules": [
+        {
+          "schedule_key": "standard-paid",
+          "application": "provider-defined",
+          "condition": {
+            "kind": "service-tier",
+            "tier": "standard",
+            "billing_tier": "paid",
+            "cache_mode": "implicit-only"
+          },
+          "rates": {
+            "input": "1.50",
+            "output": "7.50",
+            "cache-read": "0.075"
+          }
+        }
+      ],
+      "evidence_refs": [
+        "source-hydrogen-pricing-20261113"
       ]
     },
     {
@@ -17456,6 +17688,95 @@
           "source_key": "source-gemini4-openai"
         }
       ]
+    },
+    {
+      "provider_record_key": "official/gemini-api-native",
+      "provider_id": "gemini-api-native",
+      "display_name": "Google Gemini native APIs",
+      "provenance_refs": [
+        {
+          "kind": "evidence-source",
+          "source_key": "source-hydrogen-decode-20261113"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-hydrogen-model-20261113"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-hydrogen-pricing-20261113"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-hydrogen-release-20261113"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-hydrogen-thinking-20261113"
+        }
+      ],
+      "description_candidates": [],
+      "aliases": [],
+      "base_url_candidates": [
+        "https://generativelanguage.googleapis.com/v1beta"
+      ],
+      "protocol_candidates": [],
+      "unsupported_api_styles": [
+        "gemini-interactions",
+        "google-generate-content"
+      ],
+      "unsupported_transport_locators": [],
+      "authentication_candidates": [
+        "api_key"
+      ],
+      "environment_variable_names": [],
+      "default_model_ids": [],
+      "discovery_modes": [],
+      "models_url_candidates": [],
+      "signup_url_candidates": [],
+      "source_assertions": [
+        {
+          "api_styles": [
+            "google-generate-content",
+            "gemini-interactions"
+          ],
+          "authentication": "x-goog-api-key"
+        }
+      ],
+      "source_locations": [
+        {
+          "source_key": "source-hydrogen-decode-20261113"
+        },
+        {
+          "source_key": "source-hydrogen-model-20261113"
+        },
+        {
+          "source_key": "source-hydrogen-pricing-20261113"
+        },
+        {
+          "source_key": "source-hydrogen-release-20261113"
+        },
+        {
+          "source_key": "source-hydrogen-thinking-20261113"
+        }
+      ],
+      "metadata_completeness": {
+        "authentication": "complete",
+        "discovery": "missing",
+        "endpoint": "partial",
+        "identity": "complete"
+      },
+      "usable_for": [
+        "adapter-planning",
+        "credential-setup-hint",
+        "provider-directory"
+      ],
+      "field_provenance": {
+        "identity": {
+          "basis": "inferred",
+          "rule_key": "rule.provider.identity.fallback-id/v1"
+        }
+      }
     },
     {
       "provider_record_key": "official/kimi-code",
@@ -80733,6 +81054,149 @@
       "cost_hint_state": "not-recorded"
     },
     {
+      "model_record_key": "official/gemini-api-native/gemini-4-hydrogen",
+      "provider_record_key": "official/gemini-api-native",
+      "provider_id": "gemini-api-native",
+      "provenance_refs": [
+        {
+          "kind": "evidence-source",
+          "source_key": "source-hydrogen-decode-20261113"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-hydrogen-model-20261113"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-hydrogen-pricing-20261113"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-hydrogen-release-20261113"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-hydrogen-thinking-20261113"
+        }
+      ],
+      "upstream_model_id": "gemini-4-hydrogen",
+      "display_name": "Gemini 4 Hydrogen",
+      "context_tokens": {
+        "state": "known",
+        "value": 1048576
+      },
+      "max_output_tokens": {
+        "state": "shared-total-budget",
+        "value": null
+      },
+      "input_modalities": [
+        "audio",
+        "image",
+        "pdf",
+        "text",
+        "video"
+      ],
+      "capability_hints": {
+        "reasoning": "supported",
+        "streaming": "supported",
+        "tool": "supported",
+        "vision": "supported"
+      },
+      "reasoning_rendering_hints": {
+        "reasoning_effort_maps": [],
+        "supported_reasoning_efforts": [
+          "high",
+          "low",
+          "medium",
+          "xhigh"
+        ],
+        "thinking_level_maps": []
+      },
+      "cost_hints": [],
+      "lifecycle": "active",
+      "status_candidates": [],
+      "replacement_upstream_ids": [],
+      "roles": [
+        "provider-documented-model"
+      ],
+      "normalized_model_matches": [
+        "gemini-4-hydrogen"
+      ],
+      "metadata_completeness": {
+        "capabilities": "complete",
+        "cost": "missing",
+        "identity": "complete",
+        "lifecycle": "complete",
+        "limits": "partial",
+        "modalities": "complete",
+        "reasoning_rendering": "complete"
+      },
+      "usable_for": [
+        "context-limit-prefill",
+        "custom-api-model-prefill",
+        "lifecycle-warning",
+        "model-directory",
+        "reasoning-capability-prefill",
+        "reasoning-rendering-hint",
+        "vision-capability-prefill"
+      ],
+      "cost_hint_state": "not-recorded",
+      "source_assertions": [
+        {
+          "id": "gemini-4-hydrogen",
+          "ga_date": "2026-11-12",
+          "api_styles": [
+            "google-generate-content",
+            "gemini-interactions"
+          ],
+          "shared_context_tokens": 1048576,
+          "synchronous_output_tokens_per_hop": 65536,
+          "long_decode_requires": [
+            "background execution",
+            "client continuation"
+          ],
+          "long_decode_budget": "remaining shared input/thinking/output window",
+          "thinking_levels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "default_thinking_level": "high",
+          "minimal_supported": false,
+          "output_includes_thinking": true,
+          "free_tier": "account/region/quota qualified; not an installed free offer"
+        }
+      ],
+      "source_locations": [
+        {
+          "source_key": "source-hydrogen-decode-20261113"
+        },
+        {
+          "source_key": "source-hydrogen-model-20261113"
+        },
+        {
+          "source_key": "source-hydrogen-pricing-20261113"
+        },
+        {
+          "source_key": "source-hydrogen-release-20261113"
+        },
+        {
+          "source_key": "source-hydrogen-thinking-20261113"
+        }
+      ],
+      "execution_fit": {
+        "state": "unsupported",
+        "reason": "Native GenerateContent and Interactions are not supported by the installed text API adapters."
+      },
+      "field_provenance": {
+        "execution_fit": {
+          "basis": "inferred",
+          "rule_key": "rule.google.hydrogen-native-transport/v1"
+        }
+      }
+    },
+    {
       "model_record_key": "official/gemini-api/gemini-4-argon",
       "provider_record_key": "official/gemini-api",
       "provider_id": "gemini-api",
@@ -119982,6 +120446,27 @@
         "source-001"
       ],
       "collected_on": "2026-09-13"
+    },
+    {
+      "rule_key": "rule.google.hydrogen-native-transport/v1",
+      "record_kind": "model",
+      "match": {
+        "provider_id_pattern": "^gemini-api-native$",
+        "upstream_model_id_pattern": "^gemini-4-hydrogen$"
+      },
+      "assignments": {
+        "execution_fit": {
+          "state": "unsupported",
+          "reason": "Native GenerateContent and Interactions are not supported by the installed text API adapters."
+        }
+      },
+      "basis": "inferred",
+      "reason": "The documented native APIs do not qualify an OpenAI-compatible endpoint. Keep this transport-scoped record descriptive until a native adapter is installed and qualified.",
+      "evidence_refs": [
+        "source-hydrogen-decode-20261113",
+        "source-hydrogen-model-20261113"
+      ],
+      "collected_on": "2026-11-13"
     },
     {
       "rule_key": "rule.kimi.k2-legacy/v1",

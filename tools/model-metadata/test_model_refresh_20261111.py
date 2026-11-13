@@ -47,7 +47,7 @@ class November11ModelProjectionTests(unittest.TestCase):
         self.assertEqual(m['max_output_tokens'], {'state': 'known', 'value': 393216})
         self.assertEqual(self.prices('qwen-4-max-preview'), [])
         bindings = self.bindings('qwen-4-max-preview')
-        self.assertEqual(len(bindings), 8)
+        self.assertEqual(len(bindings), 10)
         self.assertEqual({b['product_key'] for b in bindings}, {
             'bailian-token-personal-cn-beijing', 'bailian-token-team-cn-beijing'})
         for b in bindings:
