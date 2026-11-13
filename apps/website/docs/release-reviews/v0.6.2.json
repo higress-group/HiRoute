@@ -1,0 +1,34 @@
+{
+  "schema": "hiroute.documentation-review/v1",
+  "tag": "v0.6.2",
+  "product_revision": "c5f7ac0b075bb1223a43e0b7013583a454d14451",
+  "guides": {
+    "status": "updated",
+    "summary": "Reviewed the accumulated 0.6.2 patch. The English and Chinese READMEs describe the Windows log-path and decision fixes. Both Windows installation guides describe the verified log collection entry, settings labels, and the existing direct Explorer path. The release preserves the existing install, Quickstart, and model routing entry points.",
+    "reviewed_files": [
+      "README.md",
+      "README.zh-CN.md",
+      "apps/website/content/guides/install-windows.en.md",
+      "apps/website/content/guides/install-windows.zh.md",
+      "apps/website/content/guides/model-routing.en.md",
+      "apps/website/content/guides/model-routing.zh.md",
+      "apps/website/content/guides/quickstart.en.md",
+      "apps/website/content/guides/quickstart.zh.md"
+    ],
+    "content_sha256": "1c9935e2a62f6aaf2dd969ee1163b77caee72a40fab4d54d324b604cb4e4cf30"
+  },
+  "screenshots": {
+    "status": "unchanged",
+    "summary": "The new Windows log-collection instructions are text-only. Reviewed the path dialog in dark mode in both languages against the candidate product components. The decision test and Windows path changes do not alter the existing route setup, trial entry, or session screenshots and their captions.",
+    "reviewed_files": [
+      "apps/website/public/guide-assets/agent-guide-difficulty-en.webp",
+      "apps/website/public/guide-assets/agent-guide-difficulty-zh.webp",
+      "apps/website/public/guide-assets/trial-entry-en.webp",
+      "apps/website/public/guide-assets/trial-entry-zh.webp",
+      "decision-extensions/assets/readme-session-en.png",
+      "decision-extensions/assets/readme-session-zh-CN.png",
+      "apps/website/docs/guide-assets.md"
+    ],
+    "content_sha256": "3c961ba674853157dec0ad0a22206e174722e759898fc693ff3d3f8d825f233f"
+  }
+}

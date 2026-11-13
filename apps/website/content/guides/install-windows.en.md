@@ -70,6 +70,12 @@ A Core storage upgrade preserves configuration, credentials, routing and compati
 
 If startup fails, use the bundled page's specific cause and next action. A missing key or unverified package cannot be repaired by repeated retries or an arbitrary older installer. For verified complete recovery, first preserve newer data and its matching program separately. Follow the exact batch's `RECOVERY.md` or Chinese guide and `PROGRAM-LOCATIONS.md`: restore the entire old data group, Desktop/uninstaller, standalone programs, command entries and native files, then the recorded current-user Apps registration and Task. Use the same ordinary account without elevation. Confirm Control/Gateway readiness, old configuration/routing/history and a real request before treating service as restored.
 
+## Collect diagnostic logs
+
+To capture a failed decision model connection test, open **Settings → Records & diagnostics**, select **Debug**, and save the level. Go back to the decision model and run **Test connection** or **Test again**. Note the time, time zone, and any error code.
+
+In HiRoute 0.6.2 and later, choose **Show directory path** in the diagnostics settings. Paste the displayed path into File Explorer and open its `daemon` folder. If the path is unavailable, enter `%LOCALAPPDATA%\HiRoute\cli\diagnostics\daemon` directly in File Explorer. For a support request, share `current.jsonl` and include `previous-1.jsonl` if it covers the test time. Review the files before sharing, then restore your usual log level.
+
 ## Uninstall
 
 Use **Installed apps → HiRoute → Uninstall**. Before removing the service, HiRoute restores its supported Agent configuration. If restoration needs a decision, uninstall stops and reports the Agent IDs; resolve them in HiRoute and retry. It removes only its recorded application files, Task, shell login entry and any CLI PATH entry it added. Data is retained unless you explicitly select its removal. The separate headless state directory is never used as the NSIS install directory.
