@@ -106,7 +106,7 @@ fn concurrent_tool_rich_history_preserves_capture_and_actual_predecessors() {
 
 #[test]
 fn dense_structural_request_is_forwarded_without_a_proxy_memory_quota() {
-    let properties = (0..18_000)
+    let properties = (0..30_000)
         .map(|index| (format!("field_{index}"), json!({"type":"string"})))
         .collect::<serde_json::Map<_, _>>();
     let wire = json!({
