@@ -1055,9 +1055,15 @@ impl ProductionGatewayRuntime {
         if let Some(Some(diagnostic)) = network_diagnostic.as_deref_mut() {
             diagnostic.failure = None;
         }
-        let mut diagnostic = CallDiagnostic::new(self.observation.diagnostic_context());
+        use hiroute_diagnostics::event::DecisionExchangePhase as Phase;
+
+        let mut diagnostic = CallDiagnostic::new(
+            self.observation.diagnostic_context(),
+            classifier.service.as_ref(),
+        );
         let scope = ExecutionScope::new(call_deadline, cancellation.clone());
-        ensure_call_active(call_deadline, overall_deadline, &cancellation)?;
+        ensure_call_active(call_deadline, overall_deadline, &cancellation)
+            .inspect_err(|error| diagnostic.inactive(error))?;
 
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -1088,6 +1094,7 @@ impl ProductionGatewayRuntime {
                 u64::try_from(template.wire_len).map_err(|_| ClassificationError::Integrity)?,
             ),
         );
+        diagnostic.phase(Phase::Credential);
         if let ClassifierAuthenticationAuthorityV1::Header {
             name,
             value_secret_ref,
@@ -1140,6 +1147,7 @@ impl ProductionGatewayRuntime {
         }
 
         diagnostic.prepared(&headers, &template.bytes);
+        diagnostic.phase(Phase::NetworkRoute);
         let mut network_route = None;
         let mut target = classifier.transport_target.clone();
         if let (ClassifierAuthenticationAuthorityV1::SharedDecision { binding }, Some(snapshot)) =
@@ -1161,6 +1169,7 @@ impl ProductionGatewayRuntime {
                 }
                 Err(code) => {
                     let phase = if code.as_ref() == "proxy_dns_failed" {
+                        diagnostic.phase(Phase::ProxyDns);
                         hiroute_domain::NativeNetworkFailurePhaseV1::ProxyConnect
                     } else {
                         hiroute_domain::NativeNetworkFailurePhaseV1::RouteUnavailable
@@ -1182,6 +1191,7 @@ impl ProductionGatewayRuntime {
             .as_ref()
             .is_none_or(|route| route.proxy.is_none())
         {
+            diagnostic.phase(Phase::Dns);
             target = match TargetResolver::new().resolve(target, &scope).await {
                 Ok(target) => target,
                 Err(_) => {
@@ -1199,6 +1209,7 @@ impl ProductionGatewayRuntime {
                 }
             };
         }
+        diagnostic.phase(Phase::RequestPreparation);
         let body = sequential_replay_body(
             template.clone(),
             replay.clone(),
@@ -1277,6 +1288,7 @@ impl ProductionGatewayRuntime {
         if let Some(spending) = spending.as_mut()
             && spending.mark_sent().is_err()
         {
+            diagnostic.phase(Phase::Budget);
             return Ok(Err(spending::failure(FailureKind::BudgetUnavailable)));
         }
         let exchange_result = collect_response(&mut exchange, call_deadline, &mut diagnostic).await;
@@ -1298,14 +1310,7 @@ impl ProductionGatewayRuntime {
                         _ => Phase::TransportUnknown,
                     });
                 }
-                diagnostic.failure(match error {
-                    AttemptError::DeadlineExceeded
-                    | AttemptError::ConnectTimeout
-                    | AttemptError::FirstByteTimeout
-                    | AttemptError::StreamIdleTimeout
-                    | AttemptError::RequestWriteTimeout => CallFailure::Timeout,
-                    _ => CallFailure::Unavailable,
-                });
+                diagnostic.attempt_failed(&error);
                 let _ = exchange
                     .finish_or_abort_bounded(classifier_cleanup_timeout(call_deadline))
                     .await;
@@ -1320,6 +1325,7 @@ impl ProductionGatewayRuntime {
                 );
             }
             Err(CollectResponseError::InvalidOutput) => {
+                diagnostic.phase(Phase::ResponseFraming);
                 diagnostic.failure(CallFailure::InvalidOutput);
                 let _ = exchange
                     .finish_or_abort_bounded(classifier_cleanup_timeout(call_deadline))
@@ -1334,6 +1340,7 @@ impl ProductionGatewayRuntime {
                 );
             }
         };
+        diagnostic.phase(Phase::ResponseFinalize);
         spending::response(spending.as_ref(), &body, classifier.wire_protocol);
         exchange
             .submit_disposition_candidate(Disposition::Accept)
@@ -1373,6 +1380,7 @@ impl ProductionGatewayRuntime {
         }
         drop(response_reservation);
         if let Err(error) = ensure_call_active(call_deadline, overall_deadline, &cancellation) {
+            diagnostic.inactive(&error);
             return match error {
                 ClassificationError::Deadline if fixed_timeout_wins => {
                     Ok(Err(CallFailure::Timeout))
@@ -1382,6 +1390,7 @@ impl ProductionGatewayRuntime {
         }
 
         if proxied && status == StatusCode::PROXY_AUTHENTICATION_REQUIRED {
+            diagnostic.phase(Phase::ProxyAuthentication);
             if let Some(Some(network)) = network_diagnostic.as_deref_mut() {
                 network.failure = Some(hiroute_domain::NativeNetworkFailurePhaseV1::ProxyAuth);
             }
@@ -1398,6 +1407,7 @@ impl ProductionGatewayRuntime {
             network.failure = Some(hiroute_domain::NativeNetworkFailurePhaseV1::UpstreamAuth);
         }
         if status == StatusCode::OK {
+            diagnostic.phase(Phase::ResponseDecode);
             let result = match &prepared.bindings {
                 Some(bindings) => match classifier.wire_protocol {
                     hiroute_domain::DecisionWireProtocolV2::SystemOne => {
@@ -1416,6 +1426,7 @@ impl ProductionGatewayRuntime {
             diagnostic.finish(result.as_ref().err().copied());
             return Ok(result);
         }
+        diagnostic.phase(Phase::HttpRejected);
         let failure = classifier_response_failure(status, &body);
         diagnostic.finish(Some(failure));
         Ok(Err(failure))

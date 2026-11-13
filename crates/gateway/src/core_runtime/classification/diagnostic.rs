@@ -1,21 +1,24 @@
 //! Safe diagnostics for the decision service's real transport path.
 
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Instant;
 
 use hiroute_diagnostics::{
     context::DiagnosticContext,
     correlation::CorrelationDomain,
     event::{
-        DiagnosticEvent, UpstreamWire, UpstreamWirePhase, WireHttpProtocol, WireProviderError,
-        WireRequestKind,
+        DecisionExchangeFailure, DecisionExchangePhase as Phase, DiagnosticEvent, UpstreamWire,
+        UpstreamWirePhase, WireHttpProtocol, WireProviderError, WireRequestKind,
     },
+    identity::CorrelationToken,
 };
+use hiroute_gateway_core::runtime::attempt::{AttemptError, ProxyFailurePhase};
 use hiroute_gateway_core::transport::HttpProtocol;
 use http::{HeaderMap, StatusCode};
 
 use super::{
-    CLASSIFIER_DIAGNOSTIC_LATEST_USER, CallFailure, ClassifierDiagnosticError, DecisionFailureV1,
-    FailureKind,
+    CLASSIFIER_DIAGNOSTIC_LATEST_USER, CallFailure, ClassificationError, ClassifierDiagnosticError,
+    DecisionFailureV1, FailureKind,
 };
 use crate::server::core_runtime::model_ir::{
     CanonicalMessage, ContentPart, MODEL_REQUEST_IR_SCHEMA, MessageRole, ModelRequestIRV1,
@@ -29,11 +32,17 @@ static NEXT_CALL: AtomicU64 = AtomicU64::new(1);
 pub(super) struct CallDiagnostic {
     context: DiagnosticContext,
     final_event: UpstreamWire,
+    service_token: Option<CorrelationToken>,
+    phase: Phase,
+    started: Instant,
     finished: bool,
 }
 
 impl CallDiagnostic {
-    pub(super) fn new(context: DiagnosticContext) -> Self {
+    pub(super) fn new(
+        context: DiagnosticContext,
+        service: Option<&hiroute_domain::DecisionServiceRevisionV1>,
+    ) -> Self {
         let mut final_event = wire_diagnostic::response(&HeaderMap::new(), 0, &context);
         final_event.http_status = None;
         final_event.request_kind = Some(WireRequestKind::DecisionService);
@@ -43,11 +52,60 @@ impl CallDiagnostic {
         );
         final_event.phase = UpstreamWirePhase::Failure;
         final_event.provider_error = Some(WireProviderError::Unknown);
+        let service_token = service.and_then(|service| {
+            context
+                .handle()
+                .decision_service_token(&service.id, service.revision)
+        });
         Self {
             context,
             final_event,
+            service_token,
+            phase: Phase::RequestPreparation,
+            started: Instant::now(),
             finished: false,
         }
+    }
+
+    pub(super) fn phase(&mut self, phase: Phase) {
+        self.phase = phase;
+    }
+
+    pub(super) fn inactive(&mut self, error: &ClassificationError) {
+        match error {
+            ClassificationError::Deadline => self.phase(Phase::Deadline),
+            ClassificationError::Cancelled => self.phase(Phase::Cancelled),
+            _ => {}
+        }
+    }
+
+    pub(super) fn attempt_failed(&mut self, error: &AttemptError) {
+        self.phase = match error {
+            AttemptError::Proxy(ProxyFailurePhase::Connect) => Phase::ProxyConnect,
+            AttemptError::Proxy(ProxyFailurePhase::Tls) => Phase::ProxyTls,
+            AttemptError::Proxy(ProxyFailurePhase::Authentication) => Phase::ProxyAuthentication,
+            AttemptError::Proxy(ProxyFailurePhase::Negotiation) => Phase::ProxyNegotiation,
+            AttemptError::Proxy(ProxyFailurePhase::UpstreamTls) => Phase::UpstreamTls,
+            AttemptError::ConnectFailed => Phase::Connect,
+            AttemptError::ConnectTimeout => Phase::ConnectTimeout,
+            AttemptError::RequestWriteTimeout => Phase::RequestWriteTimeout,
+            AttemptError::FirstByteTimeout => Phase::FirstByteTimeout,
+            AttemptError::StreamIdleTimeout => Phase::ResponseIdleTimeout,
+            AttemptError::DeadlineExceeded => Phase::Deadline,
+            AttemptError::Cancelled => Phase::Cancelled,
+            AttemptError::Transport(_) if self.final_event.http_protocol.is_none() => {
+                Phase::Connect
+            }
+            _ => Phase::Transport,
+        };
+        self.failure(match self.phase {
+            Phase::ConnectTimeout
+            | Phase::RequestWriteTimeout
+            | Phase::FirstByteTimeout
+            | Phase::ResponseIdleTimeout
+            | Phase::Deadline => CallFailure::Timeout,
+            _ => CallFailure::Unavailable,
+        });
     }
 
     pub(super) fn prepared(&mut self, headers: &HeaderMap, template: &[u8]) {
@@ -102,17 +160,30 @@ impl CallDiagnostic {
                 self.final_event.provider_error = None;
             }
         }
+        self.emit_terminal();
+        self.finished = true;
+    }
+
+    fn emit_terminal(&self) {
         self.context
             .emit(DiagnosticEvent::UpstreamWire(self.final_event.clone()));
-        self.finished = true;
+        if self.final_event.phase == UpstreamWirePhase::Failure {
+            self.context.emit(DiagnosticEvent::DecisionExchangeFailure(
+                DecisionExchangeFailure {
+                    request_token: self.final_event.request_token,
+                    service_token: self.service_token,
+                    phase: self.phase,
+                    elapsed_ms: self.started.elapsed().as_millis() as u64,
+                },
+            ));
+        }
     }
 }
 
 impl Drop for CallDiagnostic {
     fn drop(&mut self) {
         if !self.finished {
-            self.context
-                .emit(DiagnosticEvent::UpstreamWire(self.final_event.clone()));
+            self.emit_terminal();
         }
     }
 }
@@ -246,14 +317,19 @@ mod tests {
                 classifier_status_failure(StatusCode::NOT_FOUND),
             ),
         ] {
-            let mut diagnostic = CallDiagnostic::new(runtime.port().handle().context());
+            let mut diagnostic = CallDiagnostic::new(runtime.port().handle().context(), None);
             diagnostic.prepared(
                 &HeaderMap::new(),
                 br#"{"model":"decision-model-preview","input":"private-decision-prompt"}"#,
             );
             diagnostic.protocol(Some(HttpProtocol::Http2));
             diagnostic.response(&HeaderMap::new(), status);
+            diagnostic.phase(Phase::HttpRejected);
             diagnostic.finish(Some(failure));
+        }
+        {
+            let mut diagnostic = CallDiagnostic::new(runtime.port().handle().context(), None);
+            diagnostic.attempt_failed(&AttemptError::FirstByteTimeout);
         }
         runtime.shutdown();
         let log = std::fs::read_to_string(root.join("daemon/current.jsonl")).unwrap();
@@ -263,6 +339,9 @@ mod tests {
             "decision-model-preview",
             "http2",
             "decision_service",
+            "decision_exchange_failure",
+            "http_rejected",
+            "first_byte_timeout",
         ] {
             assert!(log.contains(expected), "{expected}: {log}");
         }

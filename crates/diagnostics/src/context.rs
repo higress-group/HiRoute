@@ -378,6 +378,17 @@ impl DiagnosticHandle {
             .and_then(|tokenizer| tokenizer.token(domain, original))
     }
 
+    /// A service revision can group test outcomes and wire failures without exposing its id.
+    pub fn decision_service_token(&self, id: &str, revision: u64) -> Option<CorrelationToken> {
+        if id.len() > 256 {
+            return None;
+        }
+        self.tokenizer()?.token(
+            CorrelationDomain::Decision,
+            &format!("service:{id}@{revision}"),
+        )
+    }
+
     pub fn boot_id(&self) -> Option<BootId> {
         self.emitter.as_ref().map(|emitter| emitter.boot_id())
     }

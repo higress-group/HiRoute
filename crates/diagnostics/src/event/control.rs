@@ -178,6 +178,9 @@ pub enum ControlOperation {
     CheckModelConnection,
     ComputeSubscriptions,
     CheckSubscription,
+    ListDecisionServices,
+    SaveDecisionService,
+    TestDecisionService,
     WorkerSettingsGet,
     WorkerSettingsSet,
     WorkerTaskPlans,
@@ -212,6 +215,15 @@ impl ControlOperation {
             "CheckModelConnection" => ControlOperation::CheckModelConnection,
             "ComputeSubscriptions" => ControlOperation::ComputeSubscriptions,
             "CheckSubscription" => ControlOperation::CheckSubscription,
+            "ListDecisionServicesV2" | "ListDecisionServicesV3" => {
+                ControlOperation::ListDecisionServices
+            }
+            "ApplyDecisionServiceV2" | "ApplyDecisionServiceV3" => {
+                ControlOperation::SaveDecisionService
+            }
+            "TestDecisionServiceV2" | "TestDecisionServiceV3" => {
+                ControlOperation::TestDecisionService
+            }
             "WorkerSettingsGet" => ControlOperation::WorkerSettingsGet,
             "WorkerSettingsSet" => ControlOperation::WorkerSettingsSet,
             "WorkerTaskPlans" => ControlOperation::WorkerTaskPlans,

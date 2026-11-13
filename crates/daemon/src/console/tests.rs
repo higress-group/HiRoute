@@ -2,11 +2,15 @@
 use super::*;
 use hiroute_application_api::*;
 use hiroute_client_core::{Client, LocalEndpoint};
+use hiroute_diagnostics::{
+    Component, DiagnosticLevel, DiagnosticRuntime, RuntimeConfig, event::ProcessRole,
+};
 use hiroute_host_runtime::StandaloneLayout;
 use serde_json::{Value, json};
 use std::{
     io::Write,
     net::{SocketAddr, TcpListener, TcpStream},
+    sync::Arc,
     time::Duration,
 };
 #[path = "tests/http_client.rs"]
@@ -71,6 +75,13 @@ fn real_role_all_keeps_external_gate_and_console_auth_authority_separate() {
         None,
     )
     .unwrap();
+    let diagnostics = Arc::new(DiagnosticRuntime::start(RuntimeConfig {
+        root: layout.diagnostics_root(),
+        role: ProcessRole::Daemon,
+        component: Component::Daemon,
+        parent_session_id: None,
+        level_override: Some(DiagnosticLevel::Info),
+    }));
     let held = TcpListener::bind("127.0.0.1:0").unwrap();
     let gateway = held.local_addr().unwrap();
     drop(held);
@@ -81,7 +92,8 @@ fn real_role_all_keeps_external_gate_and_console_auth_authority_separate() {
             gateway,
             layout.gateway_lkg(),
         )
-        .with_released_commands_only(),
+        .with_released_commands_only()
+        .with_diagnostics(diagnostics.port()),
     )
     .unwrap();
     let assets = directory.path().join("assets");
@@ -94,7 +106,8 @@ fn real_role_all_keeps_external_gate_and_console_auth_authority_separate() {
     hiroute_host_runtime::ConsoleListenerStore::new(layout.gateway_config_root())
         .configure(hiroute_host_runtime::ConsoleListenerDesiredV1::loopback())
         .unwrap();
-    let mut console = ConsoleService::start(&role, layout.clone(), assets, None).unwrap();
+    let mut console =
+        ConsoleService::start(&role, layout.clone(), assets, Some(diagnostics.clone())).unwrap();
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let external = Client::new(
         "cli",
@@ -288,6 +301,25 @@ fn real_role_all_keeps_external_gate_and_console_auth_authority_separate() {
         assert_eq!(status, 400, "{command}: {response}");
         assert_ne!(response["code"], "CONSOLE_CREDENTIAL_INVALID");
     }
+    let decision_path = "/api/console/v1/command/test_decision_service_v3";
+    assert_eq!(
+        http(address, decision_path, Some(json!({})), None, "").0,
+        401
+    );
+    let private_id = "decision/private-test-record";
+    let (status, result, _) = http(
+        address,
+        decision_path,
+        Some(json!({"input": {"id": private_id, "revision": 1,
+            "expected_configuration_digest": format!("sha256:{}", "1".repeat(64))}})),
+        Some(bearer),
+        "",
+    );
+    assert_eq!(status, 200, "{result}");
+    assert_eq!(
+        result["check"]["failure_code"],
+        "DECISION_REVISION_CONFLICT"
+    );
     let secret = "console-fixture-secret-must-not-be-logged";
     let (status, input, _) = http(
         address,
@@ -388,6 +420,31 @@ fn real_role_all_keeps_external_gate_and_console_auth_authority_separate() {
     console.shutdown();
     role.shutdown();
     role.join(Duration::from_secs(30)).unwrap();
+    diagnostics.shutdown();
+    let logs =
+        std::fs::read_to_string(layout.diagnostics_root().join("daemon/current.jsonl")).unwrap();
+    let events: Vec<Value> = logs
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    for (status, returned, code) in [(401, false, "authorization"), (400, true, "frame_invalid")] {
+        assert!(
+            events.iter().any(|row| {
+                let event = &row["event"]["decision_console_end"];
+                event["operation"] == "test_decision_service"
+                    && event["http_status"] == status
+                    && event["command_returned"] == returned
+                    && event["error"] == code
+            }),
+            "missing safe console error for HTTP {status}"
+        );
+    }
+    assert!(
+        events
+            .iter()
+            .any(|row| row["event"]["decision_test_end"]["failure"] == "revision_conflict")
+    );
+    assert!(!logs.contains(private_id) && !logs.contains(secret) && !logs.contains(bearer));
 }
 
 /// Standalone admission authenticates the adjacent CLI and stable entry even

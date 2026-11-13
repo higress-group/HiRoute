@@ -3,12 +3,22 @@ use super::{
     server::Server,
 };
 use bytes::Bytes;
+use hiroute_diagnostics::{
+    error::EventErrorCode,
+    event::{ControlOperation, DecisionConsoleEnd, DiagnosticEvent},
+};
+use hiroute_product_session::failure::DesktopFailure;
 use http::{Method, Request, Response, StatusCode, header};
 use http_body_util::{BodyExt, Full};
 use hyper::body::Incoming;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::{convert::Infallible, net::SocketAddr, sync::Arc, time::Duration};
+use std::{
+    convert::Infallible,
+    net::SocketAddr,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use zeroize::Zeroizing;
 const PREFIX: &str = "/api/console/v1";
 const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; frame-ancestors 'none'; form-action 'none'";
@@ -26,18 +36,82 @@ pub(super) async fn handle(
     peer: SocketAddr,
     local: SocketAddr,
 ) -> Result<Reply, Infallible> {
+    let decision = (request.method() == Method::POST)
+        .then(|| DecisionTrace::new(request.uri().path()))
+        .flatten();
     // Each request gets the full confirmation window, even on an old keep-alive connection.
     let reply = match tokio::time::timeout(
         Duration::from_secs(100),
-        checked(&server, request, peer, local),
+        checked(&server, request, peer, local, decision.as_ref()),
     )
     .await
     {
         Ok(Ok(reply)) => reply,
-        Ok(Err((status, code))) => failure(status, code),
-        Err(_) => failure(StatusCode::REQUEST_TIMEOUT, "CONSOLE_UNAVAILABLE"),
+        Ok(Err((status, code))) => {
+            if let Some(trace) = decision.as_ref().filter(|_| peer.ip().is_loopback()) {
+                trace.end(&server, false, status, Some(console_error(status, code)));
+            }
+            failure(status, code)
+        }
+        Err(_) => {
+            let status = StatusCode::REQUEST_TIMEOUT;
+            if let Some(trace) = decision.as_ref().filter(|_| peer.ip().is_loopback()) {
+                trace.end(&server, false, status, Some(EventErrorCode::Deadline));
+            }
+            failure(status, "CONSOLE_UNAVAILABLE")
+        }
     };
     Ok(headers(reply))
+}
+
+struct DecisionTrace {
+    operation: ControlOperation,
+    started: Instant,
+}
+
+impl DecisionTrace {
+    fn new(path: &str) -> Option<Self> {
+        let operation = match path.strip_prefix(PREFIX)?.strip_prefix("/command/")? {
+            "decision_services_v3" => ControlOperation::ListDecisionServices,
+            "save_decision_service_v3" => ControlOperation::SaveDecisionService,
+            "test_decision_service_v3" => ControlOperation::TestDecisionService,
+            _ => return None,
+        };
+        Some(Self {
+            operation,
+            started: Instant::now(),
+        })
+    }
+
+    fn end(
+        &self,
+        server: &Server,
+        command_returned: bool,
+        status: StatusCode,
+        error: Option<EventErrorCode>,
+    ) {
+        server
+            .diagnostics
+            .try_emit(DiagnosticEvent::DecisionConsoleEnd(DecisionConsoleEnd {
+                operation: self.operation,
+                command_returned,
+                http_status: status.as_u16(),
+                error,
+                elapsed_ms: self.started.elapsed().as_millis() as u64,
+            }));
+    }
+}
+
+fn console_error(status: StatusCode, code: &str) -> EventErrorCode {
+    match status {
+        StatusCode::FORBIDDEN => EventErrorCode::PeerRejected,
+        StatusCode::UNAUTHORIZED => EventErrorCode::Authorization,
+        StatusCode::PAYLOAD_TOO_LARGE => EventErrorCode::FrameTooLarge,
+        StatusCode::REQUEST_TIMEOUT => EventErrorCode::Deadline,
+        StatusCode::UNSUPPORTED_MEDIA_TYPE => EventErrorCode::FrameInvalid,
+        StatusCode::SERVICE_UNAVAILABLE => EventErrorCode::Unavailable,
+        _ => DesktopFailure::from(code).event_code(),
+    }
 }
 /// Every request, including data-free assets, is checked before body collection or dispatch.
 pub(super) fn valid_origin(
@@ -94,6 +168,7 @@ async fn checked(
     request: Request<Incoming>,
     peer: SocketAddr,
     local: SocketAddr,
+    decision: Option<&DecisionTrace>,
 ) -> Result<Reply, (StatusCode, &'static str)> {
     if !valid_origin(request.headers(), local, server.advertised_on(local)) {
         return Err((StatusCode::FORBIDDEN, "CONSOLE_ORIGIN_DENIED"));
@@ -296,7 +371,10 @@ async fn checked(
     } else {
         context.command(name, args, &server.control.auth).await
     };
-    match result {
+    let error = decision
+        .and(result.as_ref().err())
+        .map(DesktopFailure::event_code);
+    let reply = match result {
         Ok(value) => {
             if audited && let Some(operation) = operation_id(&value) {
                 server
@@ -307,14 +385,18 @@ async fn checked(
                     .audit_command(&identity, &context_id, name, Some(operation))
                     .map_err(auth_failure)?;
             }
-            Ok(json_reply(StatusCode::OK, value))
+            json_reply(StatusCode::OK, value)
         }
-        Err(error) => Ok(json_reply(
+        Err(error) => json_reply(
             StatusCode::BAD_REQUEST,
             serde_json::to_value(error)
                 .unwrap_or_else(|_| json!({"kind":"native","code":"RESPONSE_DATA_INVALID"})),
-        )),
+        ),
+    };
+    if let Some(trace) = decision {
+        trace.end(server, true, reply.status(), error);
     }
+    Ok(reply)
 }
 fn operation_id(value: &Value) -> Option<&str> {
     value

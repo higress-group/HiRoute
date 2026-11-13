@@ -11,6 +11,7 @@ mod control;
 mod cpa;
 mod cpa_control;
 mod cpa_model_discovery;
+mod decision;
 mod model;
 mod native_completion;
 mod native_routing;
@@ -33,6 +34,7 @@ pub use control::*;
 pub use cpa::*;
 pub use cpa_control::*;
 pub use cpa_model_discovery::*;
+pub use decision::*;
 pub use model::*;
 pub use native_completion::*;
 pub use native_routing::*;
@@ -70,6 +72,9 @@ pub enum DiagnosticEvent {
     Apply(ApplyEvent),
     ControlCallEnd(ControlCallEnd),
     ProductReadEnd(ProductReadEnd),
+    DecisionConsoleEnd(DecisionConsoleEnd),
+    DecisionTestEnd(DecisionTestEnd),
+    DecisionExchangeFailure(DecisionExchangeFailure),
     ControlStage(ControlStage),
     ProtectedExchange(ProtectedExchange),
     RequestBegin(RequestBegin),
@@ -172,6 +177,21 @@ impl DiagnosticEvent {
                     Debug
                 }
             }
+            DiagnosticEvent::DecisionConsoleEnd(end) => {
+                if end.error.is_some() {
+                    Warn
+                } else {
+                    Debug
+                }
+            }
+            DiagnosticEvent::DecisionTestEnd(end) => {
+                if end.failure.is_some() {
+                    Warn
+                } else {
+                    Debug
+                }
+            }
+            DiagnosticEvent::DecisionExchangeFailure(_) => Warn,
             DiagnosticEvent::ProtectedExchange(exchange) => {
                 if exchange.error.is_some() {
                     Warn
@@ -292,6 +312,9 @@ impl DiagnosticEvent {
             DiagnosticEvent::Apply(_) => "apply",
             DiagnosticEvent::ControlCallEnd(_) => "control_call_end",
             DiagnosticEvent::ProductReadEnd(_) => "product_read_end",
+            DiagnosticEvent::DecisionConsoleEnd(_) => "decision_console_end",
+            DiagnosticEvent::DecisionTestEnd(_) => "decision_test_end",
+            DiagnosticEvent::DecisionExchangeFailure(_) => "decision_exchange_failure",
             DiagnosticEvent::ControlStage(_) => "control_stage",
             DiagnosticEvent::ProtectedExchange(_) => "protected_exchange",
             DiagnosticEvent::RequestBegin(_) => "request_begin",

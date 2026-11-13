@@ -11,6 +11,7 @@ use hiroute_application::ApplicationService;
 use hiroute_application_api::{
     AgentGrantRawRequestV1, MAX_AGENT_GRANT_CONNECTION_ID_BYTES_V1, MAX_AGENT_GRANT_TOKEN_BYTES_V1,
 };
+use hiroute_diagnostics::DiagnosticHandle;
 
 use super::{
     AgentGrantResolverPort, ControlConnectionAdmission, ControlConnectionBudgets, EndpointGuard,
@@ -97,6 +98,7 @@ pub fn start_control(
         None,
         false,
         None,
+        DiagnosticHandle::noop(),
         #[cfg(target_os = "linux")]
         None,
     )
@@ -108,6 +110,7 @@ pub(crate) fn start_control_with_agent_grants(
     resolver: Arc<dyn AgentGrantResolverPort>,
     released_commands_only: bool,
     upgrade: Option<Arc<hiroute_host_runtime::UpgradeDrain>>,
+    diagnostics: DiagnosticHandle,
     #[cfg(target_os = "linux")] agent_removal_lock: Option<PathBuf>,
 ) -> Result<ManagedControlHandle, ManagedControlError> {
     start_control_inner(
@@ -116,6 +119,7 @@ pub(crate) fn start_control_with_agent_grants(
         Some(resolver),
         released_commands_only,
         upgrade,
+        diagnostics,
         #[cfg(target_os = "linux")]
         agent_removal_lock,
     )
@@ -127,6 +131,7 @@ fn start_control_inner(
     resolver: Option<Arc<dyn AgentGrantResolverPort>>,
     released_commands_only: bool,
     upgrade: Option<Arc<hiroute_host_runtime::UpgradeDrain>>,
+    diagnostics: DiagnosticHandle,
     #[cfg(target_os = "linux")] agent_removal_lock: Option<PathBuf>,
 ) -> Result<ManagedControlHandle, ManagedControlError> {
     let (listener, guard, endpoint) =
@@ -144,10 +149,11 @@ fn start_control_inner(
         })
         .transpose()
         .map_err(ManagedControlError::Start)?;
+    let daemon = LocalControlDaemon::new(application).with_diagnostics(diagnostics);
     let daemon = if released_commands_only {
-        LocalControlDaemon::new(application).with_released_commands_only()
+        daemon.with_released_commands_only()
     } else {
-        LocalControlDaemon::new(application)
+        daemon
     };
     let daemon = if let Some(upgrade) = upgrade {
         daemon.with_upgrade_drain(upgrade)
@@ -469,6 +475,7 @@ mod tests {
             Arc::new(FixtureGrantResolver),
             false,
             None,
+            DiagnosticHandle::noop(),
             #[cfg(target_os = "linux")]
             None,
         )

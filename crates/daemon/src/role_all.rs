@@ -708,6 +708,7 @@ fn start_role_all_with_runtime(
         runtime.agent_grant_resolver(),
         config.released_commands_only,
         Some(upgrade.clone()),
+        config.diagnostics.handle().clone(),
         #[cfg(target_os = "linux")]
         config.agent_removal_lock.clone(),
     ) {

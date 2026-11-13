@@ -9,6 +9,8 @@ import { mockProductInvoke } from './product-fixtures';
 import '../../../src/occami/styles.css';
 
 const query = new URLSearchParams(location.search);
+const nativeShell = query.has('native-shell');
+const windowsDiagnosticDirectory = String.raw`C:\example\cli\diagnostics`;
 const state = query.get('case') ?? 'login';
 let holdDesktop = query.get('startup') === 'held';
 const pendingDesktopReads: (() => void)[] = [];
@@ -26,6 +28,7 @@ const control = {
   hostRequests: [] as {command:string;args:Record<string,unknown>}[],
   loginEnabled: true,
   capabilities: hostCapabilities,
+  windowsDiagnosticDirectory,
   desktopPending: () => pendingDesktopReads.length,
   releaseDesktop: () => { holdDesktop = false; for (const release of pendingDesktopReads.splice(0)) release(); },
   pendingHostCancels: () => pendingHostCancels.length,
@@ -34,7 +37,7 @@ const control = {
 if (query.get('host') === 'shell-console') {
   const unavailable = query.get('update') === 'catalog-unavailable';
   const view = { current_version:'0.3.1',phase:unavailable?'check_failed':query.get('update')??'ready',available:unavailable?null:{version:'0.4.0',notes:{zh:'更新说明',en:'Release notes'},size:1000},downloaded_bytes:unavailable?0:1000,active_calls:1,active_tasks:2,error:unavailable?'UPGRADE_CATALOG_UNAVAILABLE':query.get('update')==='failed'?'UPGRADE_INSTALL_FAILED':null,can_install:true,diagnostic:query.get('update')==='failed'?{step:'open-update-installer',io_kind:'Uncategorized',windows_error:32,hresult:null,process_exit:null}:null,package_ready:!unavailable,recovery:query.get('update')==='failed'?'service_available':null };
-  setHostTransport({ capabilities:()=>({...browserCapabilities,host:'shell-console',platform:'windows',updates:true,login_start:true}),
+  const shell = { capabilities:()=>({...browserCapabilities,host:'shell-console' as const,platform:'windows',updates:true,login_start:true}),
     call:async <T,>(command:string,args:Record<string,unknown>={})=>{
       if (command.startsWith('update_') || command.startsWith('login_start_') || ['open_in_browser','restart_service','reconnect'].includes(command)) {
         control.hostRequests.push({command,args});
@@ -48,7 +51,13 @@ if (query.get('host') === 'shell-console') {
       }
       return consoleTransport.call<T>(command,args);
     },
-  });
+  };
+  if (nativeShell) {
+    Object.assign(window, { __HIROUTE_SHELL__: true, __TAURI_INTERNALS__: {
+      invoke: (command: string, args: Record<string, unknown>) =>
+        command === 'shell_capabilities' ? Promise.resolve(shell.capabilities()) : shell.call(command.replace(/^shell_/, ''), args),
+    } });
+  } else setHostTransport(shell);
 }
 const networkFetch = window.fetch.bind(window);
 window.fetch = async (input, options) => {
@@ -66,10 +75,13 @@ window.fetch = async (input, options) => {
   if (control.expired) return reply({ kind: 'native', code: 'CONSOLE_AUTH_REQUIRED' }, 401);
   if (url.pathname.endsWith('/session')) return reply({
     session: { id: 'session/component', credential_kind: 'access_token', token_id: 'token/component', expires: 9999999999 },
-    transport: query.get('host') === 'shell-console' ? 'loopback' : 'network_plaintext', assets_available: state !== 'assets', capabilities: { platform: 'linux', diagnostic_directory: '/example/diagnostics', recovery_directory: '/example/service' },
+    transport: query.get('host') === 'shell-console' ? 'loopback' : 'network_plaintext', assets_available: state !== 'assets', capabilities: { platform: nativeShell ? 'windows' : 'linux', diagnostic_directory: nativeShell ? String.raw`C:\example/cli\diagnostics` : '/example/diagnostics', recovery_directory: '/example/service' },
   });
   const command = decodeURIComponent(url.pathname.split('/').at(-1)!);
   const args = options?.body ? JSON.parse(String(options.body)) : {};
+  if (command === 'diagnostic_status' && nativeShell) return reply({
+    schema: 'hiroute.diagnostics-status/v1', settings: { revision: 1, level: 'debug' }, logs_directory_available: true,
+  });
   if (command === 'desktop_snapshot' && holdDesktop) await new Promise<void>(resolve => pendingDesktopReads.push(resolve));
   if (command === 'observe_operation' || command === 'web_confirmation_snapshot') return reply(null);
   if (command === 'gateway_listener_status') return reply({config:{schema_version:'hiroute.gateway-listener/v1',desired:{address:'127.0.0.1',port_mode:'automatic'},applied:{address:'127.0.0.1',port:5829,applied_at_unix:1}},connect_address:'127.0.0.1:5829',suggested_agent_base_url:'http://127.0.0.1:5829',existing_agent_count:0,ready:true});
