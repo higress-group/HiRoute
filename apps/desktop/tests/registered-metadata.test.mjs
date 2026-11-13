@@ -148,7 +148,7 @@ test('DeepSeek 1017 remains selectable without inheriting rolling-ID budgets or 
 });
 
 test('all template models enter the check draft with product facts or editable defaults', async () => {
-  const { blankModel, withRegisteredModels, buildCheckDraft } = await import('../src/features/model-connections/state.ts');
+  const { blankModel, withRegisteredModels, buildCheckDraft, displayCapabilities } = await import('../src/features/model-connections/state.ts');
   for (const registered of registry.connection_options.filter(value => value.origin !== 'agent_subscription')) {
     const candidates = registeredModelCandidates(option(registered.connection_option_id), bundle.metadata_catalog);
     const models = withRegisteredModels([], candidates);
@@ -156,8 +156,12 @@ test('all template models enter the check draft with product facts or editable d
     for (const model of models) {
       assert.equal(model.membership, 'user_declared');
       assert.equal(model.catalog_configuration_id, null);
-      assert.ok(Object.values(model.capabilities).every(fact => fact.value !== null && fact.basis === 'user_declared'));
-      assert.ok(model.capabilities.context_tokens.value >= model.capabilities.max_output_tokens.value);
+      // Template facts arrive as editable suggestions, not as declarations.
+      assert.ok(Object.values(model.capabilities).every(fact => fact.value === null && fact.basis === 'unknown'));
+      assert.ok(model.suggested_capabilities);
+      const shown = displayCapabilities(model);
+      assert.ok(Object.values(shown).every(fact => fact.value !== null && fact.basis === 'user_declared'));
+      assert.ok(shown.context_tokens.value >= shown.max_output_tokens.value);
     }
     assert.deepEqual(withRegisteredModels(models, candidates), models, 'recheck does not duplicate models');
   }

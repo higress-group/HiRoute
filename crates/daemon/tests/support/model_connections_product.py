@@ -30,6 +30,10 @@ class NativeUpstream:
         self.reject_reasoning_history = False
         self.rejected_status = None
         self.function_tools = False
+        # A controlled directory lets a scenario observe exact IDs without inventing
+        # capability facts; None keeps the historical 404 directory outcome.
+        self.directory_models = None
+        self.directory_partial = False
         self.lock = threading.Lock()
         owner = self
 
@@ -62,7 +66,15 @@ class NativeUpstream:
             def do_GET(self):
                 self.record()
                 assert self.path == '/v1/models', self.path
-                self.send_json(404, {'error': 'directory not implemented'})
+                if owner.directory_models is None:
+                    self.send_json(404, {'error': 'directory not implemented'})
+                    return
+                data = [{'id': model_id} for model_id in owner.directory_models]
+                if owner.directory_partial:
+                    # A malformed entry proves a partial directory: valid IDs are
+                    # retained while the read is reported as incomplete.
+                    data.append({'object': 'model'})
+                self.send_json(200, {'object': 'list', 'data': data})
 
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
@@ -87,7 +99,14 @@ class NativeUpstream:
                     'status': 'completed', 'content': [{
                         'type': 'output_text', 'text': 'native product answer', 'annotations': []}],
                 }]
-                if owner.function_tools and body.get('tools') and not any(
+                probe_names = {tool.get('name') for tool in body.get('tools', [])
+                               if isinstance(tool, dict)}
+                if owner.function_tools and 'hiroute_probe' in probe_names:
+                    # The bounded connection tool test expects the exact probe call and value.
+                    output = [{'type': 'function_call', 'id': 'fc_native_probe',
+                               'call_id': 'native-probe-call', 'name': 'hiroute_probe',
+                               'arguments': '{"value":"ok"}', 'status': 'completed'}]
+                elif owner.function_tools and body.get('tools') and not any(
                     isinstance(item, dict) and item.get('type') == 'function_call_output'
                     for item in body.get('input', [])
                 ):
@@ -275,14 +294,241 @@ def save_native_source(product, upstream, token=None, unknown=False,
     return save_compute_candidate(product, checked['candidate'], manual['model_ref'], 'native-product-save' + suffix, network_policy=network_policy)
 
 
+def native_check_draft(upstream, lineage, display_name, models,
+                       edit_revision=1, check_id=None, inventory_path='/v1/models'):
+    return {
+        'inference_model_id': None,
+        'candidate_ref': None,
+        'lineage_ref': lineage,
+        'display_name': display_name,
+        'existing_source_id': None,
+        'expected_source_revision': None,
+        'edit_revision': edit_revision,
+        'check_id': check_id or ('check/native/' + lineage.split('/')[-1]),
+        'base_url': upstream.base_url,
+        'base_kind': 'api_root',
+        'request_path_override': None,
+        'inventory_path_override': inventory_path,
+        'protocol': 'responses',
+        'protocol_profile_id': 'profile/custom/responses',
+        'protocol_profile_revision': 1,
+        'authentication': {'kind': 'none'},
+        'additional_endpoints': [],
+        'configuration_revision': 1,
+        'models': models,
+    }
+
+
+def local_model(upstream_model_id, display_name, capabilities,
+                membership='user_declared'):
+    return {
+        'upstream_model_id': upstream_model_id,
+        'display_name': display_name,
+        'catalog_configuration_id': None,
+        'membership': membership,
+        'capabilities': capabilities,
+    }
+
+
+def unknown_fact():
+    # Requests send an explicit null; responses omit a None value and keep the basis.
+    return {'value': None, 'basis': 'unknown'}
+
+
+def same_fact(actual, expected):
+    return actual.get('value') == expected.get('value') and actual['basis'] == expected['basis']
+
+
+def unknown_capabilities():
+    return {key: unknown_fact() for key in
+            ('tool', 'vision', 'streaming', 'context_tokens',
+             'max_output_tokens', 'native_reasoning')}
+
+
+def check_native(product, draft):
+    status = control(product, 'GetClientServiceStatus', {})['data']
+    request = {'draft': draft}
+    digest = 'sha256:' + hashlib.sha256(encoded(request)).hexdigest()
+    grant = desktop_grant(product, 'CheckNativeModelConnection', digest,
+                          status['revisions'], 'native-' + draft['check_id'])
+    return control(product, 'CheckNativeModelConnection', request, grant)['data']
+
+
+def candidate_model(checked, upstream_model_id):
+    return next(model for model in checked['candidate']['models']
+                if model['upstream_model_id'] == upstream_model_id)
+
+
+def saved_source_model(product, source_id, upstream_model_id):
+    source = next(source for source in control(product, 'ListCompute', {})['data']['sources']
+                  if source['source_id'] == source_id)
+    return next(model for model in source['models']
+                if model['upstream_model_id'] == upstream_model_id)
+
+
+def recheck_saved_capability_source(product, saved, edit_revision, suffix):
+    """Saved-source recheck for a custom source without the single-MODEL fixture assumption."""
+    request = {
+        'source_id': saved['source_id'],
+        'expected_source_revision': saved['source_revision'],
+        'candidate_ref': saved['candidate_ref'],
+        'edit_revision': edit_revision,
+        'check_id': 'check/native/capability-saved-' + suffix,
+    }
+    revisions = control(product, 'GetClientServiceStatus', {})['data']['revisions']
+    digest = 'sha256:' + hashlib.sha256(encoded(request)).hexdigest()
+    grant = desktop_grant(product, 'CheckSavedModelConnection', digest, revisions,
+                          'capability-saved-' + suffix)
+    checked = control(product, 'CheckSavedModelConnection', request, grant)['data']
+    assert checked['candidate']['existing_source_id'] == saved['source_id'], checked
+    assert checked['candidate']['provenance'] == 'user_configured', checked
+    return checked
+
+
+def capability_intent_journey(product, upstream):
+    """Observed-only IDs, label-only/field edits and explicit adoption across restart."""
+    observed_only = 'gpt-5.4-mini'
+    adopted = 'gpt-5.4-nano'
+    upstream.directory_models = [MODEL, observed_only, adopted]
+
+    # 1. A directory check offers a model that is not a declared member. The ID alone
+    #    stays unverified: no inference runs and no capability is confirmed.
+    directory = check_native(product, native_check_draft(
+        upstream, 'lineage/native/capability-directory', 'Capability directory',
+        [local_model(MODEL, 'Declared decoy', unknown_capabilities())]))
+    assert directory['directory'] == 'available', directory
+    assert directory['inference'] == 'not_run', directory
+    assert directory['observed_model_ids'] == sorted([MODEL, observed_only, adopted]), directory
+    # A directory hit alone authorizes the ID; it stays an observed member with
+    # unknown capability facts, and no inference result is recorded.
+    observed_row = next(model for model in directory['candidate']['models']
+                        if model['upstream_model_id'] == observed_only)
+    assert observed_row['membership'] == 'observed', observed_row
+    assert observed_row['selectable'], observed_row
+    assert observed_row['fact_basis'] == 'unknown', observed_row
+
+    # 2. Save three local models: a label-only model (all facts unknown), a single
+    #    declared field including an explicit false, and an explicit adoption of
+    #    multiple suggested facts.
+    edited = unknown_capabilities()
+    edited['vision'] = {'value': False, 'basis': 'user_declared'}
+    adopted_caps = {
+        'tool': {'value': True, 'basis': 'user_declared'},
+        'vision': {'value': False, 'basis': 'user_declared'},
+        'streaming': {'value': True, 'basis': 'user_declared'},
+        'context_tokens': {'value': 128_000, 'basis': 'user_declared'},
+        'max_output_tokens': {'value': 8_192, 'basis': 'user_declared'},
+        'native_reasoning': {'value': {'kind': 'toggle', 'parameter': 'enable_thinking'},
+                             'basis': 'user_declared'},
+    }
+    models = [
+        local_model('label-only-model', 'Renamed Label Only', unknown_capabilities()),
+        local_model('field-edit-model', 'Field Edit Model', edited),
+        local_model('adopted-model', 'Adopted Model', adopted_caps),
+    ]
+    draft = native_check_draft(
+        upstream, 'lineage/native/capability-edit', 'Capability edit source', models,
+        check_id='check/native/capability-edit')
+    checked = check_native(product, draft)
+    refs = [candidate_model(checked, model['upstream_model_id'])['model_ref']
+            for model in models]
+    saved = save_compute_candidate(
+        product, checked['candidate'], refs, 'native-capability-edit')
+    expected = {
+        'label-only-model': ('Renamed Label Only', unknown_capabilities()),
+        'field-edit-model': ('Field Edit Model', edited),
+        'adopted-model': ('Adopted Model', adopted_caps),
+    }
+
+    def assert_saved_facts(stage):
+        for upstream_model_id, (display_name, capabilities) in expected.items():
+            model = saved_source_model(product, saved['source_id'], upstream_model_id)
+            assert model['display_name'] == display_name, (stage, upstream_model_id, model)
+            assert model['membership'] == 'user_declared', (stage, upstream_model_id, model)
+            for key, fact in capabilities.items():
+                assert same_fact(model['capabilities'][key], fact), (
+                    stage, upstream_model_id, key, model['capabilities'][key])
+        # A saved local member keeps its unknown field unknown; it never inherits a
+        # catalog candidate's facts merely from sharing an upstream ID.
+        assert same_fact(
+            saved_source_model(product, saved['source_id'], 'field-edit-model')['capabilities']['tool'],
+            unknown_fact())
+
+    def assert_recheck_facts(stage):
+        # The public candidate view projects one fact basis per model. A mixed
+        # declared/unknown model therefore reads as unknown while a fully declared
+        # model reads as user_declared; saved facts stay observable after restart.
+        rechecked = recheck_saved_capability_source(product, saved, 2, stage)
+        expected_basis = {
+            'label-only-model': 'unknown',
+            'field-edit-model': 'unknown',
+            'adopted-model': 'user_declared',
+        }
+        for upstream_model_id, (display_name, _) in expected.items():
+            model = candidate_model(rechecked, upstream_model_id)
+            assert model['display_name'] == display_name, (stage, upstream_model_id, model)
+            assert model['membership'] == 'user_declared', (stage, upstream_model_id, model)
+            assert model['fact_basis'] == expected_basis[upstream_model_id], (
+                stage, upstream_model_id, model)
+            assert model['selectable'], (stage, upstream_model_id, model)
+        return rechecked
+
+    assert_saved_facts('before-restart')
+    assert_recheck_facts('before-restart')
+    # 3. The saved facts survive a restart and a saved-source recheck.
+    product.stop()
+    product.start()
+    assert_saved_facts('after-restart')
+    assert_recheck_facts('after-restart')
+
+    # 4. A per-model tool test reports its own inference result for exactly one model;
+    #    the directory/list result stays independent of that inference evidence.
+    upstream.function_tools = True
+    with upstream.lock:
+        before_inference = len(upstream.requests)
+    inference_draft = native_check_draft(
+        upstream, 'lineage/native/capability-tool', 'Capability tool test',
+        [local_model(MODEL, MODEL, unknown_capabilities())],
+        check_id='check/native/capability-tool')
+    inference_draft['inference_model_id'] = MODEL
+    inference = check_native(product, inference_draft)
+    assert inference['inference'] == 'verified', inference
+    assert inference['inference_model_id'] == MODEL, inference
+    # An inference-only check probes exactly one model and does not read the
+    # directory, so its directory state stays not_run and no ID is observed here.
+    assert inference['directory'] == 'not_run', inference
+    assert inference.get('observed_model_ids', []) == [], inference
+    with upstream.lock:
+        inference_requests = list(upstream.requests[before_inference:])
+    assert not [request for request in inference_requests
+                if request['method'] == 'GET'], inference_requests
+    probed = [request for request in inference_requests
+              if request['method'] == 'POST']
+    assert probed and probed[-1]['body']['model'] == MODEL, probed
+    assert probed[-1]['body'].get('tools'), probed
+    upstream.function_tools = False
+
+    # 5. A partial directory retains valid IDs but reports the read as incomplete.
+    upstream.directory_partial = True
+    partial = check_native(product, native_check_draft(
+        upstream, 'lineage/native/capability-partial', 'Capability partial',
+        [local_model(observed_only, 'Observed only', unknown_capabilities())]))
+    assert partial['directory'] == 'partial', partial
+    assert partial['observed_model_ids'] == sorted([MODEL, observed_only, adopted]), partial
+    assert any(issue['code'] == 'DIRECTORY_PARTIAL' for issue in partial.get('issues', [])), partial
+    upstream.directory_partial = False
+    return saved
+
+
 def save_compute_candidate(product, candidate, model_ref, idempotency_key, network_policy=None):
     """Complete the public preview/save/result transaction for a prepared native candidate."""
     snapshot = control(product, 'ListCompute', {})['data']
+    selected = model_ref if isinstance(model_ref, list) else [model_ref]
     change = {
         'schema': 'hiroute.compute-management-change/v2',
         'subject': {'kind': 'candidate', 'candidate': candidate['candidate']},
         'expected_revisions': snapshot['revisions'],
-        'selected_model_refs': [model_ref],
+        'selected_model_refs': selected,
         'intent': 'save_ready',
         'key_edits': [],
     }
@@ -303,9 +549,10 @@ def save_compute_candidate(product, candidate, model_ref, idempotency_key, netwo
         'operation': applied['operation']})['data']
     assert saved['disposition'] == 'saved', saved
     assert saved['management_state'] == 'ready', saved
-    assert len(saved['bindings']) == 1, saved
+    assert len(saved['bindings']) == len(selected), saved
     return {
         'binding_id': saved['bindings'][0]['binding_id'],
+        'binding_ids': [binding['binding_id'] for binding in saved['bindings']],
         'source_id': saved['source_id'],
         'source_revision': saved['saved_revision'],
         'candidate_ref': saved['candidate']['candidate_ref'],
@@ -756,6 +1003,7 @@ def run(repository, expected_sha=None):
             'Bearer ' + token for token in
             [NATIVE_TOKEN, NATIVE_TOKEN, replacement_token, replacement_token,
              replacement_token, replacement_token]], requests
+        capability_saved = capability_intent_journey(product, upstream)
         assert all(request['api_key'] is None for request in requests), requests
         print(json.dumps({
             'scenario': 'native-model-desktop-contract-to-gateway',
@@ -772,6 +1020,8 @@ def run(repository, expected_sha=None):
             'credential_resolver_mode': 'saved_bearer',
             'session_record': session_id,
             'session_model': observed_model,
+            'capability_intent_source': capability_saved['source_id'],
+            'capability_intent_bindings': len(capability_saved['binding_ids']),
         }), flush=True)
     finally:
         upstream.close()

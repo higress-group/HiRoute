@@ -1,4 +1,4 @@
-import type { ModelConnectionCheckView } from './types';
+import type { CandidateModelView, ModelConnectionCheckView } from './types';
 
 export function checkFailureCode(check: Pick<ModelConnectionCheckView, 'authentication' | 'inference' | 'issues'>): string | null {
   if (check.authentication === 'rejected') return 'MODEL_CONNECTION_AUTHENTICATION_REJECTED';
@@ -41,4 +41,25 @@ export function modelAvailabilityMessage(reason: string | null | undefined, zh: 
   return zh
     ? '当前不可选择，请检查模型能力与接入状态。'
     : 'Unavailable; check model capabilities and connection status.';
+}
+
+
+/**
+ * Independent current-observation label from the exact directory result. Catalog membership and
+ * selection eligibility stay separate from whether this check actually returned the ID.
+ */
+export function modelObservationMessage(
+  result: Pick<ModelConnectionCheckView, 'directory' | 'reachability' | 'observed_model_ids'>,
+  model: Pick<CandidateModelView, 'upstream_model_id'>,
+  zh: boolean,
+): string | null {
+  const observed = new Set(result.observed_model_ids ?? []);
+  if (observed.has(model.upstream_model_id)) {
+    return zh ? '本次检查已返回' : 'Returned by this check';
+  }
+  const complete = result.reachability === 'reachable'
+    && (result.directory === 'available' || result.directory === 'empty');
+  return complete
+    ? (zh ? '本次检查未返回' : 'Not returned by this check')
+    : (zh ? '本次检查未能确认' : 'Not confirmed by this check');
 }
