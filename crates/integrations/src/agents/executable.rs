@@ -222,14 +222,16 @@ fn search_directory(directory: &Path) -> Option<PathBuf> {
     }
 }
 
-/// Kinds that only prove this candidate is not the installation.
+/// Kinds that only prove this candidate is not the installation: the file is not
+/// there, or the search entry that was supposed to contain it is not a directory.
+/// Everything else (a denied read, an alias leaf, an identity that does not round
+/// trip) stays a failure, so an unobservable installation is reported as unavailable
+/// instead of being claimed absent.
 #[cfg(windows)]
 fn is_absent(error: &std::io::Error) -> bool {
     matches!(
         error.kind(),
-        std::io::ErrorKind::NotFound
-            | std::io::ErrorKind::NotADirectory
-            | std::io::ErrorKind::InvalidInput
+        std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
     )
 }
 
@@ -490,6 +492,14 @@ mod windows_tests {
         // A file in the search path names no directory, so it contributes nothing.
         let file_entry = root.join("powershell.exe");
         std::fs::write(&file_entry, b"not a directory").unwrap();
+        // Each non-directory entry is a fact about itself, not a veto on the search.
+        for entry in [
+            root.join("missing"),
+            file_entry.clone(),
+            root.join("javapath"),
+        ] {
+            assert_eq!(resolve_in(&[entry], Path::new("agent")), Ok(None));
+        }
 
         let resolved = resolve_in(
             &[
