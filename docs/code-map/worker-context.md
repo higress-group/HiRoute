@@ -328,6 +328,8 @@ HiRoute's provider routes alongside user plugins. Admission and the Host resolve
 the same provider exports from the running Electron app's bundled resources.
 [Native restore](../../crates/integrations/src/agents/additional_native.rs)
 recognizes both released provider placement and the independent Desktop entry.
+The shared [native restore boundary](../../crates/integrations/src/agents/native_effects.rs)
+checks the bytes used to render a confirmed Disable against its accepted snapshot.
 Windows rescans check Programs directories and read-only uninstall hints
 through [native registration inspection](../../crates/platform/src/windows/installed_apps.rs).
 The [scan response](../../crates/application/src/control_plane/agent_discovery.rs)

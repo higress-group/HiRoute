@@ -163,7 +163,26 @@ pub fn stage_codex_restoration(
     original_operation: &OperationId,
     original_intent: &ExternalEffectIntentV1,
     native_model: Option<&str>,
-    restore_managed_changes: bool,
+) -> PortResult<OwnedEffectV1> {
+    stage_confirmed_codex_restoration(
+        port,
+        operation,
+        intent,
+        original_operation,
+        original_intent,
+        native_model,
+        None,
+    )
+}
+
+pub fn stage_confirmed_codex_restoration(
+    port: &dyn NativeAgentArtifactPort,
+    operation: &OperationId,
+    intent: &ExternalEffectIntentV1,
+    original_operation: &OperationId,
+    original_intent: &ExternalEffectIntentV1,
+    native_model: Option<&str>,
+    confirmed_content: Option<&CanonicalDigest>,
 ) -> PortResult<OwnedEffectV1> {
     if intent.target() != original_intent.target() || operation == original_operation {
         return Err(error(PortErrorCode::InvalidData, "codex.restore.binding"));
@@ -171,12 +190,16 @@ pub fn stage_codex_restoration(
     if let Some(effect) = replay(port, operation, intent)? {
         return Ok(effect);
     }
+    let current = port.read_native_target(intent.target())?;
+    let current = current.as_deref().map(Vec::as_slice);
+    validate_restoration_snapshot(intent, current, confirmed_content)?;
     let (restored, _) = codex_restoration(
         port,
         original_operation,
         original_intent,
+        current,
         native_model,
-        restore_managed_changes,
+        confirmed_content.is_some(),
     )?;
     port.stage_native_target(
         operation,
@@ -192,10 +215,12 @@ pub fn validate_codex_restoration(
     original_intent: &ExternalEffectIntentV1,
     native_model: Option<&str>,
 ) -> PortResult<bool> {
+    let current = port.read_native_target(original_intent.target())?;
     codex_restoration(
         port,
         original_operation,
         original_intent,
+        current.as_deref().map(Vec::as_slice),
         native_model,
         true,
     )
@@ -206,6 +231,7 @@ fn codex_restoration(
     port: &dyn NativeAgentArtifactPort,
     original_operation: &OperationId,
     original_intent: &ExternalEffectIntentV1,
+    current: Option<&[u8]>,
     native_model: Option<&str>,
     restore_managed_changes: bool,
 ) -> PortResult<(Option<Zeroizing<String>>, bool)> {
@@ -224,18 +250,16 @@ fn codex_restoration(
         // Staging retains the exact current profile in the protected before-image.
         return Ok((None, true));
     }
-    let current = port.read_native_target(original_intent.target())?;
-    let text = std::str::from_utf8(current.as_deref().map_or(&[], |bytes| bytes.as_slice()))
-        .map_err(|_| {
-            error(
-                if restore_managed_changes {
-                    PortErrorCode::Conflict
-                } else {
-                    PortErrorCode::InvalidData
-                },
-                "codex.restore.encoding",
-            )
-        })?;
+    let text = std::str::from_utf8(current.unwrap_or_default()).map_err(|_| {
+        error(
+            if restore_managed_changes {
+                PortErrorCode::Conflict
+            } else {
+                PortErrorCode::InvalidData
+            },
+            "codex.restore.encoding",
+        )
+    })?;
     let restored =
         restore_codex_native_with_model(text, &restore, native_model, restore_managed_changes)
             .map_err(|_| error(PortErrorCode::Conflict, "codex.restore.fields"))?;
@@ -243,6 +267,22 @@ fn codex_restoration(
         (record[1] != 0 || !restored.trim().is_empty()).then_some(restored),
         false,
     ))
+}
+
+/// Bind the bytes used to render an opted-in restore to the same snapshot the artifact
+/// store checks at staging. A file can change and change back between those two reads.
+pub(super) fn validate_restoration_snapshot(
+    intent: &ExternalEffectIntentV1,
+    current: Option<&[u8]>,
+    confirmed_content: Option<&CanonicalDigest>,
+) -> PortResult<()> {
+    if let Some(expected) = confirmed_content
+        && (current.is_some() != intent.before_fingerprint().is_some()
+            || CanonicalDigest::of_bytes(current.unwrap_or_default()) != *expected)
+    {
+        return Err(error(PortErrorCode::Conflict, "native.restore.snapshot"));
+    }
+    Ok(())
 }
 
 pub(super) fn replay(

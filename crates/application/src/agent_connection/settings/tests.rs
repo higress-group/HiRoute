@@ -286,10 +286,11 @@ fn codex_restore_requires_an_original_catalog_model_for_a_stale_alias() {
     let mut disable = spec.clone();
     disable.restore_managed_changes = true;
     assert!(
-        preview_agent_settings(disable, &facts)
+        !preview_agent_settings(disable, &facts)
             .unwrap()
             .blockers
-            .is_empty()
+            .iter()
+            .any(|block| block.reason == SettingsBlockReason::RestoreNativeModelInvalid)
     );
     spec.restore_native_model = Some("gpt-5.6-sol".into());
     let repaired = preview_agent_settings(spec.clone(), &facts).unwrap();

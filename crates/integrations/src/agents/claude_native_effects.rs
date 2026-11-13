@@ -3,7 +3,7 @@ use super::filesystem_config::{
     claude_change_bytes_are_applied, rebase_claude_change_bytes, render_claude_change_bytes,
     restore_claude_change_bytes,
 };
-use super::native_effects::replay;
+use super::native_effects::{replay, validate_restoration_snapshot};
 use hiroute_domain::{
     AgentConfigChangeV1, CanonicalDigest, ExternalEffectIntentV1, NativeAgentArtifactPort,
     OperationId, OwnedEffectV1, PortError, PortErrorCode, PortResult,
@@ -142,7 +142,24 @@ pub fn stage_claude_restoration(
     intent: &ExternalEffectIntentV1,
     original_operation: &OperationId,
     original_intent: &ExternalEffectIntentV1,
-    restore_managed_changes: bool,
+) -> PortResult<OwnedEffectV1> {
+    stage_confirmed_claude_restoration(
+        port,
+        operation,
+        intent,
+        original_operation,
+        original_intent,
+        None,
+    )
+}
+
+pub fn stage_confirmed_claude_restoration(
+    port: &dyn NativeAgentArtifactPort,
+    operation: &OperationId,
+    intent: &ExternalEffectIntentV1,
+    original_operation: &OperationId,
+    original_intent: &ExternalEffectIntentV1,
+    confirmed_content: Option<&CanonicalDigest>,
 ) -> PortResult<OwnedEffectV1> {
     if intent.target() != original_intent.target() || operation == original_operation {
         return Err(error(PortErrorCode::InvalidData, "claude.restore.binding"));
@@ -150,11 +167,15 @@ pub fn stage_claude_restoration(
     if let Some(effect) = replay(port, operation, intent)? {
         return Ok(effect);
     }
+    let current = port.read_native_target(intent.target())?;
+    let current = current.as_deref().map(Vec::as_slice);
+    validate_restoration_snapshot(intent, current, confirmed_content)?;
     let restored = claude_restoration(
         port,
         original_operation,
         original_intent,
-        restore_managed_changes,
+        current,
+        confirmed_content.is_some(),
     )?;
     port.stage_native_target(
         operation,
@@ -169,25 +190,33 @@ pub fn validate_claude_restoration(
     original_operation: &OperationId,
     original_intent: &ExternalEffectIntentV1,
 ) -> PortResult<()> {
-    claude_restoration(port, original_operation, original_intent, true).map(|_| ())
+    let current = port.read_native_target(original_intent.target())?;
+    claude_restoration(
+        port,
+        original_operation,
+        original_intent,
+        current.as_deref().map(Vec::as_slice),
+        true,
+    )
+    .map(|_| ())
 }
 
 fn claude_restoration(
     port: &dyn NativeAgentArtifactPort,
     original_operation: &OperationId,
     original_intent: &ExternalEffectIntentV1,
+    current: Option<&[u8]>,
     restore_managed_changes: bool,
 ) -> PortResult<Option<Zeroizing<Vec<u8>>>> {
     let record = port
         .load_native_restore(original_operation, original_intent)?
         .ok_or_else(|| error(PortErrorCode::NotFound, "claude.restore.record"))?;
     let (original_exists, change, original) = decode_record(&record)?;
-    let current = port.read_native_target(original_intent.target())?;
     if current.is_none() && original_exists == 0 {
         return Ok(None);
     }
-    let current = match &current {
-        Some(bytes) => bytes.as_slice(),
+    let current = match current {
+        Some(bytes) => bytes,
         None if restore_managed_changes => b"{}",
         None => return Err(error(PortErrorCode::Conflict, "claude.restore.removed")),
     };

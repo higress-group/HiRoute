@@ -220,7 +220,7 @@ fn opencode_dynamic_configuration_keys_are_scoped_out_of_models_workers_and_impo
         }
         write_secret_settings(&scanner.opencode_user_models_target(), value);
         let model_rejected = scanner
-            .opencode_model_dependencies("hiroute-main-test", &[])
+            .opencode_model_dependencies("hiroute-main-test", &[], &[])
             .is_err();
         let native = scanner.opencode_native_context().unwrap();
         let config = native.read_config(None).unwrap();
@@ -360,14 +360,14 @@ fn opencode_settings_dependencies_detect_layer_changes_and_owned_provider_shadow
     let scanner = scanner(root.path());
     let native = scanner.opencode_native_context().unwrap();
     let a = scanner
-        .opencode_model_dependencies("hiroute-main-test", &[])
+        .opencode_model_dependencies("hiroute-main-test", &[], &[])
         .unwrap();
     write_secret_settings(
         &native.config_root.join("config.json"),
         json!({"small_model":"daily/small"}),
     );
     let b = scanner
-        .opencode_model_dependencies("hiroute-main-test", &[])
+        .opencode_model_dependencies("hiroute-main-test", &[], &[])
         .unwrap();
     assert_ne!(a, b);
     write_secret_settings(
@@ -376,7 +376,7 @@ fn opencode_settings_dependencies_detect_layer_changes_and_owned_provider_shadow
     );
     assert!(
         scanner
-            .opencode_model_dependencies("hiroute-main-test", &[])
+            .opencode_model_dependencies("hiroute-main-test", &[], &[])
             .is_err()
     );
 }
@@ -403,7 +403,7 @@ fn opencode_default_reference_conflict_is_a_preview_fact_and_a_stage_rejection()
     );
     assert!(
         scanner
-            .opencode_model_dependencies("hiroute-main-test", &[])
+            .opencode_model_dependencies("hiroute-main-test", &[], &[])
             .is_err(),
         "staging must reject the dangling reference"
     );

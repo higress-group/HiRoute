@@ -1,5 +1,5 @@
 //! Hermes uses the same protected before-image and Operation journal as other Agents.
-use super::native_effects::replay;
+use super::native_effects::{replay, validate_restoration_snapshot};
 use super::{HermesConfigRestoreV1, hermes_configure};
 use hiroute_domain::{
     AdditionalAgentModelV1, AgentAccessGrantMaterial, CanonicalDigest, ExternalEffectIntentV1,
@@ -75,7 +75,15 @@ pub fn validate_hermes_restoration(
     if intent.target() != target {
         return Err(invalid("hermes.restore.target"));
     }
-    render_restoration(port, operation, intent, restore_managed_changes).map(|_| ())
+    let current = port.read_private_native_target(target)?;
+    render_restoration(
+        port,
+        operation,
+        intent,
+        current.as_deref().map(Vec::as_slice),
+        restore_managed_changes,
+    )
+    .map(|_| ())
 }
 
 pub fn hermes_native_configuration_is_applied(
@@ -158,7 +166,7 @@ pub fn stage_hermes_restoration(
     intent: &ExternalEffectIntentV1,
     previous: &OperationId,
     original: &ExternalEffectIntentV1,
-    restore_managed_changes: bool,
+    confirmed_content: Option<&CanonicalDigest>,
 ) -> PortResult<OwnedEffectV1> {
     if operation == previous || intent.target() != original.target() {
         return Err(invalid("hermes.restore.binding"));
@@ -166,7 +174,16 @@ pub fn stage_hermes_restoration(
     if let Some(effect) = replay(port, operation, intent)? {
         return Ok(effect);
     }
-    let bytes = render_restoration(port, previous, original, restore_managed_changes)?;
+    let current = port.read_private_native_target(intent.target())?;
+    let current = current.as_deref().map(Vec::as_slice);
+    validate_restoration_snapshot(intent, current, confirmed_content)?;
+    let bytes = render_restoration(
+        port,
+        previous,
+        original,
+        current,
+        confirmed_content.is_some(),
+    )?;
     port.stage_native_target(operation, intent, bytes.as_deref().map(Vec::as_slice), true)
 }
 
@@ -174,12 +191,12 @@ fn render_restoration(
     port: &dyn NativeAgentArtifactPort,
     operation: &OperationId,
     intent: &ExternalEffectIntentV1,
+    current: Option<&[u8]>,
     restore_managed_changes: bool,
 ) -> PortResult<Option<Zeroizing<Vec<u8>>>> {
     let restore = load(port, operation, intent)?;
-    let current = port.read_private_native_target(intent.target())?;
-    let current = match &current {
-        Some(bytes) => bytes.as_slice(),
+    let current = match current {
+        Some(bytes) => bytes,
         None if restore_managed_changes => &[],
         None => return Err(conflict("hermes.native.fields")),
     };

@@ -8,7 +8,7 @@ use hiroute_domain::{
 use super::{
     QoderNativeError,
     additional_native::{self, Restore},
-    native_effects::replay,
+    native_effects::{replay, validate_restoration_snapshot},
 };
 
 /// Only the executor receives material; this input deliberately cannot be serialized or logged.
@@ -238,7 +238,7 @@ pub fn stage_additional_restoration(
     intent: &ExternalEffectIntentV1,
     original_operation: &OperationId,
     original_intent: &ExternalEffectIntentV1,
-    restore_managed_changes: bool,
+    confirmed_content: Option<&CanonicalDigest>,
 ) -> PortResult<OwnedEffectV1> {
     validate_binding(operation, intent, original_operation, original_intent)?;
     if intent.desired_mode() != 0o600 {
@@ -249,12 +249,14 @@ pub fn stage_additional_restoration(
     }
     let restore = load(port, original_operation, original_intent)?;
     let current = port.read_native_target(intent.target())?;
+    let current = current.as_deref().map(Vec::as_slice);
+    validate_restoration_snapshot(intent, current, confirmed_content)?;
     let restored = render_restoration(
         port,
         intent.target(),
         &restore,
-        current.as_deref().map(Vec::as_slice),
-        restore_managed_changes,
+        current,
+        confirmed_content.is_some(),
     )?;
     port.stage_native_target(
         operation,
