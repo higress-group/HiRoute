@@ -87,7 +87,7 @@ pub(super) fn resolve(path: &Path) -> Result<Option<PathBuf>, ProbeFailure> {
         return admit(selected_candidates(path));
     }
     #[cfg(windows)]
-    return resolve_in(&search_directories(), path);
+    return resolve_in(&search_directories(), &[path]);
 
     #[cfg(not(windows))]
     {
@@ -150,14 +150,26 @@ fn admit(candidates: impl IntoIterator<Item = PathBuf>) -> Result<Option<PathBuf
     }
 }
 
-/// Resolve one bare name across the configured search directories.
+/// Resolve the first name that is present, one search entry at a time.
+///
+/// Callers that probe several spellings of the same installation (a selected entry plus a
+/// native alias) pass them here instead of walking the entries themselves: the search order
+/// stays entry-major, so PATH position outranks a spelling, while each entry is still resolved
+/// as a directory before any candidate is opened.
 #[cfg(windows)]
-fn resolve_in(directories: &[PathBuf], name: &Path) -> Result<Option<PathBuf>, ProbeFailure> {
+pub(super) fn resolve_in(
+    directories: &[PathBuf],
+    names: &[&Path],
+) -> Result<Option<PathBuf>, ProbeFailure> {
     admit(
         directories
             .iter()
             .filter_map(|directory| search_directory(directory))
-            .flat_map(|directory| directory_candidates(&directory, name)),
+            .flat_map(|directory| {
+                names
+                    .iter()
+                    .flat_map(move |name| directory_candidates(&directory, name))
+            }),
     )
 }
 
@@ -498,7 +510,7 @@ mod windows_tests {
             file_entry.clone(),
             root.join("javapath"),
         ] {
-            assert_eq!(resolve_in(&[entry], Path::new("agent")), Ok(None));
+            assert_eq!(resolve_in(&[entry], &[Path::new("agent")]), Ok(None));
         }
 
         let resolved = resolve_in(
@@ -508,7 +520,7 @@ mod windows_tests {
                 root.join("javapath"),
                 root.join("nodejs"),
             ],
-            Path::new("agent"),
+            &[Path::new("agent")],
         )
         .unwrap()
         .expect("installation behind a junction entry must be found");
@@ -520,6 +532,48 @@ mod windows_tests {
         assert_eq!(
             resolved.file_name().unwrap(),
             std::ffi::OsStr::new("agent.cmd")
+        );
+    }
+
+    /// A caller that probes several spellings of one installation must not inherit an
+    /// entry's spelling as a verdict either: a junction entry that holds neither name is
+    /// simply an entry with nothing in it, and the alias further along still gets found.
+    #[test]
+    fn windows_alias_search_traverses_junction_entries() {
+        let fixture = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(fixture.path()).unwrap();
+        let nvm = root.join("nvm v24");
+        let javapath = root.join("java javapath");
+        for directory in [&nvm, &javapath] {
+            std::fs::create_dir(directory).unwrap();
+        }
+        hiroute_platform_test_support::junction::create(&root.join("nodejs"), &nvm).unwrap();
+        hiroute_platform_test_support::junction::create(&root.join("javapath"), &javapath).unwrap();
+        let alias = nvm.join("agent-alias.cmd");
+        std::fs::write(&alias, b"@echo off\r\n").unwrap();
+
+        // Nothing under either spelling in the junction entry: honest absence, not a veto.
+        assert_eq!(
+            resolve_in(
+                &[root.join("javapath"), root.join("missing")],
+                &[Path::new("agent"), Path::new("agent-alias")],
+            ),
+            Ok(None)
+        );
+
+        let resolved = resolve_in(
+            &[
+                root.join("missing"),
+                root.join("javapath"),
+                root.join("nodejs"),
+            ],
+            &[Path::new("agent"), Path::new("agent-alias")],
+        )
+        .unwrap()
+        .expect("an alias behind a junction entry must still be found");
+        assert_eq!(
+            resolved,
+            super::super::managed_launch::windows_executable_path(&alias).unwrap()
         );
     }
 
@@ -535,7 +589,7 @@ mod windows_tests {
         hiroute_platform_test_support::junction::create(&root.join("agent.cmd"), &payload).unwrap();
 
         assert_eq!(
-            resolve_in(&[root], Path::new("agent")),
+            resolve_in(&[root], &[Path::new("agent")]),
             Err(ProbeFailure::Unavailable)
         );
     }
