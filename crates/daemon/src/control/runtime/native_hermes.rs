@@ -141,6 +141,7 @@ impl LocalControlAdapter {
                     intent,
                     original_operation,
                     &original_intent,
+                    super::effects::restore_managed_model_changes(operation),
                 )
             }
         }
@@ -214,6 +215,7 @@ impl LocalControlAdapter {
                     &payload.expected_content,
                     original_operation,
                     original,
+                    super::effects::restore_managed_model_changes(operation),
                 )
             }
         }

@@ -36,6 +36,7 @@ Use the built-in management Skill: https://hiroute.ai/en/docs/#management-skill
 For delegation, use the built-in delegation Skill: https://hiroute.ai/en/docs/task-routing/#delegation-skill
 - Read existing connections: hiroute quickstart · compute list · compute scan
 - Publish a route and connect an Agent: routing preview / apply · agents connect preview / apply
+- Disable model routing on request: agents restore preview --facet model · agents restore apply. Include --restore-managed-changes only when the user wants to discard edits to HiRoute-managed settings.
 - Check the actual model and executor: sessions timeline · worker plans · worker result
 The UI and CLI share configuration and records. Reuse existing connections and follow installed --help and hiroute schema show --command-id COMMAND_ID --include-schema.
 ```

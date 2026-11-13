@@ -146,6 +146,7 @@ fn recover(
             spec.collaboration = AgentFacetIntent::Keep;
             spec.access_token = AgentAccessTokenIntentV1::Keep;
             spec.restore_native_model = None;
+            spec.restore_managed_changes = false;
             return Preview::Available {
                 spec: Box::new(spec),
                 current_operation,

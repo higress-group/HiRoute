@@ -311,6 +311,9 @@ pub struct AgentSettingsSpecV2 {
     /// for a Codex model restore; the trusted adapter checks it against the original catalog.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub restore_native_model: Option<String>,
+    /// Confirmed model restore may replace edits to recorded HiRoute-owned configuration.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub restore_managed_changes: bool,
     /// Set by trusted Preview, then sealed in the successful Operation. This records the
     /// original names whose same-account routes must survive later full-state edits.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

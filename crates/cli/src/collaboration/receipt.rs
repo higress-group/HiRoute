@@ -93,6 +93,7 @@ pub(super) fn load(
         || !matches!(spec.model, AgentFacetIntent::Keep)
         || !matches!(spec.access_token, AgentAccessTokenIntentV1::Keep)
         || spec.restore_native_model.is_some()
+        || spec.restore_managed_changes
         || record.apply.login_item.is_some()
     {
         return Err(ErrorCode::DaemonUnavailable);

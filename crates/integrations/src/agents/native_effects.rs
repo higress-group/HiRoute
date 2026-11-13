@@ -163,6 +163,7 @@ pub fn stage_codex_restoration(
     original_operation: &OperationId,
     original_intent: &ExternalEffectIntentV1,
     native_model: Option<&str>,
+    restore_managed_changes: bool,
 ) -> PortResult<OwnedEffectV1> {
     if intent.target() != original_intent.target() || operation == original_operation {
         return Err(error(PortErrorCode::InvalidData, "codex.restore.binding"));
@@ -170,6 +171,44 @@ pub fn stage_codex_restoration(
     if let Some(effect) = replay(port, operation, intent)? {
         return Ok(effect);
     }
+    let (restored, _) = codex_restoration(
+        port,
+        original_operation,
+        original_intent,
+        native_model,
+        restore_managed_changes,
+    )?;
+    port.stage_native_target(
+        operation,
+        intent,
+        restored.as_ref().map(|text| text.as_bytes()),
+        true,
+    )
+}
+
+pub fn validate_codex_restoration(
+    port: &dyn NativeAgentArtifactPort,
+    original_operation: &OperationId,
+    original_intent: &ExternalEffectIntentV1,
+    native_model: Option<&str>,
+) -> PortResult<bool> {
+    codex_restoration(
+        port,
+        original_operation,
+        original_intent,
+        native_model,
+        true,
+    )
+    .map(|(_, archive_profile)| archive_profile)
+}
+
+fn codex_restoration(
+    port: &dyn NativeAgentArtifactPort,
+    original_operation: &OperationId,
+    original_intent: &ExternalEffectIntentV1,
+    native_model: Option<&str>,
+    restore_managed_changes: bool,
+) -> PortResult<(Option<Zeroizing<String>>, bool)> {
     let record = port
         .load_native_restore(original_operation, original_intent)?
         .ok_or_else(|| error(PortErrorCode::NotFound, "codex.restore.record"))?;
@@ -178,17 +217,32 @@ pub fn stage_codex_restoration(
     }
     let restore = CodexNativeRestore::decode_protected(&record[2..])
         .map_err(|_| error(PortErrorCode::Corrupt, "codex.restore.decode"))?;
-    let current = port.read_native_target(intent.target())?;
+    if restore_managed_changes
+        && record[1] == 0
+        && original_intent.desired()["subject"]["profile_id"] == super::CODEX_STANDALONE_PROFILE_ID
+    {
+        // Staging retains the exact current profile in the protected before-image.
+        return Ok((None, true));
+    }
+    let current = port.read_native_target(original_intent.target())?;
     let text = std::str::from_utf8(current.as_deref().map_or(&[], |bytes| bytes.as_slice()))
-        .map_err(|_| error(PortErrorCode::InvalidData, "codex.restore.encoding"))?;
-    let restored = restore_codex_native_with_model(text, &restore, native_model)
-        .map_err(|_| error(PortErrorCode::Conflict, "codex.restore.fields"))?;
-    let desired = if record[1] == 0 && restored.trim().is_empty() {
-        None
-    } else {
-        Some(restored.as_bytes())
-    };
-    port.stage_native_target(operation, intent, desired, true)
+        .map_err(|_| {
+            error(
+                if restore_managed_changes {
+                    PortErrorCode::Conflict
+                } else {
+                    PortErrorCode::InvalidData
+                },
+                "codex.restore.encoding",
+            )
+        })?;
+    let restored =
+        restore_codex_native_with_model(text, &restore, native_model, restore_managed_changes)
+            .map_err(|_| error(PortErrorCode::Conflict, "codex.restore.fields"))?;
+    Ok((
+        (record[1] != 0 || !restored.trim().is_empty()).then_some(restored),
+        false,
+    ))
 }
 
 pub(super) fn replay(

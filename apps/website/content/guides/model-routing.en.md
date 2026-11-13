@@ -28,6 +28,7 @@ Command pointers (choose only what the goal needs; prefix each with hiroute):
 - Check decision model references before removal: decision removal preview
 - Adjust trust, custom branches and other settings: routing show · routing options → routing preview
 - Publish and connect an Agent: routing apply · agents connect preview → agents connect apply
+- Disable a model connection on request: agents restore preview --facet model → agents restore apply
 - Inspect model selection, quality and cost: sessions timeline · observation plan-quality samples · observation plan-trust · value show
 - If Home or Sessions is updating in HiRoute 0.6.1 or later, keep the page open for automatic read recovery.
 
@@ -135,7 +136,7 @@ For a fixed routing plan, Codex can show a reasoning picker under the plan's dis
 - **Qoder, Pi, DeepSeek Harness and OpenCode:** restart after saving and select the added HiRoute route in the model picker. Existing models and defaults remain available.
 - **Hermes:** choose its effective configuration directory, then set a route as its default main model.
 
-Keep HiRoute running while using routes; enabling routing does not set up automatic startup. To disable it later, use the saved restore point under Connection details and recovery.
+Keep HiRoute running while using routes. To stop using a connection, open its model routing section on the Agent page, choose **Disable**, and confirm. HiRoute restores the settings it recorded and removes its added routes, including any edits to them. If a default or another model setting still uses a route being removed, switch it in the native client and choose **Disable** again. If HiRoute created the dedicated Codex CLI profile, it keeps a private backup of the entire file and removes the active profile. Start Codex with your usual command after disabling.
 
 </details>
 

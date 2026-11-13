@@ -395,7 +395,7 @@ fn opencode_default_reference_conflict_is_a_preview_fact_and_a_stage_rejection()
         json!({"small_model":"hiroute-main-test/route"}),
     );
     let (_, in_use) = scanner
-        .opencode_model_facts("hiroute-main-test", &[])
+        .opencode_model_facts("hiroute-main-test", &[], &[])
         .unwrap();
     assert!(
         in_use,

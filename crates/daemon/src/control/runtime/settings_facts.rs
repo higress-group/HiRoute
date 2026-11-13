@@ -28,7 +28,7 @@ use hiroute_domain::{
 use hiroute_integrations::{
     CodexCatalogSummaryV1, CodexConfigurationScope, CodexDefaultPolicy, CodexNativeRestore,
     CodexSelectionTarget, DiscoveredAuthSource, codex_explicit_model,
-    codex_explicit_reasoning_effort, restore_codex_native, sample_codex_catalog_plan,
+    codex_explicit_reasoning_effort, sample_codex_catalog_plan,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -236,7 +236,9 @@ impl LocalControlAdapter {
                 independent_dsh_provider,
             );
         }
-        let owned_claude = if class == SettingsAgentClass::Claude {
+        let replace_managed =
+            spec.restore_managed_changes && matches!(spec.model, AgentFacetIntent::Restore { .. });
+        let owned_claude = if class == SettingsAgentClass::Claude && !replace_managed {
             if let Some(join) = self.configured_model_settings_join(&spec.context_id)? {
                 let stores = self.stores_lock().map_err(super::map_port)?;
                 let operation = stores
@@ -271,7 +273,17 @@ impl LocalControlAdapter {
                 spec.management_skill,
                 Some(AgentFacetIntent::Configure { .. })
             );
-        let discovery = if class == SettingsAgentClass::Claude {
+        let discovery = if replace_managed {
+            let target = class
+                .native_path(&self.scanner)
+                .ok_or(ControlReadError::NotFound)?;
+            let kind = if class == SettingsAgentClass::Claude {
+                hiroute_domain::AgentKindV1::ClaudeCode
+            } else {
+                hiroute_domain::AgentKindV1::Codex
+            };
+            FilesystemAgentScannerV1::owned_model_restore_discovery(class.agent_id(), kind, &target)
+        } else if class == SettingsAgentClass::Claude {
             self.scanner.claude_settings_discovery(configure_skill)
         } else if class == SettingsAgentClass::CodexProfile {
             self.scanner.codex_profile_settings_discovery()
@@ -659,22 +671,64 @@ impl LocalControlAdapter {
             }
             None => false,
         };
-        let (restore_native_model_ids, restored_native_model) =
-            if matches!(
-                class,
-                SettingsAgentClass::Codex | SettingsAgentClass::CodexDesktop
-            ) && matches!(&spec.model, AgentFacetIntent::Restore { .. })
-            {
-                match selected_restore.as_ref() {
-                    Some((original, _)) => {
-                        let facts = self.codex_restore_model_facts(class, original, &target)?;
-                        (facts.ids, facts.model)
-                    }
-                    None => (Some(Vec::new()), None),
-                }
+        let mut restore_file_conflict = false;
+        let mut archive_codex_profile = false;
+        if replace_managed && let Some((original, _)) = &selected_restore {
+            let stores = self.stores_lock().map_err(super::map_port)?;
+            let operation = stores
+                .control()
+                .load_operation(original)
+                .map_err(super::map_port)?
+                .ok_or(ControlReadError::Corrupt)?;
+            drop(stores);
+            let intent = operation
+                .plan
+                .external()
+                .iter()
+                .find(|intent| {
+                    intent.target() == target
+                        && (super::native_model::is_settings_codex_model(intent)
+                            || super::native_claude_model::is_settings_claude_model(intent))
+                })
+                .ok_or(ControlReadError::Corrupt)?;
+            let validation = if class == SettingsAgentClass::Claude {
+                hiroute_integrations::validate_claude_restoration(&self.artifacts, original, intent)
+                    .map(|()| false)
             } else {
-                (None, None)
+                hiroute_integrations::validate_codex_restoration(
+                    &self.artifacts,
+                    original,
+                    intent,
+                    spec.restore_native_model.as_deref(),
+                )
             };
+            match validation {
+                Ok(archive) => archive_codex_profile = archive && before_fingerprint.is_some(),
+                Err(error) if error.code == PortErrorCode::Conflict => restore_file_conflict = true,
+                Err(error) => return Err(super::map_port(error)),
+            }
+        }
+        let (restore_native_model_ids, restored_native_model) = if matches!(
+            class,
+            SettingsAgentClass::Codex | SettingsAgentClass::CodexDesktop
+        ) && matches!(
+            &spec.model,
+            AgentFacetIntent::Restore { .. }
+        ) && (!replace_managed
+            || spec.restore_native_model.is_some())
+            && !restore_file_conflict
+        {
+            match selected_restore.as_ref() {
+                Some((original, _)) => {
+                    let facts =
+                        self.codex_restore_model_facts(class, original, &target, replace_managed)?;
+                    (facts.ids, facts.model)
+                }
+                None => (Some(Vec::new()), None),
+            }
+        } else {
+            (None, None)
+        };
         let template = collaboration_template(spec)?;
         let collaboration_file_conflict = match &spec.collaboration {
             AgentFacetIntent::Configure { .. } => plan_skill_install(
@@ -720,9 +774,9 @@ impl LocalControlAdapter {
         ) && preserve_native_models
             && let Some(active) = active_configuration.as_ref()
         {
-            self.codex_restore_model_facts(class, active, &target)?
+            self.codex_restore_model_facts(class, active, &target, false)?
                 .catalog
-        } else if class.is_codex() {
+        } else if class.is_codex() && !replace_managed {
             class.scanner(&self.scanner).codex_catalog_summary().ok()
         } else {
             None
@@ -741,6 +795,7 @@ impl LocalControlAdapter {
             | SettingsAgentClass::CodexDesktop => codex_catalog_summary
                 .as_ref()
                 .map(|catalog| catalog.native_default_model.clone()),
+            SettingsAgentClass::Claude if replace_managed => None,
             SettingsAgentClass::Claude => self
                 .scanner
                 .claude_explicit_model_selection()
@@ -1040,7 +1095,7 @@ impl LocalControlAdapter {
                 })
                 .map_err(super::map_port)?;
         }
-        let dependency_digest = CanonicalDigest::of(&serde_json::json!({
+        let mut dependency_facts = serde_json::json!({
             "codex_profile_dependencies": self.codex_profile_dependencies(class, spec, active_configuration.as_ref())?,
             "claude_context_override": claude_context_override,
             "claude_plan_capability_unavailable": claude_plan_capability_unavailable,
@@ -1071,8 +1126,13 @@ impl LocalControlAdapter {
             "model_catalog":&model_catalog,
             "resident_service":login_item_required,
             "resident_service_removal":login_item_removal_required,
-        }))
-        .map_err(|_| ControlReadError::Corrupt)?;
+        });
+        if replace_managed {
+            dependency_facts["managed_restore_conflict"] = restore_file_conflict.into();
+            dependency_facts["archive_codex_profile"] = archive_codex_profile.into();
+        }
+        let dependency_digest =
+            CanonicalDigest::of(&dependency_facts).map_err(|_| ControlReadError::Corrupt)?;
         let capabilities =
             AgentCapabilitySet::new(installation.capability_evidence.iter().cloned().map(
                 |mut item| {
@@ -1106,10 +1166,13 @@ impl LocalControlAdapter {
                     executable: claude_executable,
                     gateway_base_url: runtime.gateway_base_url.clone(),
                     trusted_hiroute_executable: runtime.trusted_hiroute_executable.clone(),
-                    user_document: self
-                        .scanner
-                        .claude_user_config_document()
-                        .map_err(|_| ControlReadError::Corrupt)?,
+                    user_document: if replace_managed {
+                        Default::default()
+                    } else {
+                        self.scanner
+                            .claude_user_config_document()
+                            .map_err(|_| ControlReadError::Corrupt)?
+                    },
                 })
             }
         };
@@ -1157,6 +1220,7 @@ impl LocalControlAdapter {
                         model_publication: active,
                         login_item_required,
                         login_item_removal_required,
+                        restore_file_conflict,
                         fixed_candidate_facts,
                     },
                     native: if class.is_codex() {
@@ -1173,6 +1237,7 @@ impl LocalControlAdapter {
                             restore_native_model_ids,
                             restore_inherits_root: class == SettingsAgentClass::CodexProfile,
                             restored_native_model,
+                            archive_codex_profile,
                         }))
                     } else {
                         SettingsModelNativeFacts::Claude(SettingsClaudeNativeFacts {

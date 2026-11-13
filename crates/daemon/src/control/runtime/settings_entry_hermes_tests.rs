@@ -571,9 +571,22 @@ fn reconfigure_then_conditional_restore_preserves_foreign_edits_and_rejects_targ
         fixture.model_spec(1),
         "hermes-plan-1",
     );
-    let mut changed = fs::read(fixture.profile.join("config.yaml")).unwrap();
-    changed.extend_from_slice(b"user_note: retained\n");
-    private_file(&fixture.profile.join("config.yaml"), &changed);
+    let config = fixture.profile.join("config.yaml");
+    let managed = fs::read_to_string(&config).unwrap();
+    let alias = fixture.status()["live_check_targets"][0]["client_model_ids"][0]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let changed = managed.replacen(
+        &format!("\"default\": \"{alias}\""),
+        "\"default\": \"manually-edited\"",
+        1,
+    );
+    assert_ne!(managed, changed);
+    private_file(
+        &config,
+        format!("{changed}user_note: retained\n").as_bytes(),
+    );
     let different = fixture.root.path().join("another-profile");
     fs::create_dir(&different).unwrap();
     let mut spec = fixture.model_spec(0);
@@ -584,10 +597,12 @@ fn reconfigure_then_conditional_restore_preserves_foreign_edits_and_rejects_targ
         None,
     ));
     assert!(rejected.error.is_some());
+    let mut restore = fixture.restore();
+    restore["restore_managed_changes"] = json!(true);
     apply(
         &fixture.service,
         &fixture.runtime,
-        fixture.restore(),
+        restore,
         "hermes-conditional-restore",
     );
     let restored =

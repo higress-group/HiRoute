@@ -393,11 +393,12 @@ fn native_routing_adapter_effects_restore_after_reopen_and_detect_drift() {
         assert_eq!(fs::read(&adapter).unwrap(), bundled);
         private_file(&adapter, b"user changed this adapter\n");
         assert_eq!(model_status(&fixture)["state"], "drift");
-        private_file(&adapter, bundled);
+        let mut restore = restore_spec(&fixture, &model_status(&fixture));
+        restore["restore_managed_changes"] = json!(true);
         apply(
             &fixture.service,
             &fixture.runtime,
-            restore_spec(&fixture, &model_status(&fixture)),
+            restore,
             "native-adapter-restore",
         );
         assert_eq!(model_status(&fixture)["state"], "not_configured");
@@ -420,13 +421,17 @@ fn native_routing_adapter_effects_restore_after_reopen_and_detect_drift() {
             spec,
             "native-adapter-borrow",
         );
+        let borrowed_edit = b"// user-owned adapter edited after connection\n";
+        private_file(&adapter, borrowed_edit);
+        let mut restore = restore_spec(&fixture, &model_status(&fixture));
+        restore["restore_managed_changes"] = json!(true);
         apply(
             &fixture.service,
             &fixture.runtime,
-            restore_spec(&fixture, &model_status(&fixture)),
+            restore,
             "native-adapter-release-reference",
         );
-        assert_eq!(fs::read(&adapter).unwrap(), bundled);
+        assert_eq!(fs::read(&adapter).unwrap(), borrowed_edit);
         fs::remove_file(adapter).unwrap();
     }
 }

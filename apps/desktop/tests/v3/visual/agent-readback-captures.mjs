@@ -6,6 +6,44 @@ async function settled(client) {
   await evaluate(client, `Promise.all(document.getAnimations().filter(a=>Number.isFinite(a.effect?.getTiming().iterations??1)).map(a=>a.finished.catch(()=>{}))).then(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true)))))`);
 }
 
+export async function codexDisableCaptures(client, fixture, output) {
+  const results = [];
+  for (const [language, theme] of [['zh', 'dark'], ['en', 'light']]) {
+    for (const viewport of [{ width: 1200, height: 813 }, { width: 755, height: 600 }]) {
+      const url = new URL(fixture);
+      url.searchParams.set('language', language);
+      url.searchParams.set('theme', theme);
+      await navigate(client, url.href, viewport);
+      await waitFor(client, 'Boolean(window.agentTrust && document.querySelector(".native-list .list-row"))');
+      await evaluate(client, `(() => {
+        const fixture = window.agentTrust;
+        fixture.reset(); fixture.agents = fixture.splitCodexStatus();
+        const codex = fixture.agents.agents.find(agent => agent.agent_id === 'agent_codex_default');
+        codex.codex_access.conflict_fields = ['model'];
+        fixture.refresh();
+      })()`);
+      await waitFor(client, `Boolean([...document.querySelectorAll('.native-list .row-title')].find(row => row.textContent.trim() === 'Codex'))`);
+      await evaluate(client, `Array.from(document.querySelectorAll('.native-list .row-title')).find(row => row.textContent.trim() === 'Codex').click()`);
+      const selector = '[data-codex-restore-conflict]';
+      await waitFor(client, `Boolean(document.querySelector('${selector}'))`);
+      await evaluate(client, `document.querySelector('${selector}').scrollIntoView({block: 'center'})`);
+      await settled(client);
+      const geometry = await evaluate(client, `(() => {
+        const box = document.querySelector('${selector}');
+        const bounds = box.getBoundingClientRect();
+        return {overflow: box.scrollWidth > box.clientWidth + 1 || document.documentElement.scrollWidth > innerWidth + 1,
+          visible: bounds.top >= 0 && bounds.bottom <= innerHeight, text: box.innerText};
+      })()`);
+      if (geometry.overflow || !geometry.visible) throw Error(`Codex Disable guidance geometry: ${JSON.stringify({ language, viewport, geometry })}`);
+      const id = `codex-disable-${language}-${theme}-${viewport.width}`;
+      const shot = await client.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+      await writeFile(path.join(output, `${id}.png`), Buffer.from(shot.data, 'base64'));
+      results.push({ id, state: 'green', language, theme, viewport, geometry, screenshot: `${id}.png` });
+    }
+  }
+  return results;
+}
+
 // Production components/styles, controlled IPC. No native save or latency claim.
 export async function desktopManagementCaptures(client, baseUrl, output) {
   const results=[];

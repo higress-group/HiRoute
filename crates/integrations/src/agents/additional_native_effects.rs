@@ -75,6 +75,7 @@ pub fn validate_additional_restoration(
     target: &str,
     original_operation: &OperationId,
     original_intent: &ExternalEffectIntentV1,
+    restore_managed_changes: bool,
 ) -> PortResult<()> {
     if original_intent.target() != target {
         return Err(error(PortErrorCode::InvalidData, "qoder.original.target"));
@@ -84,9 +85,15 @@ pub fn validate_additional_restoration(
         return Err(error(PortErrorCode::InvalidData, "additional.restore.kind"));
     }
     let current = port.read_native_target(target)?;
-    restore
-        .validate_restoration(current.as_deref().map(Vec::as_slice))
-        .map_err(fields_error)
+    let current = current.as_deref().map(Vec::as_slice);
+    if restore_managed_changes {
+        render_restoration(port, target, &restore, current, true).map(|_| ())
+    } else {
+        restore
+            .render_restoration(current, false)
+            .map(|_| ())
+            .map_err(fields_error)
+    }
 }
 
 pub fn additional_native_configuration_is_applied(
@@ -104,6 +111,17 @@ pub fn additional_native_configuration_is_applied(
     Ok(restore
         .applied(current.as_deref().map(Vec::as_slice))
         .unwrap_or(false))
+}
+
+pub fn additional_restore_provider_ids(
+    port: &dyn NativeAgentArtifactPort,
+    operation: &OperationId,
+    intent: &ExternalEffectIntentV1,
+) -> PortResult<Vec<String>> {
+    Ok(load(port, operation, intent)?
+        .owned_providers()
+        .into_keys()
+        .collect())
 }
 
 pub fn stage_additional_configuration(
@@ -220,6 +238,7 @@ pub fn stage_additional_restoration(
     intent: &ExternalEffectIntentV1,
     original_operation: &OperationId,
     original_intent: &ExternalEffectIntentV1,
+    restore_managed_changes: bool,
 ) -> PortResult<OwnedEffectV1> {
     validate_binding(operation, intent, original_operation, original_intent)?;
     if intent.desired_mode() != 0o600 {
@@ -230,25 +249,52 @@ pub fn stage_additional_restoration(
     }
     let restore = load(port, original_operation, original_intent)?;
     let current = port.read_native_target(intent.target())?;
-    let mut restored = restore
-        .restore(current.as_deref().map(Vec::as_slice))
-        .map_err(fields_error)?;
-    if restore.kind().map_err(fields_error)? == AgentKindV1::DeepseekHarness
-        && !restore.independent_dsh_provider()
-        && let Some(bytes) = &restored
-    {
-        let path = port.native_target_path(intent.target())?;
-        restored = Some(
-            additional_native::attach_routing_adapter(bytes, &path, Some(&restore.original))
-                .map_err(fields_error)?,
-        );
-    }
+    let restored = render_restoration(
+        port,
+        intent.target(),
+        &restore,
+        current.as_deref().map(Vec::as_slice),
+        restore_managed_changes,
+    )?;
     port.stage_native_target(
         operation,
         intent,
         restored.as_deref().map(Vec::as_slice),
         true,
     )
+}
+
+fn render_restoration(
+    port: &dyn NativeAgentArtifactPort,
+    target: &str,
+    restore: &Restore,
+    current: Option<&[u8]>,
+    restore_managed_changes: bool,
+) -> PortResult<Option<zeroize::Zeroizing<Vec<u8>>>> {
+    let mut restored = restore
+        .render_restoration(current, restore_managed_changes)
+        .map_err(fields_error)?;
+    if restore.kind().map_err(fields_error)? == AgentKindV1::DeepseekHarness
+        && !restore.independent_dsh_provider()
+        && let Some(bytes) = &restored
+    {
+        restored = Some(if restore_managed_changes {
+            let original =
+                super::dsh_config::Patch::parse(Some(&restore.original)).map_err(fields_error)?;
+            super::dsh_config::Patch::parse(Some(bytes))
+                .and_then(|patch| {
+                    let bytes = patch.restore_routing_adapter(&original, &Default::default())?;
+                    super::dsh_config::Patch::parse(Some(&bytes))?
+                        .remove_empty_legacy_provider_row(&original)
+                })
+                .map_err(fields_error)?
+        } else {
+            let path = port.native_target_path(target)?;
+            additional_native::attach_routing_adapter(bytes, &path, Some(&restore.original))
+                .map_err(fields_error)?
+        });
+    }
+    Ok(restored)
 }
 
 fn validate_binding(

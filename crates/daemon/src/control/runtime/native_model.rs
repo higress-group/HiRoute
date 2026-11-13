@@ -213,6 +213,7 @@ impl LocalControlAdapter {
             text,
             &restore,
             native_model.as_deref(),
+            false,
         )
         .map_err(|_| conflict("codex.restore.ack.fields"))?;
         // Only acknowledge complete cleanup. Remaining owned fields require user repair;
@@ -571,6 +572,7 @@ impl LocalControlAdapter {
                     original_operation,
                     original_intent,
                     native_model.as_deref(),
+                    super::effects::restore_managed_model_changes(operation),
                 )
             }
         }

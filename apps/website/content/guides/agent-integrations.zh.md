@@ -37,6 +37,7 @@
 需要委派时使用内置委派技能：https://hiroute.ai/zh/docs/task-routing/#delegation-skill
 - 读取已有接入：hiroute quickstart · compute list · compute scan
 - 发布路由并连接 Agent：routing preview / apply · agents connect preview / apply
+- 按用户要求停用模型路由：agents restore preview --facet model · agents restore apply。用户同意覆盖受管设置的手动修改时，预览加 --restore-managed-changes。
 - 查看实际模型和执行方：sessions timeline · worker plans · worker result
 界面和 CLI 共用配置和记录；先复用现有接入，以 --help 和 hiroute schema show --command-id COMMAND_ID --include-schema 为准。
 ```

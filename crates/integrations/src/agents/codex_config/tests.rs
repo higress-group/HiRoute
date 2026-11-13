@@ -256,7 +256,8 @@ fn stale_original_alias_can_be_repaired_with_an_explicit_native_model() {
     let restore =
         CodexNativeRestore::decode_protected(&edit.restore.encode_protected().unwrap()).unwrap();
     let repaired =
-        restore_codex_native_with_model(&edit.rendered, &restore, Some("gpt-5.6-sol")).unwrap();
+        restore_codex_native_with_model(&edit.rendered, &restore, Some("gpt-5.6-sol"), false)
+            .unwrap();
     let parsed = repaired.parse::<DocumentMut>().unwrap();
     assert_eq!(parsed["model"].as_str(), Some("gpt-5.6-sol"));
     assert!(parsed.get("model_provider").is_none());

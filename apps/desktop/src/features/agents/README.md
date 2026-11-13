@@ -155,11 +155,11 @@ The controls retain their existing authority, pending and recovery guards.
    command only after the **same** Operation succeeds and a fresh snapshot confirms the
    target. Clipboard failure preserves the completed connection and manual-copy entry;
    it never replays Apply.
-4. Ordinary Disable submits a new restore intent through Preview. The backend restores
-   files conditionally before withdrawing access. A normal file conflict preserves the
-   original connection and permits a fresh Preview/Operation after repair. The separate
-   `retry_agent_settings` entry is for an existing pending Operation, including historical
-   sealed revoke tails; it is not the ordinary conflict retry path.
+4. Model Disable previews restoration of recorded model settings and asks for one
+   confirmation. The backend applies the confirmed file changes before withdrawing
+   access. A surviving model reference tells the user to select another native model.
+   A file change after Preview requires a fresh Preview. An existing pending Operation
+   retains its accepted policy and uses `retry_agent_settings`.
 
 The native [check session](../../../src-tauri/src/agent_check_session.rs) separately
 owns exact ecosystem/surface checks, paid-call consent and response validation for

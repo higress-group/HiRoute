@@ -111,6 +111,24 @@ impl LocalControlAdapter {
             }
         }
         if let Some(expected) = &payload.additional_dependencies {
+            let restoring_providers =
+                if let AdditionalModelFileAction::Restore { original_operation } = &payload.change
+                    && super::effects::restore_managed_model_changes(operation)
+                {
+                    let original = self
+                        .stores_lock()?
+                        .control()
+                        .load_operation(original_operation)?
+                        .ok_or_else(|| conflict("qoder.settings.restore.original"))?;
+                    let original_intent = additional_original_intent(&original, operation, intent)?;
+                    hiroute_integrations::additional_restore_provider_ids(
+                        &self.artifacts,
+                        original_operation,
+                        &original_intent,
+                    )?
+                } else {
+                    Vec::new()
+                };
             let models = match &payload.change {
                 AdditionalModelFileAction::Configure { models, .. } => models.as_slice(),
                 _ => &[],
@@ -122,6 +140,7 @@ impl LocalControlAdapter {
                         &payload.context_id,
                     ),
                     models,
+                    &restoring_providers,
                 )
                 .map_err(|_| conflict("opencode.settings.dependencies"))?;
             if &observed != expected {
@@ -268,6 +287,7 @@ impl LocalControlAdapter {
                     intent,
                     original_operation,
                     &original_intent,
+                    super::effects::restore_managed_model_changes(operation),
                 )
             }
         }

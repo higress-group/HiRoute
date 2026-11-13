@@ -261,7 +261,7 @@ pub(super) fn configure(
 ) -> Result<Edit, QoderNativeError> {
     validate_configuration(kind, current, provider_id, endpoint, models, previous)?;
     let base = match previous {
-        Some(previous) => previous.remove_owned(current, false)?,
+        Some(previous) => previous.remove_owned(current, false, false)?,
         None => current.map(|bytes| Zeroizing::new(bytes.to_vec())),
     };
     let mut bytes = base.as_deref().map_or_else(
@@ -316,7 +316,7 @@ pub(super) fn configure_dsh_desktop(
     validate_configuration(kind, current, provider_id, endpoint, models, previous)?;
     let base = match previous {
         Some(previous) => {
-            let base = previous.remove_owned(current, false)?;
+            let base = previous.remove_owned(current, false, false)?;
             if previous.independent_dsh_provider() {
                 base
             } else {
@@ -559,7 +559,7 @@ impl Restore {
         Ok(record)
     }
 
-    fn owned_providers(&self) -> std::collections::BTreeMap<String, CanonicalDigest> {
+    pub(super) fn owned_providers(&self) -> std::collections::BTreeMap<String, CanonicalDigest> {
         if let Some(digest) = &self.provider_digest {
             [(self.provider_id.clone(), digest.clone())].into()
         } else {
@@ -581,21 +581,27 @@ impl Restore {
         Ok(true)
     }
 
-    pub fn validate_restoration(&self, current: Option<&[u8]>) -> Result<(), QoderNativeError> {
-        self.remove_owned(current, true).map(|_| ())
-    }
-
+    #[cfg(test)]
     pub fn restore(
         &self,
         current: Option<&[u8]>,
     ) -> Result<Option<Zeroizing<Vec<u8>>>, QoderNativeError> {
-        self.remove_owned(current, true)
+        self.render_restoration(current, false)
+    }
+
+    pub fn render_restoration(
+        &self,
+        current: Option<&[u8]>,
+        restore_managed_changes: bool,
+    ) -> Result<Option<Zeroizing<Vec<u8>>>, QoderNativeError> {
+        self.remove_owned(current, true, restore_managed_changes)
     }
 
     fn remove_owned(
         &self,
         current: Option<&[u8]>,
         check_default: bool,
+        restore_managed_changes: bool,
     ) -> Result<Option<Zeroizing<Vec<u8>>>, QoderNativeError> {
         let document = native_root(self.kind()?, current)?;
         if check_default {
@@ -603,10 +609,10 @@ impl Restore {
                 default_not_removed(self.kind()?, &document, id, &BTreeSet::new())?;
             }
         }
-        if current.is_none() && !self.original_exists {
+        if current.is_none() && (restore_managed_changes || !self.original_exists) {
             return Ok(None);
         }
-        if !self.applied(current)? {
+        if !restore_managed_changes && !self.applied(current)? {
             return Err(qoder_error("owned provider changed"));
         }
         if current.is_some_and(|bytes| CanonicalDigest::of_bytes(bytes) == self.rendered_digest) {
@@ -619,18 +625,25 @@ impl Restore {
             let original = super::dsh_config::Patch::parse(
                 self.original_exists.then_some(self.original.as_slice()),
             )?;
+            if restore_managed_changes {
+                return patch
+                    .restore_routing_adapter(&original, &self.owned_providers())
+                    .map(Some);
+            }
             return patch
                 .replace_routing_adapter(original.routing_adapter()?)
                 .map(Some);
         }
-        // Remove only members whose exact ownership was verified; preserve foreign JSONC bytes.
+        // The authenticated restore record names the only provider entries we may remove.
         let mut bytes = Zeroizing::new(
             current
                 .ok_or_else(|| qoder_error("owned provider missing"))?
                 .to_vec(),
         );
         for id in self.owned_providers().keys() {
-            bytes = edit_provider(self.kind()?, &bytes, id, None)?;
+            if owned(&document, id)?.is_some() {
+                bytes = edit_provider(self.kind()?, &bytes, id, None)?;
+            }
         }
         Ok(Some(bytes))
     }

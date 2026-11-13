@@ -159,11 +159,7 @@ fn removing_selected_native_default_requires_user_switch_but_retaining_it_is_all
     current["model"]["name"] = format!("{}/plan-branch-cheap", first_provider()).into();
     let current = serde_json::to_vec(&current).unwrap();
     assert_eq!(
-        first
-            .restore
-            .validate_restoration(Some(&current))
-            .unwrap_err()
-            .stage,
+        first.restore.restore(Some(&current)).unwrap_err().stage,
         "default in use"
     );
     assert_eq!(

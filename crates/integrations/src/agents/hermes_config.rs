@@ -313,8 +313,17 @@ impl HermesConfigRestoreV1 {
             .iter()
             .any(|v| v == HERMES_PLUGIN_NAME))
     }
-    pub fn restore(&self, current: &[u8]) -> Result<Zeroizing<Vec<u8>>, HermesNativeError> {
-        if !self.applied(current)? {
+    #[cfg(test)]
+    fn restore(&self, current: &[u8]) -> Result<Zeroizing<Vec<u8>>, HermesNativeError> {
+        self.render_restoration(current, false)
+    }
+
+    pub(super) fn render_restoration(
+        &self,
+        current: &[u8],
+        restore_managed_changes: bool,
+    ) -> Result<Zeroizing<Vec<u8>>, HermesNativeError> {
+        if !restore_managed_changes && !self.applied(current)? {
             return Err(hermes_error("owned configuration changed"));
         }
         if CanonicalDigest::of_bytes(current) == self.managed_file_digest {
@@ -327,7 +336,12 @@ impl HermesConfigRestoreV1 {
             .map(|(key, value)| (key.split('/').map(str::to_owned).collect(), value.clone()))
             .collect();
         let mut enabled = enabled_plugins(&doc.value)?;
-        if !self.original_enabled {
+        if restore_managed_changes
+            && self.original_enabled
+            && !enabled.iter().any(|v| v == HERMES_PLUGIN_NAME)
+        {
+            enabled.push(HERMES_PLUGIN_NAME.into());
+        } else if !self.original_enabled {
             enabled.retain(|v| v != HERMES_PLUGIN_NAME);
         }
         let original = HermesDocument::parse(&self.original)?;
@@ -662,5 +676,10 @@ auxiliary:
             )]))
             .unwrap();
         assert!(record.restore(&changed).is_err());
+        let restored = record.render_restoration(&changed, true).unwrap();
+        assert_eq!(
+            HermesDocument::parse(&restored).unwrap().value,
+            HermesDocument::parse(original).unwrap().value
+        );
     }
 }
