@@ -300,7 +300,30 @@ fn run_reference(
         } else {
             membership::verify_scoped_pairs(&facts, count)
         }
-        .expect("each follow-up must assess its own complete captured predecessor");
+        .unwrap_or_else(|error| {
+            let decisions: Vec<_> = facts
+                .iter()
+                .filter(|row| row["fact"]["kind"] == "route_decision")
+                .map(|row| {
+                    let fact = &row["fact"];
+                    json!({
+                        "source": fact["complexity"]["decision_source"],
+                        "fallback": fact["decision_failure"]["failure"]["kind"],
+                        "duration_us": fact["complexity"]["classification_duration_micros"],
+                    })
+                })
+                .collect();
+            let assessments = facts
+                .iter()
+                .filter(|row| row["fact"]["kind"] == "branch_assessment_recorded")
+                .count();
+            panic!(
+                "each follow-up must assess its own complete captured predecessor: {error}; \
+                 expected_requests={count}, decisions={decisions:?}, \
+                 assessments={assessments}, classifier_calls={}",
+                decider.calls()
+            );
+        });
         let diagnostic_bytes = std::fs::read(
             fixture
                 .diagnostics_root
