@@ -134,7 +134,7 @@ HiRoute 在本地运行，将受支持的订阅、API 接入和本地模型集�
 HiRoute 提供 **macOS、Windows x64 和 Omarchy 桌面应用**，以及 Linux Web UI 与 CLI。
 已发布的安装包见[下载页](https://hiroute.ai/zh/download/)。
 
-0.6.1 会自动恢复首页和会话的短暂读取中断，支持 DeepSeek Harness Desktop 保留现有插件并接入 HiRoute 路由，并修复 CLI 的 API Key 额度命令。
+0.6.2 修复 Windows 诊断日志路径无法显示的问题，补充决策连接失败日志，并减少请求带有大型工具定义时的决策超时。
 
 1. **接入模型**：加入受支持的订阅或 API，选择经济模型与主力。
 2. **配置分工**：在**模型 → 决策模型**中连接判断服务，选择信任程度，发布并映射到 Agent。
