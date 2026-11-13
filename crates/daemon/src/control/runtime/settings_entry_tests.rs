@@ -320,6 +320,19 @@ fn v2_settings_first_save_without_native_probe_and_reenable_identical_catalog() 
     );
     let mut restore = json!({"schema_version":{"major":2,"minor":0},"context_id":context,
         "model":{"intent":"restore","restore_point_ref":codex_model_restore_point_ref(&same_operation)}});
+    let older = ordinary.dispatch_wire(request("PreviewAgentConnectionRestore", json!({"spec": {
+        "schema_version":{"major":2,"minor":0},"context_id":context,"restore_managed_changes":true,
+        "model":{"intent":"restore","restore_point_ref":codex_model_restore_point_ref(&first_operation)}
+    }}), None));
+    let older = older.data.unwrap();
+    assert_eq!(older["applicable"], false);
+    assert!(
+        older["blockers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|block| block["reason"] == "restore_point_unavailable")
+    );
     let edited = fs::read_to_string(&path).unwrap().replacen(
         &format!("model = \"{}\"", plan.model_alias.as_str()),
         "model = 'user-edit-before-disable'",

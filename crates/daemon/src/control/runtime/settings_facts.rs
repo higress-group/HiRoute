@@ -618,8 +618,8 @@ impl LocalControlAdapter {
                 continue;
             }
             // Successful operations are projected newest first. An identical settings apply can
-            // legitimately reuse the active grant, so keep the newest operation as the file
-            // lineage owner while retaining older restore points for that same grant.
+            // reuse the active grant. Replacing edited fields requires the current file lineage;
+            // conditional restores can still use the older restore points for that same grant.
             if active_configuration.is_none() {
                 active_configuration = Some(original.operation_id.clone());
                 active_protected_native_ids = original_spec.protected_native_model_ids.clone();
@@ -627,6 +627,9 @@ impl LocalControlAdapter {
                     AgentFacetIntent::Configure { settings } => Some(settings.clone()),
                     _ => return Err(ControlReadError::Corrupt),
                 };
+            }
+            if replace_managed && active_configuration.as_ref() != Some(&original.operation_id) {
+                continue;
             }
             let restore_ref = codex_model_restore_point_ref(&original.operation_id);
             restore_points.insert(restore_ref.clone(), AgentSettingsFacet::Model);
