@@ -92,10 +92,10 @@ classification.
 ## Verified release bookkeeping
 
 PR planning can prove two bounded changes from the actual merge base. A catalog
-append preserves prior release rows and short links. Any Windows policy append
-preserves the native case definitions and binds the new decision to the catalog's
-installer source and digest. The plan runs the current and released upgrade reader
-tests and package-policy regressions alongside the website workflow. The publisher
+append preserves prior release rows and short links. A documentation review in
+the append must match the new release tag. The plan runs the current and released
+upgrade reader tests and package-policy regressions alongside the website workflow.
+Changes to Windows acceptance policy use their own packaging checks. The publisher
 validates the actual installer and its native evidence.
 
 A release record preserves historical snapshots and passes the existing normalized

@@ -290,25 +290,26 @@ be bypassed by it. Retry the installer to recover an interrupted installation.
 ## Evidence and release claims
 
 The native acceptance policy and inventory are
-[`windows-desktop-cases.json`](../scripts/windows-desktop-cases.json). Windows 11
-x64 and Server selections require real standard-user execution, the candidate SHA,
-installer digest, OS/build and architecture. For 0.5.0, the maintainer explicitly
-accepted the existing Windows Server host for the Windows 11 desktop selection
-in [the release acceptance Issue](https://github.com/higress-group/HiRoute/issues/193).
-Execute the full selected desktop cases as a standard user and retain the actual
-Server OS/build in the evidence; this is an approved release scope, not an observed
-Windows 11 execution. Browser fixtures, Cargo checks and package construction do not establish
-installation, native authorization, upgrade recovery or a live model call.
+[`windows-desktop-cases.json`](../scripts/windows-desktop-cases.json). Run the exact
+candidate installer in a signed-in Windows Server x64 standard-user desktop
+session. Publication requires four passing cases on that installer:
 
-The [release builder](release-builds.md) keeps a Desktop installer separate from
-the headless archive. Publication normally requires every case in both native
-selections. A maintainer-directed release can record an explicit deferral in the
-same acceptance policy, bound to the full source revision, installer SHA-256 and
-public Issue decision. The sidecar then says `native_runtime: deferred` and keeps
-each named unexecuted case `not_assessed`; it must not claim complete acceptance.
-Both selections still require actual standard-user installation and console
-readiness. Missing decisions, different artifacts, undeclared omissions and failed
-cases are rejected. Remaining acceptance stays with the linked Issue.
+- Install with the ordinary current-user NSIS entry.
+- Open the native shell and reach the authenticated console and ready Gateway.
+- Use a saved Source, Plan and Agent profile for a real model request and verify its receipt.
+- Uninstall through the normal entry, restore the native Agent configuration and preserve user data.
+
+Record the full candidate SHA, installer SHA-256, actual Windows Server release and
+build, and AMD64 architecture in the installer sidecar. Report the OS with its
+build in the form `Windows-2025Server-10.0.26100-SP0`. The release candidate
+workflow still requires the separate hosted Windows 11 x64-artifact replay.
+Select native updater, interruption and recovery tests when a change affects
+those paths, using the [release acceptance scope](release-builds.md#hosted-build-and-publication).
+
+Recorded releases with a historical scope decision keep their original sidecars
+and exact verdicts. The publisher checks those decisions against the original
+version, source, installer SHA-256 and public Issue comment. A recorded
+`not_assessed` verdict remains part of that release's evidence.
 
 ## Scripted silent uninstall
 

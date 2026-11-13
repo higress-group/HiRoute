@@ -124,9 +124,9 @@ and bundles NSIS in `currentUser` mode without code signing. The output name is
 headless archive jobs. 7-Zip (`7z` or `7zz`) is required to extract and audit the
 actual embedded shell image for its SHA-256, architecture and CRT imports. The
 read-only `package-windows-shell.py image --installer INSTALLER.exe` entry repeats
-that measurement for an existing immutable artifact. Its identity sidecar remains `awaiting_runtime` until the
-required Windows 11 x64 and Server standard-user selections pass for that exact
-installer. See the [native acceptance boundaries](windows-desktop-installation.md#evidence-and-release-claims).
+that measurement for an existing immutable artifact. Complete its identity
+sidecar after the required Windows Server x64 standard-user cases pass on that
+exact installer. See the [native acceptance boundaries](windows-desktop-installation.md#evidence-and-release-claims).
 
 The single source `apps/website/data/releases.json` uses V3. Website preparation
 emits `releases-v3.json` for the Windows shell and a V2 `releases.json` projection
@@ -445,12 +445,10 @@ private local storage. Shut down the test guest after the smoke.
    recorded release uses its exact immutable snapshot when the candidate artifacts
    have expired. A changed source, channel or asset identity requires qualification
    for the new candidate.
-   Windows Desktop also attaches its `INSTALLER.exe.identity.json`; publication
-   verifies the installer digest, source revision and native case evidence. Complete
-   acceptance is the default. An explicit maintainer-directed deferral must match
-   the exact version/source/installer in the existing Windows acceptance policy,
-   retain `not_assessed` verdicts, and still prove standard-user installation and
-   console readiness for both selections. A mismatched or undeclared omission fails.
+   Attach the Windows Desktop `INSTALLER.exe.identity.json`. The publisher verifies
+   the exact installer digest, source revision, and passing Windows Server x64
+   standard-user cases. Publication replay of a historically deferred installer
+   verifies the original artifact-bound decision and its recorded verdicts.
 
 The build workflow only stores Actions artifacts. It does not publish a GitHub
 Release, alter the stable catalog, or replace any immutable distribution object.

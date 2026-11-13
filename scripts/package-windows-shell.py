@@ -14,6 +14,7 @@ import tempfile
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = "hiroute.windows-desktop-package/v1"
+WINDOWS_SERVER_OS = re.compile(r"Windows-[0-9]+Server-[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.]+)?")
 
 
 def module(name):
@@ -111,10 +112,13 @@ def shell_image(installer, run=None):
         return image
 
 
-def native_deferral(identity, policy):
-    required = policy["platforms"]
-    decisions = [entry for entry in policy["release_decisions"] if all(
+def recorded_native_decisions(identity, policy):
+    return [entry for entry in policy["release_decisions"] if all(
         entry.get(key) == identity.get(key) for key in ("version", "revision", "installer_sha256"))]
+
+
+def native_deferral(identity, policy, decisions):
+    required = policy["historical_platforms"]
     if (identity.get("native_runtime") != "deferred" or len(decisions) != 1
             or identity.get("acceptance_decision") != decisions[0].get("decision_url")
             or not re.fullmatch(r"https://github\.com/higress-group/HiRoute/issues/[1-9][0-9]*#issuecomment-[1-9][0-9]*",
@@ -136,21 +140,28 @@ def verify_native_acceptance(identity, policy=None):
     if policy.get("schema") != "hiroute.windows-desktop-acceptance/v1":
         raise ValueError("unknown Windows native acceptance policy")
     required = policy["platforms"]
+    deferred = {platform: [] for platform in required}
+    decisions = recorded_native_decisions(identity, policy)
+    if identity.get("native_runtime") == "deferred" or decisions:
+        deferred = native_deferral(identity, policy, decisions)
+        required = policy["historical_platforms"]
+    elif identity.get("native_runtime") != "green" or "acceptance_decision" in identity:
+        raise ValueError("Windows Desktop requires completed native acceptance on Windows Server x64")
     evidence = identity.get("native_evidence", {})
     runs = evidence.get("runs", []) if isinstance(evidence, dict) else []
-    if (not isinstance(runs, list) or len(runs) != len(required) or any(not isinstance(run, dict) for run in runs)
+    if (not isinstance(runs, list) or len(runs) != len(required)
+            or any(not isinstance(run, dict) or not isinstance(run.get("platform"), str) for run in runs)
             or {run.get("platform") for run in runs} != set(required)):
-        raise ValueError("native evidence must cover Windows 11 x64 and the Server selection")
-    deferred = {platform: [] for platform in required}
-    if identity.get("native_runtime") != "green":
-        deferred = native_deferral(identity, policy)
+        raise ValueError("Windows Desktop native selections are incomplete")
     for native in runs:
         scenarios = native.get("scenarios", {})
         platform = native["platform"]
         if (native.get("revision") != identity["revision"]
                 or native.get("installer_sha256") != identity["installer_sha256"]
                 or native.get("standard_user") is not True or native.get("architecture") != "AMD64"
-                or not native.get("os_version") or not isinstance(scenarios, dict)
+                or not isinstance(native.get("os_version"), str) or not native["os_version"]
+                or (identity["native_runtime"] == "green" and not WINDOWS_SERVER_OS.fullmatch(native["os_version"]))
+                or not isinstance(scenarios, dict)
                 or set(scenarios) != set(required[platform])
                 or any(scenarios[case] != ("not_assessed" if case in deferred[platform] else "green")
                        for case in required[platform])):

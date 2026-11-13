@@ -25,41 +25,42 @@ const release = {
 };
 const manifest = { schema: 'hiroute.website.releases/v2', releases: [release] };
 
-function nativeAcceptanceFixture() {
-  // Validator fixtures only; these fabricated receipts never establish installation evidence.
-  const policy = JSON.parse(fs.readFileSync(new URL('../../../scripts/windows-desktop-cases.json', import.meta.url)));
-  policy.release_decisions = [];
-  const identity = { version: '1.2.3', revision, installer_sha256: 'c'.repeat(64), native_runtime: 'green',
-    native_evidence: { runs: Object.entries(policy.platforms).map(([platform, cases]) => ({ platform, revision,
-      installer_sha256: 'c'.repeat(64), standard_user: true, architecture: 'AMD64', os_version: 'fixture-only',
-      scenarios: Object.fromEntries(cases.map(id => [id, 'green'])) })) } };
-  const decision = { version: identity.version, revision, installer_sha256: identity.installer_sha256,
-    decision_url: 'https://github.com/higress-group/HiRoute/issues/193#issuecomment-123',
-    deferred_cases: Object.fromEntries(Object.entries(policy.platforms).map(([platform, cases]) => [platform,
-      cases.filter(id => !['install.standard-user', 'install.console-ready'].includes(id))])) };
-  return { policy, identity, decision };
-}
-
-test('Windows acceptance defaults to complete, exact-artifact native evidence', () => {
-  const { policy, identity } = nativeAcceptanceFixture();
-  assert.equal(verifyWindowsNativeAcceptance(identity, policy), identity);
-  identity.native_evidence.runs[0].scenarios['update.killed-resume'] = 'not_assessed';
-  assert.throws(() => verifyWindowsNativeAcceptance(identity, policy), /incomplete/);
+test('new Windows installers require complete standard-user Server evidence on the exact artifact', () => {
+  const binding = { version: '1.2.3', revision, installer_sha256: 'c'.repeat(64) };
+  const run = { ...binding, platform: 'server', standard_user: true, architecture: 'AMD64',
+    os_version: 'Windows-2025Server-10.0.26100-SP0',
+    scenarios: { 'install.standard-user': 'green', 'install.console-ready': 'green',
+      'console.source-plan-agent': 'green', 'uninstall.restore-agent': 'green' } };
+  const identity = { ...binding, native_runtime: 'green', native_evidence: { runs: [run] } };
+  assert.equal(verifyWindowsNativeAcceptance(identity), identity);
+  for (const override of [
+    { installer_sha256: 'd'.repeat(64) }, { revision: 'd'.repeat(40) }, { standard_user: false },
+    { architecture: 'ARM64' }, { os_version: 'Windows-11-10.0.26100-SP0' },
+    { scenarios: { ...run.scenarios, 'uninstall.restore-agent': 'not_assessed' } },
+    { scenarios: { ...run.scenarios, 'uninstall.restore-agent': undefined } },
+  ]) {
+    assert.throws(() => verifyWindowsNativeAcceptance({ ...identity, native_evidence: { runs: [{ ...run, ...override }] } }), /incomplete/);
+  }
+  assert.throws(() => verifyWindowsNativeAcceptance({ ...identity, native_evidence: { runs: [run, { ...run, platform: 'windows11' }] } }), /incomplete/);
   identity.native_runtime = 'deferred';
-  assert.throws(() => verifyWindowsNativeAcceptance(identity, policy), /exact committed release decision/);
+  assert.throws(() => verifyWindowsNativeAcceptance(identity), /exact committed release decision/);
 });
 
-test('an exact committed release decision preserves deferred verdicts without passing them', () => {
-  const { policy, identity, decision } = nativeAcceptanceFixture();
-  policy.release_decisions.push(decision);
-  identity.native_runtime = 'deferred'; identity.acceptance_decision = decision.decision_url;
-  for (const run of identity.native_evidence.runs) {
-    for (const id of decision.deferred_cases[run.platform]) run.scenarios[id] = 'not_assessed';
-  }
+test('historical Windows identities retain the exact recorded selection and verdicts', () => {
+  const policy = JSON.parse(fs.readFileSync(new URL('../../../scripts/windows-desktop-cases.json', import.meta.url)));
+  const decision = policy.release_decisions.find(item => item.version === '0.6.0');
+  const { version, revision, installer_sha256 } = decision;
+  const binding = { version, revision, installer_sha256 };
+  const runs = Object.entries(policy.historical_platforms).map(([platform, cases]) => ({
+    ...binding, platform, standard_user: true, architecture: 'AMD64', os_version: 'Windows-2025Server-10.0.26100-SP0',
+    scenarios: Object.fromEntries(cases.map(id => [id, decision.deferred_cases[platform].includes(id) ? 'not_assessed' : 'green'])),
+  }));
+  const identity = { ...binding, native_runtime: 'deferred', acceptance_decision: decision.decision_url,
+    native_evidence: { runs } };
   assert.equal(verifyWindowsNativeAcceptance(identity, policy), identity);
   for (const mutate of [
     value => { value.revision = 'b'.repeat(40); },
-    value => { value.version = '1.2.4'; },
+    value => { value.version = '0.6.1'; },
     value => { value.installer_sha256 = 'd'.repeat(64); },
     value => { value.acceptance_decision += '0'; },
     value => { value.native_evidence.runs[0].standard_user = false; },
@@ -71,6 +72,8 @@ test('an exact committed release decision preserves deferred verdicts without pa
     const altered = structuredClone(identity); mutate(altered);
     assert.throws(() => verifyWindowsNativeAcceptance(altered, policy));
   }
+  assert.throws(() => verifyWindowsNativeAcceptance({ ...binding, native_runtime: 'green', native_evidence: { runs: runs.slice(1) } }, policy),
+    /exact committed release decision/);
   decision.deferred_cases.windows11.push('install.console-ready');
   identity.native_evidence.runs[0].scenarios['install.console-ready'] = 'not_assessed';
   assert.throws(() => verifyWindowsNativeAcceptance(identity, policy), /cannot omit actual standard-user/);

@@ -2,14 +2,13 @@
 import importlib.util
 import json
 from pathlib import Path
-import re
 import subprocess
 import sys
 
 
 CATALOG = "apps/website/data/releases.json"
 SHORT_DOWNLOADS = "apps/website/data/short-downloads.json"
-WINDOWS_POLICY = "scripts/windows-desktop-cases.json"
+RELEASE_REVIEWS = "apps/website/docs/release-reviews/"
 LEDGER = "contracts/releases/"
 INDEX = LEDGER + "index.v1.json"
 
@@ -31,9 +30,10 @@ def added_row(before, after):
 
 
 def catalog_scope(paths, base_json, current_json, versions):
-    allowed = {CATALOG, SHORT_DOWNLOADS, WINDOWS_POLICY, "README.md", "README.zh-CN.md"}
+    allowed = {CATALOG, SHORT_DOWNLOADS, "README.md", "README.zh-CN.md"}
     if any(path not in allowed and not (path.startswith("apps/website/content/guides/")
-                                       and path.endswith(".md")) for path in paths):
+                                       and path.endswith(".md"))
+           and not path.startswith(RELEASE_REVIEWS) for path in paths):
         return False
     before, after = base_json(CATALOG), current_json(CATALOG)
     if (set(before) != {"schema", "releases"} or set(after) != set(before)
@@ -42,35 +42,13 @@ def catalog_scope(paths, base_json, current_json, versions):
     release = added_row(before["releases"], after["releases"])
     version = release["version"]
     versions.parse_version(version)
+    reviews = [path for path in paths if path.startswith(RELEASE_REVIEWS)]
+    if reviews and reviews != [f"{RELEASE_REVIEWS}v{version}.json"]:
+        return False
     if any(row["version"] == version for row in before["releases"]):
         return False
     if SHORT_DOWNLOADS in paths and added_row(base_json(SHORT_DOWNLOADS), current_json(SHORT_DOWNLOADS)) != version:
         return False
-    if WINDOWS_POLICY not in paths:
-        return True
-    old_policy, policy = base_json(WINDOWS_POLICY), current_json(WINDOWS_POLICY)
-    if ({key: value for key, value in policy.items() if key != "release_decisions"}
-            != {key: value for key, value in old_policy.items() if key != "release_decisions"}
-            or policy["schema"] != "hiroute.windows-desktop-acceptance/v1"):
-        return False
-    decision = added_row(old_policy["release_decisions"], policy["release_decisions"])
-    if set(decision) != {"version", "revision", "installer_sha256", "decision_url", "deferred_cases"}:
-        return False
-    revision, digest = decision["revision"], decision["installer_sha256"]
-    if (decision["version"] != version or not re.fullmatch(r"[0-9a-f]{40}", revision)
-            or not re.fullmatch(r"[0-9a-f]{64}", digest)):
-        return False
-    installers = [item for item in release["artifacts"] if item["platform"] == "Windows"]
-    if len(installers) != 1 or any(installers[0].get(key) != value for key, value in {
-        "filename": f"HiRoute-{version}-{revision[:12]}-windows-x86_64-setup.exe",
-        "kind": "desktop", "format": "nsis", "architecture": "x86_64", "sha256": digest,
-    }.items()):
-        return False
-    load("release-contracts").catalog_assets(release, revision)
-    # Validate the decision shape and mandatory cases without inventing native runs.
-    # Publication still verifies real evidence on the exact installer bytes.
-    load("package-windows-shell").native_deferral(
-        {**decision, "native_runtime": "deferred", "acceptance_decision": decision["decision_url"]}, policy)
     return True
 
 
@@ -84,6 +62,7 @@ def classify(root, base, paths):
             return None
         versions = load("product-version")
         ancestor = subprocess.check_output(["git", "merge-base", "HEAD", base], cwd=root, text=True).strip()
+
         if CATALOG in paths:
             def base_json(path):
                 return json.loads(subprocess.check_output(["git", "show", f"{ancestor}:{path}"], cwd=root))

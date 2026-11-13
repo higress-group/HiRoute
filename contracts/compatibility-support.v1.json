@@ -1624,6 +1624,18 @@
   ],
   "field_compatibility_support": [
     {
+      "contract": "hiroute.windows-desktop-package/v1",
+      "field": "historical native_runtime deferral and dual-selection evidence",
+      "mode": "legacy_adapter",
+      "owner": "release-publication",
+      "reason": "Previously published Windows installers retain their original deferred verdicts for publication replay. Validate the recorded version, full source revision, installer digest, decision URL and both historical selections. New installer identities require a complete standard-user Windows Server x64 result.",
+      "removal_condition": "Retire only when publication replay of all installers with recorded native scope decisions is retired.",
+      "allowed_paths": [
+        "apps/website/src/lib/releases.mjs",
+        "scripts/package-windows-shell.py"
+      ]
+    },
+    {
       "contract": "hiroute.release-qualification/v1",
       "field": "qualification artifact absent for a recorded Windows release",
       "mode": "legacy_adapter",

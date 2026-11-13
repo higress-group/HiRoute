@@ -1045,22 +1045,22 @@ class RevisionPlans(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout)
 
-    def test_catalog_decision_only_narrows_matching_installer_bookkeeping(self):
+    def test_catalog_bookkeeping_accepts_matching_documentation_review_and_excludes_policy_changes(self):
         root = self.script.parent.parent
         policy_path = 'scripts/windows-desktop-cases.json'
         catalog_path = 'apps/website/data/releases.json'
         policy = json.loads((root / policy_path).read_text())
-        decision = policy['release_decisions'].pop()
         catalog = json.loads((root / catalog_path).read_text())
-        release = next(row for row in catalog['releases'] if row['version'] == decision['version'])
-        catalog['releases'].remove(release)
+        release = catalog['releases'].pop(0)
+        review = f"apps/website/docs/release-reviews/v{release['version']}.json"
+        other_review = 'apps/website/docs/release-reviews/v1.2.3.json'
         self.write(policy_path, json.dumps(policy))
         self.write(catalog_path, json.dumps(catalog))
-        base = self.commit('published catalog and native case definitions')
-        policy['release_decisions'].append(decision)
+        self.write(other_review, '{}')
+        base = self.commit('published catalog and earlier documentation review')
         catalog['releases'].insert(0, release)
-        self.write(policy_path, json.dumps(policy))
         self.write(catalog_path, json.dumps(catalog))
+        self.write(review, '{}')
         selected = self.release_plan(base)
         self.assertEqual(selected['bookkeeping'], 'catalog')
         self.assertFalse(selected['windows_compile'])
@@ -1070,20 +1070,15 @@ class RevisionPlans(unittest.TestCase):
         self.assertIn(['cargo', 'test', '--locked', '-p', 'hiroute-host-runtime', '--all-features',
                        '--test', 'release_catalog_compatibility'], selected['commands'])
         self.assertIn(['python3', 'scripts/test-build-release.py'], selected['commands'])
-        for change in ('different installer', 'mandatory case deferred', 'native case definition'):
-            with self.subTest(change=change):
-                altered = deepcopy(policy)
-                if change == 'different installer':
-                    altered['release_decisions'][-1]['installer_sha256'] = '0' * 64
-                elif change == 'mandatory case deferred':
-                    altered['release_decisions'][-1]['deferred_cases']['server'].append('install.console-ready')
-                else:
-                    altered['platforms']['server'].append('new.native.requirement')
-                self.write(policy_path, json.dumps(altered))
-                selected = self.release_plan(base)
-                self.assertIsNone(selected['bookkeeping'])
-                self.assertTrue(selected['windows_compile'])
-                self.assertEqual(selected['mode'], 'full')
+        self.write(other_review, '{"changed": true}')
+        self.assertIsNone(self.release_plan(base)['bookkeeping'])
+        self.write(other_review, '{}')
+        altered = deepcopy(policy)
+        altered['platforms']['server'].append('new.native.requirement')
+        self.write(policy_path, json.dumps(altered))
+        selected = self.release_plan(base)
+        self.assertIsNone(selected['bookkeeping'])
+        self.assertTrue(selected['windows_compile'])
 
     def test_release_record_proves_version_fields_and_keeps_wire_consumers(self):
         def load(name):

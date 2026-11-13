@@ -1,6 +1,14 @@
 {
   "schema": "hiroute.windows-desktop-acceptance/v1",
   "platforms": {
+    "server": [
+      "install.standard-user",
+      "install.console-ready",
+      "console.source-plan-agent",
+      "uninstall.restore-agent"
+    ]
+  },
+  "historical_platforms": {
     "windows11": [
       "install.standard-user",
       "install.console-ready",
