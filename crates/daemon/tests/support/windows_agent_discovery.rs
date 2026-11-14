@@ -51,7 +51,7 @@ fn actual_windows_dsh_scan_accepts_a_standalone_shim_and_skips_invalid_path_cand
     // Keep the pinned client's dependencies in place. The detached launcher
     // selects an entry in a separate package tree and forwards to that CLI.
     let delegate_module = format!(
-        "import {{ pathToFileURL }} from 'node:url';\nprocess.argv[1] = {};\nawait import(pathToFileURL(process.argv[1]).href);\n",
+        "import {{ pathToFileURL }} from 'node:url';\nprocess.argv[1] = {};\nconst {{ runCli }} = await import(pathToFileURL(process.argv[1]).href);\nawait runCli();\n",
         serde_json::to_string(&entry).unwrap()
     );
     fs::write(&test_entry, &delegate_module).unwrap();
