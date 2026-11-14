@@ -97,8 +97,8 @@ fn positioned_declarations_skip_standard_candidate_and_reach_native_in_order() {
         2,
     );
     select_standard_responses(&fixture);
-    let namespace = json!({"type":"namespace","name":"records","description":null,"tools":[{
-        "type":"function","name":"lookup","description":null,"strict":null,
+    let namespace = json!({"type":"namespace","name":"records","description":"Record tools","tools":[{
+        "type":"function","name":"lookup","description":"Find a record","strict":false,
         "parameters":{"type":"object","properties":{"query":{
             "type":"string","enum":["existing","archived"],"default":"existing"
         }},"required":["query"]}
@@ -122,7 +122,12 @@ fn positioned_declarations_skip_standard_candidate_and_reach_native_in_order() {
     );
 
     let response = send(&fixture, &body);
-    assert_eq!(response.status, 200);
+    assert_eq!(
+        response.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&response.body)
+    );
     assert_eq!((standard.calls(), native.calls()), (0, 1));
     let wire = classifier_body(&native, 0);
     assert_eq!(wire["input"], body["input"]);
