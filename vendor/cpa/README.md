@@ -60,12 +60,14 @@ metadata `hiroute_client_version`, populated by HiRoute's bounded native engine
 suffixes are removed, matching Codex's models-manager. Missing native version
 evidence still fails closed.
 
-For independent OAuth credentials containing their own refresh token, discovery
-extracts the version from CPA's upstream `codexUserAgent` constant. This is the
-same client identity the pinned executor sends, rather than a second version
-number maintained by HiRoute. It works on initial OAuth registration before any
-HiRoute account-controls PATCH, and requires no native Codex installation or
-login. Neither mode reads a local models cache or substitutes bundled membership.
+For independent OAuth credentials containing their own refresh token, the managed
+artifact sends `codexManagedModelDiscoveryVersion` as the directory request's
+`client_version`. The pin follows a qualified stable Codex CLI release and works
+on initial OAuth registration before any account-controls PATCH, including on
+machines without a Codex installation. When updating the pin, compare the
+managed and native directory model IDs for the same account using the selected
+stable CLI. Discovery retains CPA's normal request headers and both modes take
+membership from the account directory.
 
 Remote membership replaces the bundled membership for access-token accounts.
 Existing bundled metadata can enrich matching IDs. Registration still applies
@@ -171,7 +173,7 @@ is not part of this contract; configure HTTPS_PROXY for subscription endpoints.
 ## Current macOS development artifacts
 
 The checked-in `development-cpa-artifacts.v1.json` identifies a historical
-`.1` binary; its hash is retained as measured, not relabeled as the current
+binary; its hash is retained as measured, not relabeled as the current
 pinned build. Do not stage that old binary with the current daemon.
 
 On macOS, `python3 scripts/package-desktop.py build --cpa-source-repo /absolute/CPA-checkout`
