@@ -74,6 +74,13 @@ engine's bounded version result and pass its major.minor.patch as
 `hiroute_client_version`; Desktop's located engine and CLI's resolved executable
 must not be replaced with another installation or an assumed latest version.
 
+For independent OAuth, the managed CPA artifact MUST supply a Codex CLI version
+qualified against the current account directory. New and existing independent
+sign-ins MUST be able to discover and check the account's current model directory
+without a native Codex installation or login. Qualify version updates by comparing
+the model IDs returned for the same account through managed and native discovery
+using the selected stable Codex CLI.
+
 Registration/update, not ordinary inference, owns this lookup. Refresh has an
 independent bounded 20-second control budget covering remote discovery and readback.
 Missing version, timeout, or invalid directory cannot manufacture remote results:

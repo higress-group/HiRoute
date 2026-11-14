@@ -53,7 +53,7 @@ pub(super) fn observe_persisted_controls(
 pub(super) fn validate_management_response(
     response: &crate::http::LoopbackResponse,
     expected_version: &str,
-) -> Result<(), AccountDiscoveryError> {
+) -> Result<Value, AccountDiscoveryError> {
     if response.status != 200 {
         return Err(AccountDiscoveryError::ManagementAuthentication);
     }
@@ -73,7 +73,8 @@ pub(super) fn validate_management_response(
     }
     let value: Value =
         serde_json::from_slice(&response.body).map_err(AccountDiscoveryError::Json)?;
-    reject_secret_material(&value)
+    reject_secret_material(&value)?;
+    Ok(value)
 }
 
 pub(super) fn reject_secret_material(value: &Value) -> Result<(), AccountDiscoveryError> {

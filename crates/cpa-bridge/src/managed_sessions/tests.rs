@@ -26,13 +26,18 @@ struct Fixture {
 impl Fixture {
     fn new() -> Self {
         let root = tempfile::tempdir().unwrap();
+        let templates = Self::templates(root.path());
+        Self { root, templates }
+    }
+
+    fn templates(root: &Path) -> Vec<Arc<ManagedCpaRuntime>> {
         let source = include_str!("cpa_oauth_fixture.py")
             .replace("__HIR_CPA_VERSION__", MANAGED_CPA_ARTIFACT_VERSION);
-        let binary = root.path().join("cpa-fixture");
+        let binary = root.join("cpa-fixture");
         fs::write(&binary, source.as_bytes()).unwrap();
         fs::set_permissions(&binary, fs::Permissions::from_mode(0o700)).unwrap();
         let locator = Arc::new(PinnedCpaBinaryLocator::new(PinnedCpaArtifact::new(
-            root.path(),
+            root,
             "cpa-fixture",
             MANAGED_CPA_ARTIFACT_VERSION.parse().unwrap(),
             format!("{:x}", Sha256::digest(source.as_bytes())),
@@ -50,7 +55,7 @@ impl Fixture {
             )
             .unwrap(),
         );
-        let templates = [CpaAccountKind::Codex, CpaAccountKind::Claude]
+        [CpaAccountKind::Codex, CpaAccountKind::Claude]
             .into_iter()
             .map(|kind| {
                 let provider = kind.stock_provider();
@@ -58,8 +63,8 @@ impl Fixture {
                     ManagedCpaRuntime::new(
                         CpaRuntimeSpec {
                             instance_id: format!("template-{provider}"),
-                            state_root: root.path().join("cpa/state"),
-                            auth_dir: root.path().join(format!("cpa/template-{provider}-auth")),
+                            state_root: root.join("cpa/state"),
+                            auth_dir: root.join(format!("cpa/template-{provider}-auth")),
                             borrowed_codex_auth: None,
                             borrowed_claude_auth: None,
                             managed_oauth: Some(kind),
@@ -80,8 +85,7 @@ impl Fixture {
                     .unwrap(),
                 )
             })
-            .collect();
-        Self { root, templates }
+            .collect()
     }
 
     fn registry(&self) -> ManagedLoginRegistry {

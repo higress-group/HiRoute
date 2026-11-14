@@ -177,6 +177,18 @@ pub(crate) trait CpaControlPlane: Send + Sync {
         timeout: Duration,
     ) -> Result<(), AccountDiscoveryError>;
 
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn probe_predecessor(
+        &self,
+        _address: SocketAddr,
+        _secrets: &InstanceSecrets,
+        _version: &str,
+        _pid: u32,
+        _timeout: Duration,
+    ) -> Result<(), AccountDiscoveryError> {
+        Err(AccountDiscoveryError::RunningProcessMismatch)
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn discover_and_pin(
         &self,
@@ -227,6 +239,9 @@ pub(crate) enum AccountDiscoveryError {
     MissingVersionHeader,
     #[error("running CPA version differs from the trusted artifact")]
     RunningVersionMismatch,
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[error("the authenticated CPA endpoint belongs to a different process")]
+    RunningProcessMismatch,
     #[error("CPA auth directory could not be enumerated: {0}")]
     AuthDirectory(std::io::Error),
     #[error("CPA returned too many accounts")]
