@@ -383,10 +383,10 @@ pub(super) fn decode_responses_tools(
         order: Vec::new(),
     };
     if let Some(value) = value {
-        merge_responses_tools(context, value, &mut decoded)?;
+        decode_tool_declarations(context, value, &mut decoded)?;
     }
     for value in additional {
-        merge_responses_tools(context, value, &mut decoded)?;
+        decode_tool_declarations(context, value, &mut decoded)?;
     }
     // Flat tools already retain their native order in `tools`. Keep the
     // Responses-only order ledger only when it is needed to interleave a
@@ -397,7 +397,7 @@ pub(super) fn decode_responses_tools(
     Ok(decoded)
 }
 
-fn merge_responses_tools(
+fn decode_tool_declarations(
     context: &DecodeContext,
     value: &Value,
     decoded: &mut DecodedResponsesTools,
@@ -412,18 +412,6 @@ fn merge_responses_tools(
         match required_string(object, "type")?.as_str() {
             "function" | "custom" => {
                 let tool = decode_responses_tool(context, object)?;
-                if let Some(existing) = decoded
-                    .tools
-                    .iter()
-                    .find(|existing| existing.name == tool.name)
-                {
-                    if existing == &tool {
-                        continue;
-                    }
-                    return Err(ModelIrError::InvalidField(
-                        "conflicting flat tool declaration",
-                    ));
-                }
                 let index = u32::try_from(decoded.tools.len())
                     .map_err(|_| ModelIrError::InvalidField("tools"))?;
                 decoded.tools.push(tool);
@@ -443,44 +431,22 @@ fn merge_responses_tools(
                     .and_then(Value::as_array)
                     .filter(|children| !children.is_empty())
                     .ok_or(ModelIrError::InvalidField("namespace tools"))?;
-                let mut tools = Vec::with_capacity(children.len());
-                for child in children {
-                    let tool = decode_responses_tool(
-                        context,
-                        child
-                            .as_object()
-                            .ok_or(ModelIrError::InvalidField("namespace tools[]"))?,
-                    )?;
-                    if let Some(existing) = tools
-                        .iter()
-                        .find(|existing: &&CanonicalTool| existing.name == tool.name)
-                    {
-                        if existing == &tool {
-                            continue;
-                        }
-                        return Err(ModelIrError::InvalidField(
-                            "conflicting namespace tool declaration",
-                        ));
-                    }
-                    tools.push(tool);
-                }
+                let tools = children
+                    .iter()
+                    .map(|child| {
+                        decode_responses_tool(
+                            context,
+                            child
+                                .as_object()
+                                .ok_or(ModelIrError::InvalidField("namespace tools[]"))?,
+                        )
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
                 let namespace = CanonicalToolNamespaceV1 {
                     name: required_string(object, "name")?,
                     description: optional_string(object, "description")?,
                     tools,
                 };
-                if let Some(existing) = decoded
-                    .namespaces
-                    .iter()
-                    .find(|existing| existing.name == namespace.name)
-                {
-                    if existing == &namespace {
-                        continue;
-                    }
-                    return Err(ModelIrError::InvalidField(
-                        "conflicting namespace declaration",
-                    ));
-                }
                 let index = u32::try_from(decoded.namespaces.len())
                     .map_err(|_| ModelIrError::InvalidField("tools"))?;
                 decoded.namespaces.push(namespace);
@@ -491,11 +457,11 @@ fn merge_responses_tools(
             "web_search" => {
                 let search = serde_json::from_value(value.clone())
                     .map_err(|_| ModelIrError::InvalidField("web_search"))?;
-                if let Some(existing) = &decoded.web_search {
-                    if existing == &search {
-                        continue;
-                    }
-                    return Err(ModelIrError::InvalidField("conflicting web_search"));
+                if decoded.web_search.is_some() {
+                    // The typed field supplies hosted-tool admission. Only the
+                    // native body describes every declaration's controls.
+                    context.mark_modeled_native_only();
+                    continue;
                 }
                 decoded.web_search = Some(search);
                 decoded.order.push(ResponsesToolOrderEntryV1::WebSearch);

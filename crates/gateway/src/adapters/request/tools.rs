@@ -1,10 +1,14 @@
+use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
+
 use hiroute_diagnostics::event::RequestProjectionReason;
 use serde_json::{Map, Value, json};
 
-use crate::content_ref::JsonValueExt;
+use crate::content_ref::tool_json_for_wire;
+use crate::replay::ReplayStore;
 use crate::server::core_runtime::model_ir::{
-    CanonicalTool, CanonicalToolNamespaceV1, ModelRequestIRV1, ResponsesToolOrderEntryV1,
-    ToolChoice, ToolKindV1,
+    CanonicalTool, CanonicalToolNamespaceV1, ModelIrError, ModelRequestIRV1,
+    ResponsesToolOrderEntryV1, ToolChoice, ToolKindV1,
 };
 use crate::server::request_plan::IngressProtocol;
 
@@ -60,19 +64,28 @@ pub(super) fn project_additional_responses_tools(
     if prefix == 0 {
         return Ok(());
     }
-    let declares_tools = input[..prefix].iter().any(|item| {
-        item.get("tools")
-            .and_then(Value::as_array)
-            .is_some_and(|tools| !tools.is_empty())
-    });
-    input.drain(..prefix);
-    if !declares_tools {
+    let mut declarations = Vec::new();
+    for item in input.drain(..prefix) {
+        let Value::Object(mut envelope) = item else {
+            return Err(ModelIrError::InvalidField("additional_tools").into());
+        };
+        let Some(Value::Array(tools)) = envelope.remove("tools") else {
+            return Err(ModelIrError::InvalidField("additional_tools.tools").into());
+        };
+        declarations.extend(tools);
+    }
+    if declarations.is_empty() {
         return Ok(());
     }
-    // The ingress merge already checked identity collisions and retained tool
-    // order. Move only the declaration carrier before dialect-specific schema
-    // projection sees the top-level tools.
-    body["tools"] = Value::Array(render_responses_tools_in_order(request)?);
+    // Move the original values with their Replay representation intact. The
+    // upstream owns duplicate declarations when tool identities stay the same.
+    body.as_object_mut()
+        .ok_or(ModelIrError::ExpectedObject)?
+        .entry("tools")
+        .or_insert_with(|| Value::Array(Vec::new()))
+        .as_array_mut()
+        .ok_or(ModelIrError::InvalidField("tools"))?
+        .append(&mut declarations);
     Ok(())
 }
 
@@ -105,7 +118,20 @@ pub(super) fn insert_chat_tools(
 pub(super) fn insert_messages_tools(
     body: &mut Map<String, Value>,
     request: &ModelRequestIRV1,
+    replay: Option<&ReplayStore>,
 ) -> Result<(), ProtocolAdapterError> {
+    let from_responses = request.ingress_protocol == IngressProtocol::Responses;
+    if from_responses
+        && let ToolChoice::RequiredNamed { tool_kind, name } = &request.tool_choice
+        && !request
+            .tools
+            .iter()
+            .any(|tool| tool.kind == *tool_kind && tool.name == *name)
+    {
+        return Err(ProtocolAdapterError::ToolInterfaceUnrepresentable(
+            "named Messages tool choice has no declaration".into(),
+        ));
+    }
     if request.tools.is_empty() {
         return Ok(());
     }
@@ -123,16 +149,28 @@ pub(super) fn insert_messages_tools(
             "Messages cannot express Responses custom tools".into(),
         ));
     }
-    body.insert(
-        "tools".into(),
-        Value::Array(
-            request
-                .tools
-                .iter()
-                .map(render_messages_tool)
-                .collect::<Result<Vec<_>, _>>()?,
-        ),
-    );
+    let mut definitions = BTreeMap::new();
+    let mut tools = Vec::with_capacity(request.tools.len());
+    for tool in &request.tools {
+        if from_responses {
+            match definitions.entry(tool.name.as_str()) {
+                Entry::Vacant(slot) => {
+                    slot.insert(tool);
+                }
+                Entry::Occupied(slot) => {
+                    if super::super::tool_projection::same_tool_definition(slot.get(), tool, replay)
+                    {
+                        continue;
+                    }
+                    return Err(ProtocolAdapterError::ToolInterfaceUnrepresentable(
+                        "Responses declarations collide on a Messages tool name".into(),
+                    ));
+                }
+            }
+        }
+        tools.push(render_messages_tool(tool)?);
+    }
+    body.insert("tools".into(), Value::Array(tools));
     body.insert(
         "tool_choice".into(),
         render_messages_tool_choice(&request.tool_choice, request.parallel_tool_calls),
@@ -200,7 +238,7 @@ fn render_responses_tool(tool: &CanonicalTool) -> Result<Value, ProtocolAdapterE
                     "function tool requires an input schema".into(),
                 )
             })?;
-            object.insert("parameters".into(), render_responses_tool_json(schema));
+            object.insert("parameters".into(), tool_json_for_wire(schema));
             if let Some(strict) = tool.strict {
                 object.insert("strict".into(), Value::Bool(strict));
             }
@@ -212,19 +250,11 @@ fn render_responses_tool(tool: &CanonicalTool) -> Result<Value, ProtocolAdapterE
                 ));
             }
             if let Some(format) = &tool.format {
-                object.insert("format".into(), render_responses_tool_json(format));
+                object.insert("format".into(), tool_json_for_wire(format));
             }
         }
     }
     Ok(Value::Object(object))
-}
-
-fn render_responses_tool_json(value: &Value) -> Value {
-    // Keep objects for raw JSON references until the template collector can
-    // distinguish them from string references (for example, a backed enum array).
-    let mut value = value.clone();
-    crate::content_ref::preserve_unbacked_wire_envelopes(&mut value);
-    value
 }
 
 fn render_responses_namespace(
@@ -364,17 +394,12 @@ fn render_messages_tool(tool: &CanonicalTool) -> Result<Value, ProtocolAdapterEr
         "name".into(),
         crate::content_ref::literal_wire_value(&tool.name),
     );
-    object.insert(
-        "input_schema".into(),
-        tool.input_schema
-            .as_ref()
-            .ok_or_else(|| {
-                ProtocolAdapterError::ClientUnrepresentable(
-                    "Messages function tool requires an input schema".into(),
-                )
-            })?
-            .wire_value(),
-    );
+    let schema = tool.input_schema.as_ref().ok_or_else(|| {
+        ProtocolAdapterError::ClientUnrepresentable(
+            "Messages function tool requires an input schema".into(),
+        )
+    })?;
+    object.insert("input_schema".into(), tool_json_for_wire(schema));
     if let Some(description) = &tool.description {
         object.insert("description".into(), Value::String(description.clone()));
     }

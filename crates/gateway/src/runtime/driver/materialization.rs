@@ -281,6 +281,7 @@ pub(super) async fn materialize_attempt(
                 profile,
                 cleanup_prefix,
                 reasoning_replay,
+                Some(&logical.replay),
             )
             .map_err(|_| Arc::from(MATERIALIZATION_PROTOCOL_FAILED))?
         }

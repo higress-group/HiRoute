@@ -118,6 +118,7 @@ pub fn project_candidate_request_template(
         profile,
         None,
         ReasoningReplayProjection::default(),
+        None,
     )
 }
 
@@ -132,6 +133,7 @@ pub(crate) fn project_candidate_request_template_with_cleanup(
         profile,
         omit_reasoning_prefix,
         ReasoningReplayProjection::default(),
+        None,
     )
 }
 
@@ -140,6 +142,7 @@ pub(crate) fn project_candidate_request_template_with_history(
     profile: &CandidateProtocolProfile,
     omit_reasoning_prefix: Option<usize>,
     reasoning_replay: ReasoningReplayProjection<'_>,
+    replay: Option<&ReplayStore>,
 ) -> Result<PreparedNativeTemplate, ProtocolAdapterError> {
     let requirements = request.requirements();
     let reasoning = profile.validate(&requirements)?;
@@ -157,7 +160,9 @@ pub(crate) fn project_candidate_request_template_with_history(
     };
     let chat_tool_projection =
         if !native && profile.capability.upstream_protocol == IngressProtocol::ChatCompletions {
-            Some(ChatToolProjection::for_request(request)?)
+            let projection = ChatToolProjection::for_request(request, replay)?;
+            projection.named_choice(&request.tool_choice)?;
+            Some(projection)
         } else {
             None
         };
@@ -178,7 +183,7 @@ pub(crate) fn project_candidate_request_template_with_history(
                 omit_reasoning_prefix,
             )?,
             IngressProtocol::Messages => {
-                serialize_messages(request, profile, reasoning, omit_reasoning_prefix)?
+                serialize_messages(request, profile, reasoning, omit_reasoning_prefix, replay)?
             }
         }
     };
@@ -192,9 +197,7 @@ pub(crate) fn project_candidate_request_template_with_history(
             false,
         )?;
     super::native::protect_projected_controls(request, profile, reasoning, &mut body)?;
-    let mut refs = if request.ingress_protocol == profile.capability.upstream_protocol
-        && request.native_body.is_some()
-    {
+    let mut refs = if native {
         let mut refs = Vec::new();
         collect_nested_json_refs(&body, &mut refs);
         refs
@@ -205,6 +208,9 @@ pub(crate) fn project_candidate_request_template_with_history(
             omit_reasoning_prefix,
         )
     };
+    if !native && let Some(tools) = body.get("tools") {
+        collect_nested_json_refs(tools, &mut refs);
+    }
     if request.ingress_protocol == IngressProtocol::Messages
         && request.ingress_protocol != profile.capability.upstream_protocol
     {
@@ -400,6 +406,11 @@ pub(super) fn request_has_content_refs(request: &ModelRequestIRV1) -> bool {
         }
     }
     !request_content_refs(request, request.ingress_protocol, None).is_empty()
+        || {
+            let mut refs = Vec::new();
+            collect_declared_tool_refs(request, &mut refs);
+            !refs.is_empty()
+        }
         || request
             .requested_reasoning
             .native_value
@@ -471,37 +482,30 @@ fn request_content_refs(
             IngressProtocol::Messages => {}
         }
     }
-    for tool in &request.tools {
-        collect_string_ref(tool.description.as_deref(), &mut refs);
-        if let Some(schema) = &tool.input_schema {
-            collect_nested_json_refs(schema, &mut refs);
-        }
-        if let Some(format) = &tool.format {
-            collect_json_ref(format, ReplacementEncoding::RawJson, &mut refs);
-        }
-    }
-    for namespace in &request.tool_namespaces {
-        if target == IngressProtocol::Responses {
-            collect_string_ref(namespace.description.as_deref(), &mut refs);
-        }
-        for tool in &namespace.tools {
-            if target == IngressProtocol::ChatCompletions {
-                // Namespace descriptions are prefixed to every projected child.
-                collect_string_ref(namespace.description.as_deref(), &mut refs);
-            }
-            collect_string_ref(tool.description.as_deref(), &mut refs);
-            if let Some(schema) = &tool.input_schema {
-                collect_nested_json_refs(schema, &mut refs);
-            }
-            if let Some(format) = &tool.format {
-                collect_json_ref(format, ReplacementEncoding::RawJson, &mut refs);
-            }
-        }
-    }
     for state in &request.provider_state {
         collect_nested_json_refs(&state.value, &mut refs);
     }
     refs
+}
+
+fn collect_declared_tool_refs(request: &ModelRequestIRV1, refs: &mut Vec<RequestedReplacement>) {
+    for tool in request.tools.iter().chain(
+        request
+            .tool_namespaces
+            .iter()
+            .flat_map(|namespace| &namespace.tools),
+    ) {
+        collect_string_ref(tool.description.as_deref(), refs);
+        if let Some(schema) = &tool.input_schema {
+            collect_nested_json_refs(schema, refs);
+        }
+        if let Some(format) = &tool.format {
+            collect_nested_json_refs(format, refs);
+        }
+    }
+    for namespace in &request.tool_namespaces {
+        collect_string_ref(namespace.description.as_deref(), refs);
+    }
 }
 
 fn collect_part_refs(

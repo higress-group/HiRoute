@@ -98,6 +98,7 @@ impl Planner {
                     candidate,
                     input.policy.cost_policy,
                     &input.policy.limits,
+                    published.is_some(),
                 ) {
                     Ok(projection) => eligible.push(EligibleForRanking {
                         candidate,
@@ -179,6 +180,7 @@ impl Planner {
 
         apply_context_hold(
             input,
+            published.is_some(),
             &group_ids,
             &candidate_by_id,
             &group_by_id,
@@ -270,6 +272,7 @@ fn guard_anchor_score(
 
 fn apply_context_hold(
     input: &PlannerInputV1,
+    projection_preflighted: bool,
     selected_group_ids: &[String],
     candidate_by_id: &BTreeMap<&str, &PlannerCandidateFactsV1>,
     group_by_id: &BTreeMap<&str, &MaterializedModelGroupV1>,
@@ -317,6 +320,7 @@ fn apply_context_hold(
         candidate,
         input.policy.cost_policy,
         &input.policy.limits,
+        projection_preflighted,
     ) else {
         reason_ledger.push(reason(
             LedgerReasonCodeV1::ContextHoldInvalidated,

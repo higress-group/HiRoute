@@ -582,7 +582,7 @@ mod tests {
             let reasoning =
                 replay.project(|| ReasoningSource::for_profile(&profile, endpoint, "openai-key"));
             let template = project_candidate_request_template_with_history(
-                &request, &profile, None, reasoning,
+                &request, &profile, None, reasoning, None,
             )
             .unwrap();
             let rendered: Value = serde_json::from_slice(&template.bytes).unwrap();

@@ -131,6 +131,7 @@ pub(crate) fn category(error: &ProtocolAdapterError) -> (Reason, Option<Field>) 
             | ModelIrError::ResponsesConversationUnsupported => Reason::UnsupportedValue,
         },
         ProtocolAdapterError::ClientUnrepresentable(_)
+        | ProtocolAdapterError::ToolInterfaceUnrepresentable(_)
         | ProtocolAdapterError::RequestUnrepresentable { .. } => Reason::Unrepresentable,
         ProtocolAdapterError::Capability(_) => Reason::Capability,
         ProtocolAdapterError::Context(_) => Reason::ContextProjection,

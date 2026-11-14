@@ -111,7 +111,7 @@ fn codex_subscription_replay_indexes_skip_additional_tool_declarations() {
 }
 
 #[test]
-fn additional_tools_validates_optional_metadata_and_conflicting_declarations() {
+fn additional_tools_validates_optional_metadata_and_keeps_repeated_declarations() {
     let user = json!({"role":"user","content":"use the lookup tool"});
     let lookup = json!({"type":"function","name":"lookup","parameters":{"type":"object"}});
     for metadata in [
@@ -134,11 +134,11 @@ fn additional_tools_validates_optional_metadata_and_conflicting_declarations() {
             Some(1)
         );
         assert!(request.responses_item_ids.is_empty());
-        assert_eq!(request.tools.len(), 1);
+        assert_eq!(request.tools.len(), 2);
         assert_eq!(request.native_body, Some(body.clone()));
         let profile = codex_subscription_profile();
         let projected = project_candidate_request(&request, &profile).unwrap().body;
-        assert_eq!(projected["tools"], json!([lookup.clone()]));
+        assert_eq!(projected["tools"], json!([lookup.clone(), lookup.clone()]));
         assert_eq!(projected["input"], json!([user.clone()]));
     }
 
@@ -164,9 +164,11 @@ fn additional_tools_validates_optional_metadata_and_conflicting_declarations() {
     let mut conflict = body.clone();
     conflict["tools"] =
         json!([{"type":"function","name":"lookup","parameters":{"type":"boolean"}}]);
+    let request = decode_ingress_request(IngressProtocol::Responses, &conflict).unwrap();
+    let projected = project_candidate_request(&request, &codex_subscription_profile()).unwrap();
     assert_eq!(
-        decode_ingress_request(IngressProtocol::Responses, &conflict).unwrap_err(),
-        ModelIrError::InvalidField("conflicting flat tool declaration")
+        projected.body["tools"],
+        json!([conflict["tools"][0], conflict["input"][0]["tools"][0]])
     );
     let mut unknown = body;
     unknown["input"][0]["future_control"] = json!(true);

@@ -1,8 +1,10 @@
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
+use sha2::{Digest, Sha256};
 
-use crate::content_ref::JsonValueExt;
+use crate::content_ref::{ContentValueExt, JsonValueExt, tool_json_for_wire};
+use crate::replay::ReplayStore;
 use crate::server::core_runtime::model_ir::{
     CanonicalTool, CanonicalToolNamespaceV1, ModelRequestIRV1, ResponsesToolOrderEntryV1,
     ToolChoice, ToolKindV1,
@@ -23,6 +25,8 @@ pub(crate) struct ChatToolIdentity {
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ChatToolProjection {
     entries: Vec<ChatToolIdentity>,
+    #[serde(skip)]
+    declaration_indices: Vec<usize>,
 }
 
 impl ChatToolProjection {
@@ -34,20 +38,27 @@ impl ChatToolProjection {
                 .checked_add(identity.namespace.as_ref().map_or(0, String::capacity))?
                 .checked_add(std::mem::size_of::<ChatToolIdentity>())
         })?;
-        Some(entries)
+        entries.checked_add(
+            self.declaration_indices
+                .capacity()
+                .checked_mul(std::mem::size_of::<usize>())?,
+        )
     }
 
-    pub(crate) fn for_request(request: &ModelRequestIRV1) -> Result<Self, ProtocolAdapterError> {
+    pub(crate) fn for_request(
+        request: &ModelRequestIRV1,
+        replay: Option<&ReplayStore>,
+    ) -> Result<Self, ProtocolAdapterError> {
         if request.web_search.is_some() {
             return Err(unrepresentable(
                 "Responses hosted tools cannot be projected to Chat Completions",
             ));
         }
         let declarations = ordered_declarations(request)?;
-
         let mut entries = Vec::with_capacity(declarations.len());
-        let mut emitted_names = BTreeSet::new();
-        for (namespace, tool) in declarations {
+        let mut declaration_indices = Vec::with_capacity(declarations.len());
+        let mut emitted = BTreeMap::<String, usize>::new();
+        for (index, &(namespace, tool)) in declarations.iter().enumerate() {
             validate_declaration(tool)?;
             let namespace_name = namespace.map(|namespace| namespace.name.as_str());
             let emitted_name = match namespace_name {
@@ -55,20 +66,36 @@ impl ChatToolProjection {
                 None => tool.name.clone(),
             };
             validate_chat_name(&emitted_name)?;
+            if let Some(&first_index) = emitted.get(&emitted_name) {
+                let (first_namespace, first_tool) = declarations[first_index];
+                if first_namespace.map(|value| value.name.as_str()) != namespace_name
+                    || !same_tool_definition(first_tool, tool, replay)
+                    || !same_tool_description(
+                        first_namespace.and_then(|value| value.description.as_deref()),
+                        namespace.and_then(|value| value.description.as_deref()),
+                        replay,
+                    )
+                {
+                    return Err(unrepresentable(
+                        "Responses tools collide after Chat name projection",
+                    ));
+                }
+                continue;
+            }
+            emitted.insert(emitted_name.clone(), index);
             let identity = ChatToolIdentity {
-                emitted_name: emitted_name.clone(),
+                emitted_name,
                 kind: tool.kind,
                 namespace: namespace_name.map(str::to_owned),
                 local_name: tool.name.clone(),
             };
-            if !emitted_names.insert(emitted_name) {
-                return Err(unrepresentable(
-                    "Responses tools collide after Chat name projection",
-                ));
-            }
             entries.push(identity);
+            declaration_indices.push(index);
         }
-        Ok(Self { entries })
+        Ok(Self {
+            entries,
+            declaration_indices,
+        })
     }
 
     pub(crate) fn is_empty(&self) -> bool {
@@ -80,19 +107,21 @@ impl ChatToolProjection {
         request: &ModelRequestIRV1,
     ) -> Result<Vec<Value>, ProtocolAdapterError> {
         let declarations = ordered_declarations(request)?;
-        if declarations.len() != self.entries.len() {
+        if self.entries.len() != self.declaration_indices.len() {
             return Err(unrepresentable(
-                "Chat tool projection changed after construction",
+                "Chat tool projection has no request declaration indices",
             ));
         }
-        declarations
-            .into_iter()
-            .zip(&self.entries)
-            .map(|((namespace, tool), identity)| {
-                if identity.kind != tool.kind
-                    || identity.namespace.as_deref()
-                        != namespace.map(|namespace| namespace.name.as_str())
-                    || identity.local_name != tool.name
+        self.entries
+            .iter()
+            .zip(&self.declaration_indices)
+            .map(|(identity, &index)| {
+                let &(namespace, tool) = declarations.get(index).ok_or_else(|| {
+                    unrepresentable("Chat tool projection changed after construction")
+                })?;
+                if tool.kind != identity.kind
+                    || tool.name != identity.local_name
+                    || namespace.map(|value| value.name.as_str()) != identity.namespace.as_deref()
                 {
                     return Err(unrepresentable(
                         "Chat tool projection changed after construction",
@@ -227,10 +256,11 @@ impl ChatToolProjection {
             ToolKindV1::Function => {
                 function.insert(
                     "parameters".into(),
-                    tool.input_schema
-                        .as_ref()
-                        .expect("validated function tool has an input schema")
-                        .wire_value(),
+                    tool_json_for_wire(
+                        tool.input_schema
+                            .as_ref()
+                            .expect("validated function tool has an input schema"),
+                    ),
                 );
                 if let Some(strict) = tool.strict {
                     function.insert("strict".into(), Value::Bool(strict));
@@ -252,9 +282,75 @@ impl ChatToolProjection {
     }
 }
 
+type ToolDeclaration<'a> = (Option<&'a CanonicalToolNamespaceV1>, &'a CanonicalTool);
+
+pub(super) fn same_tool_definition(
+    left: &CanonicalTool,
+    right: &CanonicalTool,
+    replay: Option<&ReplayStore>,
+) -> bool {
+    left.kind == right.kind
+        && left.name == right.name
+        && left.strict == right.strict
+        && same_tool_description(
+            left.description.as_deref(),
+            right.description.as_deref(),
+            replay,
+        )
+        && same_tool_json(
+            left.input_schema.as_ref(),
+            right.input_schema.as_ref(),
+            replay,
+        )
+        && same_tool_json(left.format.as_ref(), right.format.as_ref(), replay)
+}
+
+fn same_tool_description(
+    left: Option<&str>,
+    right: Option<&str>,
+    replay: Option<&ReplayStore>,
+) -> bool {
+    left == right
+        || match (left, right) {
+            (Some(left), Some(right))
+                if left.content_ref().is_some() || right.content_ref().is_some() =>
+            {
+                same_tool_json(
+                    Some(&Value::String(left.to_owned())),
+                    Some(&Value::String(right.to_owned())),
+                    replay,
+                )
+            }
+            _ => false,
+        }
+}
+
+fn same_tool_json(
+    left: Option<&Value>,
+    right: Option<&Value>,
+    replay: Option<&ReplayStore>,
+) -> bool {
+    if left == right {
+        return true;
+    }
+    let (Some(left), Some(right), Some(replay)) = (left, right, replay) else {
+        return false;
+    };
+    // Compare compact references by their decoded, canonical JSON content.
+    // Only a candidate that must map conflicting identities reads these bytes.
+    let digest = |value| {
+        let mut hash = Sha256::new();
+        crate::context_hold::write_canonical_json_with_replay(&mut hash, value, replay)?;
+        Some(hash.finalize())
+    };
+    digest(left)
+        .zip(digest(right))
+        .is_some_and(|(left, right)| left == right)
+}
+
 fn ordered_declarations(
     request: &ModelRequestIRV1,
-) -> Result<Vec<(Option<&CanonicalToolNamespaceV1>, &CanonicalTool)>, ProtocolAdapterError> {
+) -> Result<Vec<ToolDeclaration<'_>>, ProtocolAdapterError> {
     let mut declarations = Vec::new();
     if request.responses_tool_order.is_empty() {
         if !request.tool_namespaces.is_empty() {
@@ -337,7 +433,7 @@ fn validate_chat_name(name: &str) -> Result<(), ProtocolAdapterError> {
 }
 
 fn unrepresentable(message: impl Into<String>) -> ProtocolAdapterError {
-    ProtocolAdapterError::ClientUnrepresentable(message.into())
+    ProtocolAdapterError::ToolInterfaceUnrepresentable(message.into())
 }
 
 #[cfg(test)]
@@ -420,7 +516,7 @@ mod tests {
             ResponsesToolOrderEntryV1::Namespace { index: 0 },
             ResponsesToolOrderEntryV1::Namespace { index: 1 },
         ];
-        let projection = ChatToolProjection::for_request(&request).unwrap();
+        let projection = ChatToolProjection::for_request(&request, None).unwrap();
         assert_eq!(
             projection
                 .resolve_emitted("first__shared")
@@ -454,7 +550,7 @@ mod tests {
             ResponsesToolOrderEntryV1::Tool { index: 0 },
             ResponsesToolOrderEntryV1::Namespace { index: 0 },
         ];
-        assert!(ChatToolProjection::for_request(&request).is_err());
+        assert!(ChatToolProjection::for_request(&request, None).is_err());
     }
 
     #[test]
@@ -484,7 +580,7 @@ mod tests {
             ];
             request.responses_tool_order = vec![ResponsesToolOrderEntryV1::Namespace { index: 0 }];
             let original = request.clone();
-            let projection = ChatToolProjection::for_request(&request).unwrap();
+            let projection = ChatToolProjection::for_request(&request, None).unwrap();
             let tools = Value::Array(projection.render_tools(&request).unwrap());
             let tools =
                 serde_json::to_value(crate::content_ref::borrowed_wire_value(&tools)).unwrap();
@@ -536,14 +632,14 @@ mod tests {
         for name in ["", "bad.name", &"x".repeat(MAX_CHAT_TOOL_NAME_BYTES + 1)] {
             let mut request = request();
             request.tools = vec![function(name)];
-            assert!(ChatToolProjection::for_request(&request).is_err());
+            assert!(ChatToolProjection::for_request(&request, None).is_err());
         }
 
         let mut request = request();
         let mut grammar = custom("shell");
         grammar.format = Some(json!({"type":"grammar","syntax":"lark","definition":"start: WORD"}));
         request.tools = vec![grammar];
-        assert!(ChatToolProjection::for_request(&request).is_err());
+        assert!(ChatToolProjection::for_request(&request, None).is_err());
     }
 
     #[test]
@@ -561,7 +657,7 @@ mod tests {
             tool_kind: ToolKindV1::Function,
             name: "lookup".into(),
         };
-        let projection = ChatToolProjection::for_request(&request).unwrap();
+        let projection = ChatToolProjection::for_request(&request, None).unwrap();
         assert_eq!(
             projection.named_choice(&request.tool_choice).unwrap(),
             Some("records__lookup")
