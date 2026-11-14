@@ -1,4 +1,5 @@
 use super::*;
+use hiroute_platform::desktop_engine::DesktopEngineLocation;
 
 #[test]
 fn codex_desktop_location_refresh_observes_install_update_and_uninstall_without_rebinding_home() {
@@ -19,7 +20,8 @@ fn codex_desktop_location_refresh_observes_install_update_and_uninstall_without_
     let surface = hiroute_domain::AgentModelSurfaceV2::CodexDesktop;
     assert!(scanner.codex_engine_target(surface).is_none());
     for engine in [&first, &second] {
-        scanner.refresh_codex_desktop_location(|| Some(engine.clone()));
+        scanner
+            .refresh_codex_desktop_location(|| Some(DesktopEngineLocation::File(engine.clone())));
         assert_eq!(clone.codex_engine_target(surface).as_ref(), Some(engine));
         assert!(
             clone

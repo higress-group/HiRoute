@@ -111,8 +111,11 @@ class Runner(unittest.TestCase):
                      case='codex_installation::tests::actual_windows_codex_desktop_package_has_its_own_engine')
         self.assertEqual(host.admit_test_profile(temporary, home, local), 'temporary_artifact_component')
         self.assertEqual(host.admit_test_profile(probe, home, local), 'read_only_installation_component')
-        for request in [temporary, probe]:
-            for changed in [dict(binary='windows_headless.exe'),
+        discovery = dict(binary='windows_headless.exe', ignored=True,
+                         case='windows_agent_discovery::actual_windows_codex_desktop_only_registers_both_agent_entries')
+        self.assertEqual(host.admit_test_profile(discovery, home, local), 'read_only_agent_discovery')
+        for request in [temporary, probe, discovery]:
+            for changed in [dict(binary='other_harness.exe'),
                             dict(case=request['case'] + '_other'),
                             dict(ignored=not request['ignored'])]:
                 with self.subTest(request=request, changed=changed), \

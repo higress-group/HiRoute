@@ -1,4 +1,5 @@
 //! Resolve the desktop package and its own agent. A CLI on PATH is never a substitute.
+use hiroute_platform::desktop_engine::DesktopEngineLocation;
 #[cfg(not(target_os = "macos"))]
 use std::time::{Duration, Instant};
 use std::{
@@ -8,9 +9,10 @@ use std::{
 
 pub(super) struct Installation {
     executable: PathBuf,
-    pub engine: PathBuf,
+    pub engine: DesktopEngineLocation,
 }
 
+#[cfg(any(target_os = "linux", test))]
 fn paired(executable: PathBuf) -> Option<Installation> {
     if !executable.is_absolute() || !executable.is_file() {
         return None;
@@ -27,7 +29,7 @@ fn paired(executable: PathBuf) -> Option<Installation> {
         .find(|path| path.is_file());
     Some(Installation {
         executable,
-        engine: engine?,
+        engine: DesktopEngineLocation::File(engine?),
     })
 }
 
@@ -71,13 +73,14 @@ fn cached_engine_in(root: &Path) -> Option<PathBuf> {
 
 #[cfg(windows)]
 pub(super) fn installed() -> Option<Installation> {
+    use hiroute_platform::windows::app_package::RegisteredPackageExecutable;
     use std::{io::Read, os::windows::process::CommandExt};
     let powershell = hiroute_platform::windows::launcher::system_executable(Path::new(
         "WindowsPowerShell/v1.0/powershell.exe",
     ))
     .ok()?;
     // Fixed current-user package query. No shell text, app path or environment comes from IPC.
-    let script = r#"$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); $p=Get-AppxPackage -Name OpenAI.Codex | Sort-Object Version -Descending | Select-Object -First 1; if ($p) { $m=$p | Get-AppxPackageManifest; $a=$m.Package.Applications.Application | Where-Object { $_.Executable -match '(?i)(^|[\\/])(ChatGPT|Codex)\.exe$' } | Select-Object -First 1; if ($a) { [PSCustomObject]@{executable=[IO.Path]::Combine($p.InstallLocation,[string]$a.Executable)} | ConvertTo-Json -Compress } }"#;
+    let script = r#"$ErrorActionPreference='Stop'; [Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); $p=Get-AppxPackage -Name OpenAI.Codex -Publisher 'CN=50BDFD77-8903-4850-9FFE-6E8522F64D5B' | Where-Object { !$_.IsDevelopmentMode } | Sort-Object Version -Descending | Select-Object -First 1; if ($p) { $m=$p | Get-AppxPackageManifest; $a=$m.Package.Applications.Application | Where-Object { $_.Executable -match '(?i)(^|[\\/])(ChatGPT|Codex)\.exe$' } | Select-Object -First 1; if ($a) { [PSCustomObject]@{location=$p.InstallLocation; executable=[string]$a.Executable} | ConvertTo-Json -Compress } }"#;
     let mut child = Command::new(powershell)
         .args([
             "-NoLogo",
@@ -114,13 +117,24 @@ pub(super) fn installed() -> Option<Installation> {
         return None;
     }
     let value: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
-    let executable = PathBuf::from(value["executable"].as_str()?);
-    paired(executable.clone()).or_else(|| {
-        (executable.is_absolute() && executable.is_file()).then_some(Installation {
-            executable,
-            engine: cached_engine()?,
-        })
-    })
+    let location = Path::new(value["location"].as_str()?);
+    let application = Path::new(value["executable"].as_str()?);
+    if !application
+        .components()
+        .all(|part| matches!(part, std::path::Component::Normal(_)))
+    {
+        return None;
+    }
+    let executable = location.join(application);
+    let app = RegisteredPackageExecutable::open_registered(executable).ok()?;
+    let executable = app.path().to_owned();
+    let directory = executable.parent()?;
+    let engine = ["resources/codex-cli/bin/codex.exe", "resources/codex.exe"]
+        .into_iter()
+        .find_map(|leaf| RegisteredPackageExecutable::open_registered(directory.join(leaf)).ok())
+        .map(DesktopEngineLocation::Package)
+        .or_else(|| cached_engine().map(DesktopEngineLocation::File))?;
+    Some(Installation { executable, engine })
 }
 
 #[cfg(target_os = "linux")]
@@ -207,8 +221,11 @@ mod tests {
     fn actual_windows_codex_desktop_package_has_its_own_engine() {
         let installation = installed().expect("CODEX_DESKTOP_CURRENT_USER_PACKAGE_REQUIRED");
         assert!(installation.executable.is_absolute() && installation.executable.is_file());
-        assert!(installation.engine.is_absolute() && installation.engine.is_file());
-        let mut engine = Command::new(installation.engine)
+        assert!(matches!(
+            &installation.engine,
+            DesktopEngineLocation::Package(_)
+        ));
+        let mut engine = Command::new(installation.engine.path())
             .arg("--version")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -272,7 +289,7 @@ mod tests {
         });
         std::fs::write(&engine, "fixture").unwrap();
         let pair = paired(executable.clone()).unwrap();
-        assert_eq!(pair.engine, engine);
+        assert_eq!(pair.engine.path(), engine);
         assert_eq!(pair.executable, executable);
         let home = root.path().join("private folder/用户'$(touch no)/codex");
         let data = root.path().join("private folder/desktop");

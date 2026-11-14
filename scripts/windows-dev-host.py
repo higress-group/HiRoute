@@ -320,6 +320,7 @@ def admit_test_profile(request, home, localappdata):
         'hiroute_platform.exe': {
             'directory_link::tests::codex_skill_source_link_replacement_and_removal_flow_through_shared_link',
             'directory_link::tests::codex_skill_directory_link_shares_updates_without_replacing_private_entries',
+            'windows::app_package::tests::package_image_refuses_ancestor_junctions_and_changed_files',
         },
         'hiroute_desktop_host_effects.exe': {
             'codex_instance::tests::codex_desktop_shares_skills_without_adopting_existing_entries',
@@ -339,6 +340,13 @@ def admit_test_profile(request, home, localappdata):
     if (request['binary'] == 'hiroute_desktop_host_effects.exe' and request['ignored']
             and request['case'] == 'codex_installation::tests::actual_windows_codex_desktop_package_has_its_own_engine'):
         return 'read_only_installation_component'
+    if (request['binary'] == 'windows_headless.exe' and request['ignored']
+            and request['case'] in {
+                'windows_agent_discovery::actual_windows_codex_desktop_only_registers_both_agent_entries',
+                'windows_agent_discovery::actual_windows_dsh_scan_accepts_a_standalone_shim_and_skips_invalid_path_candidates',
+            }):
+        # These scans own their runtime, storage and native configuration roots.
+        return 'read_only_agent_discovery'
     # DSH discovery checks either use only owned temporary files/registry keys or
     # read the installed official client. They never install/stop HiRoute, change
     # HOME, or write the account's native configuration. Keep this an exact list;
@@ -401,6 +409,11 @@ def worker(request):
         if user.casefold() != config['user'].split('\\')[-1].casefold() or session.value != config['session_id']:
             raise ValueError('The configured account is not in the expected interactive session')
         result.update(session_id=session.value, administrator=bool(ctypes.windll.shell32.IsUserAnAdmin()))
+        if (request.get('operation') is None
+                and request['binary'] == 'windows_headless.exe'
+                and request['case'] == 'windows_agent_discovery::actual_windows_codex_desktop_only_registers_both_agent_entries'
+                and result['administrator']):
+            raise ValueError('Codex Desktop discovery requires a standard user session')
         harness = root / 'bundles' / request['harness']
         product = root / 'bundles' / request['product']
         hm, pm = manifest(harness), manifest(product)

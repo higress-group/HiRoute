@@ -6,7 +6,7 @@ mod native;
 mod oracle;
 use super::windows_user_model_receipts as receipts;
 pub use native::Contexts;
-pub(super) use native::run as run_native;
+pub(super) use native::{declared_shim_directory, run as run_native};
 
 use super::windows_business_http as http;
 use super::windows_headless_business::{Business, assert_operation, cli};

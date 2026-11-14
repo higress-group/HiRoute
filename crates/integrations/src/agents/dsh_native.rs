@@ -51,13 +51,24 @@ impl FilesystemAgentScannerV1 {
             .join("skills/hiroute-collaboration/SKILL.md")
     }
     pub fn dsh_executable_target(&self) -> Option<PathBuf> {
-        executable::resolve(&self.layout.dsh_executable)
+        dsh_executable(&self.layout.dsh_executable, false)
             .ok()
             .flatten()
+            .map(|(path, _)| path)
     }
     fn dsh_native_contract(
         &self,
         models: bool,
+    ) -> Result<CanonicalDigest, AgentFilesystemScanError> {
+        let executable = self
+            .dsh_executable_target()
+            .ok_or(AgentFilesystemScanError::SourceUnavailable)?;
+        self.dsh_native_contract_at(models, &executable)
+    }
+    fn dsh_native_contract_at(
+        &self,
+        models: bool,
+        executable: &Path,
     ) -> Result<CanonicalDigest, AgentFilesystemScanError> {
         let mut dependencies = Vec::new();
         let profiles: &[&str] = if models {
@@ -113,10 +124,7 @@ impl FilesystemAgentScannerV1 {
                 );
             }
         }
-        let executable = self
-            .dsh_executable_target()
-            .ok_or(AgentFilesystemScanError::SourceUnavailable)?;
-        let metadata = std::fs::metadata(&executable)
+        let metadata = std::fs::metadata(executable)
             .map_err(|_| AgentFilesystemScanError::SourceUnavailable)?;
         CanonicalDigest::of(&(
             executable,
@@ -133,40 +141,21 @@ impl FilesystemAgentScannerV1 {
         self.dsh_discovery(true)
     }
     fn dsh_discovery(&self, version_diagnostic: bool) -> FilesystemAgentDiscoveryV1 {
-        // Do not erase a denied/invalid PATH candidate as "not installed". In
-        // particular, Windows rejects reparse aliases before looking further.
-        let executable = match executable::resolve(&self.layout.dsh_executable) {
-            Ok(Some(executable)) => executable,
-            result => {
-                return probe_report(
-                    "agent_dsh_default",
-                    AgentKindV1::DeepseekHarness,
-                    match result {
-                        Ok(None) => ExecutableProbe::NotFound,
-                        Err(reason) => ExecutableProbe::Unknown(reason),
-                        Ok(Some(_)) => unreachable!(),
-                    },
-                );
-            }
-        };
-        // A process that starts does not need to report a version. Settings
-        // snapshots recheck native files/path without launching the engine.
-        let version = if version_diagnostic {
-            match executable_probe(&executable) {
-                ExecutableProbe::Installed(value) => value.version,
+        let (executable, version) =
+            match dsh_executable(&self.layout.dsh_executable, version_diagnostic) {
+                Ok(Some(observation)) => observation,
                 result => {
-                    let result = match result {
-                        ExecutableProbe::Unknown(ProbeFailure::LaunchFailed(_)) => {
-                            ExecutableProbe::Unknown(ProbeFailure::NotExecutable)
-                        }
-                        other => other,
-                    };
-                    return probe_report("agent_dsh_default", AgentKindV1::DeepseekHarness, result);
+                    return probe_report(
+                        "agent_dsh_default",
+                        AgentKindV1::DeepseekHarness,
+                        match result {
+                            Ok(None) => ExecutableProbe::NotFound,
+                            Err(reason) => ExecutableProbe::Unknown(reason),
+                            Ok(Some(_)) => unreachable!(),
+                        },
+                    );
                 }
-            }
-        } else {
-            "not-probed".into()
-        };
+            };
         let mut outcome = resolve_agent_observation(base_observation(
             "agent_dsh_default",
             AgentKindV1::DeepseekHarness,
@@ -178,7 +167,7 @@ impl FilesystemAgentScannerV1 {
                 &executable,
                 &self.dsh_user_skill_target(),
             );
-            if let Ok(digest) = self.dsh_native_contract(false) {
+            if let Ok(digest) = self.dsh_native_contract_at(false, &executable) {
                 installation.observation_digest =
                     CanonicalDigest::of(&(&installation.observation_digest, &digest))
                         .expect("native contract");
@@ -276,6 +265,41 @@ impl FilesystemAgentScannerV1 {
         check_composition(&dsh_public_probe(command, true)?, required)
             .map_err(|_| AgentFilesystemScanError::InvalidConfig)
     }
+}
+
+fn dsh_executable(
+    path: &Path,
+    version_diagnostic: bool,
+) -> Result<Option<(PathBuf, String)>, ProbeFailure> {
+    #[cfg(windows)]
+    if executable::searches_path(path) {
+        return super::super::dsh_windows::find(path, version_diagnostic);
+    }
+    executable::resolve(path)?
+        .map(|path| dsh_observation(path, version_diagnostic))
+        .transpose()
+}
+
+pub(in crate::agents) fn dsh_observation(
+    path: PathBuf,
+    version_diagnostic: bool,
+) -> Result<(PathBuf, String), ProbeFailure> {
+    // Settings snapshots inspect native files without launching the engine.
+    let version = if version_diagnostic {
+        match executable::probe_resolved(&path, std::time::Duration::from_secs(2)) {
+            ExecutableProbe::Installed(value) => value.version,
+            ExecutableProbe::Unknown(
+                ProbeFailure::LaunchFailed(_) | ProbeFailure::NotExecutable,
+            ) => {
+                return Err(ProbeFailure::NotExecutable);
+            }
+            ExecutableProbe::Unknown(reason) => return Err(reason),
+            ExecutableProbe::NotFound => unreachable!("probe of a resolved path"),
+        }
+    } else {
+        "not-probed".into()
+    };
+    Ok((path, version))
 }
 
 #[cfg(any(unix, windows))]

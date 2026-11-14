@@ -61,10 +61,14 @@ fn probe(path: &Path, timeout: Duration) -> ExecutableProbe {
         Ok(None) => return ExecutableProbe::NotFound,
         Err(reason) => return ExecutableProbe::Unknown(reason),
     };
+    probe_resolved(&canonical, timeout)
+}
+
+pub(super) fn probe_resolved(canonical: &Path, timeout: Duration) -> ExecutableProbe {
     let Some(canonical_path) = canonical.to_str().map(str::to_owned) else {
         return ExecutableProbe::Unknown(ProbeFailure::Unavailable);
     };
-    let version = match bounded_version(&canonical, timeout) {
+    let version = match bounded_version(canonical, timeout) {
         Ok(bytes) => parse_version(&bytes).unwrap_or_default(),
         Err(ProbeFailure::LaunchFailed(code)) => {
             return ExecutableProbe::Unknown(ProbeFailure::LaunchFailed(code));
@@ -81,8 +85,12 @@ fn probe(path: &Path, timeout: Duration) -> ExecutableProbe {
     })
 }
 
-pub(super) fn resolve(path: &Path) -> Result<Option<PathBuf>, ProbeFailure> {
-    let candidates = if path.is_absolute() || path.components().count() > 1 {
+pub(super) fn searches_path(path: &Path) -> bool {
+    !path.is_absolute() && path.components().count() <= 1
+}
+
+pub(super) fn candidates(path: &Path) -> Vec<PathBuf> {
+    if !searches_path(path) {
         #[cfg(windows)]
         if path.extension().is_none() {
             vec![
@@ -123,8 +131,11 @@ pub(super) fn resolve(path: &Path) -> Result<Option<PathBuf>, ProbeFailure> {
                 vec![candidate]
             })
             .collect()
-    };
-    for candidate in candidates {
+    }
+}
+
+pub(super) fn resolve(path: &Path) -> Result<Option<PathBuf>, ProbeFailure> {
+    for candidate in candidates(path) {
         #[cfg(windows)]
         {
             // Open the supplied path without following reparses before any

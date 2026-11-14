@@ -51,6 +51,8 @@ mod native_probe_process;
 #[cfg(any(unix, windows))]
 pub use native_probe_process::NativeProbeProcess;
 #[cfg(windows)]
+mod dsh_windows;
+#[cfg(windows)]
 pub(crate) mod windows_runtime;
 #[cfg(windows)]
 pub use windows_runtime::{
