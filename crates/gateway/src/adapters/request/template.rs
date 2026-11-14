@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::content_ref::{
     ContentRef, ContentValueExt, JsonValueExt, MARKER_PREFIX, data_uri_payload_ref,
 };
+use crate::replay::ReplayStore;
 use crate::responses_reasoning::ReasoningReplayProjection;
 use crate::server::core_runtime::model_ir::{
     ContentPart, ImageSource, ModelRequestIRV1, ToolKindV1, ToolOutput,
