@@ -189,14 +189,21 @@ pub fn codex_desktop_engine() -> Option<std::path::PathBuf> {
     #[cfg(target_os = "macos")]
     return workspace::codex_desktop_engine();
     #[cfg(not(target_os = "macos"))]
-    return codex_desktop_engine_location().map(|location| location.path().to_owned());
+    return codex_desktop_engine_location()
+        .ok()
+        .flatten()
+        .map(|location| location.path().to_owned());
 }
 
 /// Carry the installed engine's Windows package identity to native discovery.
 #[cfg(not(target_os = "macos"))]
 pub fn codex_desktop_engine_location()
--> Option<hiroute_platform::desktop_engine::DesktopEngineLocation> {
-    codex_installation::installed().map(|app| app.engine)
+-> std::io::Result<Option<hiroute_platform::desktop_engine::DesktopEngineLocation>> {
+    #[cfg(windows)]
+    let installation = codex_installation::installed()?;
+    #[cfg(target_os = "linux")]
+    let installation = codex_installation::installed();
+    Ok(installation.map(|app| app.engine))
 }
 
 mod codex_instance;

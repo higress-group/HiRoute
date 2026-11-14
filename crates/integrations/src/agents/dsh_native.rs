@@ -2,6 +2,10 @@
 use super::super::executable::{self, ProbeFailure};
 use super::*;
 use hiroute_domain::{AgentCapability, CapabilityState};
+#[cfg(windows)]
+type DshRuntimeDependency = CanonicalDigest;
+#[cfg(not(windows))]
+type DshRuntimeDependency = (u64, Option<std::time::SystemTime>);
 
 impl FilesystemAgentScannerV1 {
     /// Higher-priority home configuration is independent of the managed Web file.
@@ -63,12 +67,13 @@ impl FilesystemAgentScannerV1 {
         let executable = self
             .dsh_executable_target()
             .ok_or(AgentFilesystemScanError::SourceUnavailable)?;
-        self.dsh_native_contract_at(models, &executable)
+        self.dsh_native_contract_at(models, &executable, dsh_execution_dependency(&executable)?)
     }
     fn dsh_native_contract_at(
         &self,
         models: bool,
         executable: &Path,
+        execution: DshRuntimeDependency,
     ) -> Result<CanonicalDigest, AgentFilesystemScanError> {
         let mut dependencies = Vec::new();
         let profiles: &[&str] = if models {
@@ -124,15 +129,12 @@ impl FilesystemAgentScannerV1 {
                 );
             }
         }
-        let metadata = std::fs::metadata(executable)
-            .map_err(|_| AgentFilesystemScanError::SourceUnavailable)?;
-        CanonicalDigest::of(&(
-            executable,
-            metadata.len(),
-            metadata.modified().ok(),
-            dependencies,
-        ))
-        .map_err(|_| AgentFilesystemScanError::InvalidConfig)
+        #[cfg(windows)]
+        let observation = CanonicalDigest::of(&(executable, execution, dependencies));
+        #[cfg(not(windows))]
+        let observation =
+            CanonicalDigest::of(&(executable, execution.0, execution.1, dependencies));
+        observation.map_err(|_| AgentFilesystemScanError::InvalidConfig)
     }
     pub fn dsh_settings_discovery(&self) -> FilesystemAgentDiscoveryV1 {
         self.dsh_discovery(false)
@@ -167,7 +169,9 @@ impl FilesystemAgentScannerV1 {
                 &executable,
                 &self.dsh_user_skill_target(),
             );
-            if let Ok(digest) = self.dsh_native_contract_at(false, &executable) {
+            if let Ok(digest) = dsh_execution_dependency(&executable)
+                .and_then(|dependency| self.dsh_native_contract_at(false, &executable, dependency))
+            {
                 installation.observation_digest =
                     CanonicalDigest::of(&(&installation.observation_digest, &digest))
                         .expect("native contract");
@@ -209,12 +213,7 @@ impl FilesystemAgentScannerV1 {
     pub fn check_dsh_model_configuration(
         &self,
     ) -> Result<CanonicalDigest, AgentFilesystemScanError> {
-        let before = self.dsh_native_contract(true)?;
-        self.check_dsh_public_cli(&["llm-pi-ai"])?;
-        if before != self.dsh_native_contract(true)? {
-            return Err(AgentFilesystemScanError::SourceChanged);
-        }
-        Ok(before)
+        self.check_dsh_public_cli(true, &["llm-pi-ai"])
     }
     /// Revalidate the exact installation/configuration observed by this capture.
     /// This proof is scoped to the caller's capture and is never a persisted grant.
@@ -231,18 +230,20 @@ impl FilesystemAgentScannerV1 {
             .dsh_collaboration_cli
             .lock()
             .map_err(|_| AgentFilesystemScanError::SourceUnavailable)? = None;
-        let before = self.dsh_native_contract(false)?;
-        self.check_dsh_public_cli(&[
-            "skill-filesystem",
-            "tool-skill",
-            "tool-fs",
-            if cfg!(windows) {
-                "tool-pwsh"
-            } else {
-                "tool-bash"
-            },
-            "skill",
-        ])?;
+        let before = self.check_dsh_public_cli(
+            false,
+            &[
+                "skill-filesystem",
+                "tool-skill",
+                "tool-fs",
+                if cfg!(windows) {
+                    "tool-pwsh"
+                } else {
+                    "tool-bash"
+                },
+                "skill",
+            ],
+        )?;
         let cli = executable::resolve(cli)
             .map_err(|_| AgentFilesystemScanError::SourceUnavailable)?
             .ok_or(AgentFilesystemScanError::SourceUnavailable)?;
@@ -256,15 +257,54 @@ impl FilesystemAgentScannerV1 {
         Ok(())
     }
     #[cfg(any(unix, windows))]
-    fn check_dsh_public_cli(&self, required: &[&str]) -> Result<(), AgentFilesystemScanError> {
-        let mut command = std::process::Command::new(
-            self.dsh_executable_target()
-                .ok_or(AgentFilesystemScanError::SourceUnavailable)?,
+    fn check_dsh_public_cli(
+        &self,
+        models: bool,
+        required: &[&str],
+    ) -> Result<CanonicalDigest, AgentFilesystemScanError> {
+        let executable = self
+            .dsh_executable_target()
+            .ok_or(AgentFilesystemScanError::SourceUnavailable)?;
+        #[cfg(windows)]
+        let (mut command, dependency) = {
+            let invocation = super::super::dsh_windows::invocation(&executable)
+                .map_err(|_| AgentFilesystemScanError::SourceUnavailable)?;
+            let mut command = std::process::Command::new(invocation.program);
+            command.args(invocation.entry);
+            (command, invocation.dependency)
+        };
+        #[cfg(unix)]
+        let (mut command, dependency) = (
+            std::process::Command::new(&executable),
+            dsh_execution_dependency(&executable)?,
         );
+        let before = self.dsh_native_contract_at(models, &executable, dependency)?;
         command.args(["--profile", "acp", "--dump-default-config"]);
         check_composition(&dsh_public_probe(command, true)?, required)
-            .map_err(|_| AgentFilesystemScanError::InvalidConfig)
+            .map_err(|_| AgentFilesystemScanError::InvalidConfig)?;
+        if before != self.dsh_native_contract(models)? {
+            return Err(AgentFilesystemScanError::SourceChanged);
+        }
+        Ok(before)
     }
+}
+
+#[cfg(windows)]
+fn dsh_execution_dependency(
+    executable: &Path,
+) -> Result<DshRuntimeDependency, AgentFilesystemScanError> {
+    super::super::dsh_windows::invocation(executable)
+        .map(|invocation| invocation.dependency)
+        .map_err(|_| AgentFilesystemScanError::SourceUnavailable)
+}
+
+#[cfg(not(windows))]
+fn dsh_execution_dependency(
+    executable: &Path,
+) -> Result<DshRuntimeDependency, AgentFilesystemScanError> {
+    let metadata =
+        std::fs::metadata(executable).map_err(|_| AgentFilesystemScanError::SourceUnavailable)?;
+    Ok((metadata.len(), metadata.modified().ok()))
 }
 
 fn dsh_executable(

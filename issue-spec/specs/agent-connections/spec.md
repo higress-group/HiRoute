@@ -335,7 +335,9 @@ Agent entries SHALL discover the bundled engine under a standard user without a
 separate Codex CLI. Their available surfaces SHALL list only Codex Desktop in
 that installation. The package lookup SHALL open the known image without needing
 to read the protected WindowsApps parent directory, while rejecting reparse
-aliases. Windows SHALL launch the desktop executable directly with the same private
+aliases. An unsuccessful registration query or inspection of a registered
+image SHALL be reported as unavailable. A successful query with no matching
+registration SHALL report absence. Windows SHALL launch the desktop executable directly with the same private
 environment and user-data argument. Shell activation through Explorer, which would
 lose the isolated environment, SHALL NOT be used. Native launching SHALL be exposed
 through HiRoute's Windows Shell as well as its macOS Desktop.
@@ -705,11 +707,14 @@ running a diagnostic version command. Explicit discovery MAY obtain the version.
 Windows PATH lookup SHALL continue past unusable DSH candidates and retain the
 first failure if no valid installation follows. It SHALL support the ordinary
 npm layout and a standalone dsh.cmd that invokes Node with the declared DSH npm
-entry and forwards its arguments. The standalone launcher is a locator. HiRoute
+entry and forwards its arguments, including the generated npm wrapper that
+addresses the package relative to the launcher. The standalone launcher is a locator. HiRoute
 SHALL start the resolved program with an argument vector and SHALL NOT evaluate
 the batch script.
 A model facts capture SHALL check the public composition once and bind that result
-to its observed installation and model-configuration dependencies. It SHALL reread
+to its observed installation and model-configuration dependencies. On Windows
+the installation binding SHALL include the selected program and declared entry
+used to run the check. It SHALL reread
 those dependencies after both native snapshots and reject changes. Preview and
 Apply admission SHALL perform independent captures; no composition result may be
 reused across them. Apply SHALL reproduce current facts, confirm the accepted intent

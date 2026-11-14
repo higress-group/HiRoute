@@ -78,9 +78,12 @@ impl FilesystemAgentScannerV1 {
         let mut first_failure = None;
         for directory in directories.into_iter().take(128) {
             for name in [selected.as_os_str(), std::ffi::OsStr::new("qodercli")] {
-                match super::super::executable::resolve(&directory.join(name)) {
+                let target = directory.join(name);
+                match super::super::executable::resolve(&target) {
                     Ok(Some(path)) => return Ok(Some(path)),
                     Ok(None) => {}
+                    #[cfg(windows)]
+                    Err(_) if missing_windows_qoder_candidate(&target) => {}
                     Err(error) => {
                         first_failure.get_or_insert(error);
                     }
@@ -230,4 +233,25 @@ impl FilesystemAgentScannerV1 {
             .map_err(|_| qoder_error("evidence cache"))?
             .finish(generation, evidence)
     }
+}
+
+#[cfg(windows)]
+fn missing_windows_qoder_candidate(target: &Path) -> bool {
+    use std::path::{Component, Prefix};
+    if !matches!(
+        target.components().next(),
+        Some(Component::Prefix(prefix))
+            if matches!(prefix.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
+    ) {
+        return false;
+    }
+    // An ordinary PATH directory may be a junction, as used by version
+    // managers. Only use this lookup to confirm absence. A present alias or
+    // an access error still requires the ordinary reparse-free admission.
+    super::super::executable::candidates(target)
+        .iter()
+        .all(|path| {
+            std::fs::symlink_metadata(path)
+                .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+        })
 }

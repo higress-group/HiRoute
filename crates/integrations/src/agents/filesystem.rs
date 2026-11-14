@@ -246,8 +246,9 @@ impl AgentFilesystemLayoutV1 {
 
 #[derive(Clone)]
 pub struct FilesystemAgentScannerV1 {
-    pub(super) codex_desktop_location:
-        std::sync::Arc<std::sync::Mutex<Option<DesktopEngineLocation>>>,
+    pub(super) codex_desktop_location: std::sync::Arc<
+        std::sync::Mutex<Result<Option<DesktopEngineLocation>, super::executable::ProbeFailure>>,
+    >,
     pub(super) dynamic_codex_desktop_location: bool,
     pi_collaboration_cli:
         std::sync::Arc<std::sync::Mutex<Option<(PathBuf, hiroute_domain::CanonicalDigest)>>>,
@@ -315,12 +316,10 @@ impl FilesystemAgentScannerV1 {
             .map(|context| context.model_target())
             .unwrap_or_default();
         Self {
-            codex_desktop_location: std::sync::Arc::new(std::sync::Mutex::new(
-                layout
-                    .codex_desktop_executable
-                    .clone()
-                    .map(DesktopEngineLocation::File),
-            )),
+            codex_desktop_location: std::sync::Arc::new(std::sync::Mutex::new(Ok(layout
+                .codex_desktop_executable
+                .clone()
+                .map(DesktopEngineLocation::File)))),
             dynamic_codex_desktop_location: false,
             layout,
             opencode_model_target,

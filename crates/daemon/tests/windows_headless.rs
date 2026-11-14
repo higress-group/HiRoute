@@ -1,6 +1,9 @@
 #![cfg(windows)]
 //! Real installed binaries on a disposable Windows user profile. No mocked HiRoute runtime.
 
+#[allow(dead_code)]
+#[path = "support/windows_account.rs"]
+mod windows_account;
 #[path = "support/windows_agent_discovery.rs"]
 mod windows_agent_discovery;
 #[path = "support/windows_business_http.rs"]

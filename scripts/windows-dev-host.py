@@ -323,12 +323,16 @@ def admit_test_profile(request, home, localappdata):
             'windows::app_package::tests::package_image_refuses_ancestor_junctions_and_changed_files',
         },
         'hiroute_desktop_host_effects.exe': {
+            'codex_installation::tests::appx_query_distinguishes_absence_from_invalid_registration',
             'codex_instance::tests::codex_desktop_shares_skills_without_adopting_existing_entries',
             'codex_installation::tests::codex_desktop_cache_prefers_current_entry_and_compares_versions_numerically',
             'codex_installation::tests::codex_desktop_package_requires_its_own_engine_and_isolates_only_child_environment',
         },
         'hiroute_product_session.exe': {
             'codex_desktop::tests::codex_desktop_launch_reads_only_current_exact_model_authority',
+        },
+        'hiroute_integrations.exe': {
+            'agents::filesystem::tests::codex_desktop::codex_desktop_location_refresh_observes_install_update_and_uninstall_without_rebinding_home',
         },
         'hiroute_cli.exe': {
             'codex_desktop::tests::codex_desktop_local_launch_help_is_offline_and_rejects_paths_and_agent_authority',
@@ -409,11 +413,6 @@ def worker(request):
         if user.casefold() != config['user'].split('\\')[-1].casefold() or session.value != config['session_id']:
             raise ValueError('The configured account is not in the expected interactive session')
         result.update(session_id=session.value, administrator=bool(ctypes.windll.shell32.IsUserAnAdmin()))
-        if (request.get('operation') is None
-                and request['binary'] == 'windows_headless.exe'
-                and request['case'] == 'windows_agent_discovery::actual_windows_codex_desktop_only_registers_both_agent_entries'
-                and result['administrator']):
-            raise ValueError('Codex Desktop discovery requires a standard user session')
         harness = root / 'bundles' / request['harness']
         product = root / 'bundles' / request['product']
         hm, pm = manifest(harness), manifest(product)

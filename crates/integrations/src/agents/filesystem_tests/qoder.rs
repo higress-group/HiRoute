@@ -112,14 +112,19 @@ fn windows_qoder_scan_distinguishes_absence_from_unusable_path() {
     let Some(root) = std::env::var_os(SEARCH_ROOT).map(PathBuf::from) else {
         let directory = tempfile::tempdir().unwrap();
         let search = directory.path().join("search");
+        let target = directory.path().join("version-manager-target");
+        let junction = directory.path().join("version-manager-bin");
         fs::create_dir(&search).unwrap();
+        fs::create_dir(&target).unwrap();
+        hiroute_platform::directory_link::create(&target, &junction).unwrap();
         let child = std::process::Command::new(std::env::current_exe().unwrap())
             .args(["--exact", CASE, "--nocapture"])
             .env(SEARCH_ROOT, directory.path())
-            .env("PATH", search)
+            .env("PATH", std::env::join_paths([search, junction]).unwrap())
             .output()
             .unwrap();
         let stdout = String::from_utf8_lossy(&child.stdout);
+        fs::remove_dir(directory.path().join("version-manager-bin")).unwrap();
         assert!(
             child.status.success() && stdout.contains("1 passed;"),
             "{stdout}\n{}",
@@ -143,6 +148,17 @@ fn windows_qoder_scan_distinguishes_absence_from_unusable_path() {
     assert_eq!(
         reason(),
         AgentReportOnlyReasonV1::ExecutableProbeUnavailable
+    );
+    fs::remove_dir(root.join("search/qoder.exe")).unwrap();
+    fs::write(
+        root.join("version-manager-target/qoder.exe"),
+        "present alias",
+    )
+    .unwrap();
+    assert_eq!(
+        reason(),
+        AgentReportOnlyReasonV1::ExecutableProbeUnavailable,
+        "a real candidate behind a junction must still fail strict path admission"
     );
 }
 

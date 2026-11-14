@@ -46,12 +46,12 @@ impl FilesystemAgentScannerV1 {
 
     pub fn refresh_codex_desktop_location(
         &self,
-        resolve: impl FnOnce() -> Option<DesktopEngineLocation>,
+        resolve: impl FnOnce() -> std::io::Result<Option<DesktopEngineLocation>>,
     ) {
         if !self.dynamic_codex_desktop_location {
             return;
         }
-        let current = resolve();
+        let current = resolve().map_err(|_| ProbeFailure::Unavailable);
         let changed = if let Ok(mut location) = self.codex_desktop_location.lock()
             && *location != current
         {
@@ -70,6 +70,8 @@ impl FilesystemAgentScannerV1 {
             .lock()
             .ok()?
             .as_ref()
+            .ok()?
+            .as_ref()
             .map(|location| location.path().to_owned())
     }
 
@@ -80,7 +82,7 @@ impl FilesystemAgentScannerV1 {
             .codex_desktop_location
             .lock()
             .map_err(|_| ProbeFailure::Unavailable)?
-            .clone();
+            .clone()?;
         match location {
             Some(DesktopEngineLocation::File(path)) => {
                 executable::resolve(&path).map(|path| path.map(DesktopEngineLocation::File))
@@ -88,7 +90,6 @@ impl FilesystemAgentScannerV1 {
             #[cfg(windows)]
             Some(DesktopEngineLocation::Package(package)) => match package.reopen() {
                 Ok(_) => Ok(Some(DesktopEngineLocation::Package(package))),
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
                 Err(_) => Err(ProbeFailure::Unavailable),
             },
             None => Ok(None),
