@@ -28,6 +28,7 @@ CLI 参考：https://hiroute.ai/zh/docs/cli/
 - 移除决策模型前检查引用：decision removal preview
 - 调整信任度、自定义分支和其他设置：routing show · routing options → routing preview
 - 发布路由并接入 Agent：routing apply · agents connect preview → agents connect apply
+- 按用户要求停用模型接入：agents restore preview --facet model → agents restore apply
 - 查看实际选模、质量与费用：sessions timeline · observation plan-quality samples · observation plan-trust · value show
 - 在 HiRoute 0.6.1 及以上版本中，首页或会话正在更新时可保持页面打开，等待读取自动恢复。
 
@@ -135,7 +136,7 @@ CLI 参考：https://hiroute.ai/zh/docs/cli/
 - **Qoder、Pi、DeepSeek Harness、OpenCode**：保存后重启，在模型选择中选用新增的 HiRoute 路由，原有模型和默认值保持不变。
 - **Hermes**：先选它实际使用的配置目录，再把一条路由设为默认主模型。
 
-使用路由时保持 HiRoute 运行，启用不会自动设置开机启动。需要停用时，在“连接详情与恢复”中使用保留的恢复点。
+使用路由时保持 HiRoute 运行。要停用连接，在 Agent 页的模型路由区域点击**停用**并确认。HiRoute 会还原已记录的设置并移除自己添加的路由，这些设置或路由上的手动修改会被覆盖。如果默认模型或其他模型设置仍引用待移除的路由，先在原客户端切换，再点击**停用**。如果专用 Codex CLI profile 由 HiRoute 创建，停用会私下备份完整文件并移除生效的 profile。停用后用原来的命令启动 Codex。
 
 </details>
 

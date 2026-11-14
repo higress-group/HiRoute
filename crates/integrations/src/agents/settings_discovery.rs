@@ -55,6 +55,31 @@ impl FilesystemAgentScannerV1 {
         profile.codex_settings_discovery(false)
     }
 
+    /// The journal proves ownership. Restore still needs a safe native file target, even if
+    /// the client's current settings fail discovery or the client has been uninstalled.
+    pub fn owned_model_restore_discovery(
+        agent_id: &str,
+        kind: AgentKindV1,
+        target: &Path,
+    ) -> FilesystemAgentDiscoveryV1 {
+        let mut outcome =
+            resolve_agent_observation(base_observation(agent_id, kind, "not-probed".into()));
+        if let AgentDiscoveryOutcomeV1::Supported { installation } = &mut outcome {
+            super::super::observed_capabilities::attach_target_file_capabilities(
+                installation,
+                target,
+            );
+        }
+        FilesystemAgentDiscoveryV1 {
+            outcome,
+            configuration_issue: None,
+            claude_configuration: None,
+            discovered_credential: None,
+            permission_hardening: None,
+            managed_launch: None,
+        }
+    }
+
     pub fn codex_settings_discovery(
         &self,
         include_collaboration_evidence: bool,

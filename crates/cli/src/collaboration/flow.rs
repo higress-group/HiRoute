@@ -184,6 +184,7 @@ fn workflow(
         model: AgentFacetIntent::Keep,
         collaboration,
         restore_native_model: None,
+        restore_managed_changes: false,
         protected_native_model_ids: Vec::new(),
         access_token: AgentAccessTokenIntentV1::Keep,
     };

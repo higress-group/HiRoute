@@ -5,6 +5,8 @@
 mod windows_business_http;
 #[path = "support/windows_claude_connection.rs"]
 mod windows_claude_connection;
+#[path = "support/windows_codex_disable.rs"]
+mod windows_codex_disable;
 #[path = "support/windows_decision_business.rs"]
 mod windows_decision_business;
 #[path = "support/windows_dsh_desktop_models.rs"]

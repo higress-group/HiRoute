@@ -138,6 +138,7 @@ pub(super) fn spec(
             .map(|restore_point_ref| AgentFacetIntent::Restore { restore_point_ref })
             .unwrap_or_default(),
         restore_native_model: None,
+        restore_managed_changes: false,
         protected_native_model_ids: vec![],
         access_token: AgentAccessTokenIntentV1::Keep,
     })

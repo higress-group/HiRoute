@@ -6,6 +6,7 @@ impl LocalControlAdapter {
         class: SettingsAgentClass,
         original: &hiroute_domain::OperationId,
         target: &str,
+        restore_managed_changes: bool,
     ) -> Result<CodexRestoreModelFacts, ControlReadError> {
         let stores = self.stores_lock().map_err(super::map_port)?;
         let operation = stores
@@ -45,7 +46,12 @@ impl LocalControlAdapter {
             .map_err(super::map_port)?;
         let text = std::str::from_utf8(current.as_deref().map_or(&[], |bytes| bytes.as_slice()))
             .map_err(|_| ControlReadError::Corrupt)?;
-        let restored = match restore_codex_native(text, &restore) {
+        let restored = match hiroute_integrations::restore_codex_native_with_model(
+            text,
+            &restore,
+            None,
+            restore_managed_changes,
+        ) {
             Ok(restored) => restored,
             Err(_) => {
                 return Ok(CodexRestoreModelFacts {
@@ -82,7 +88,11 @@ impl LocalControlAdapter {
         let default = catalog
             .selection
             .effective_default(CodexDefaultPolicy {
-                explicit_model: restored_model.as_deref(),
+                explicit_model: if restore_managed_changes {
+                    None
+                } else {
+                    restored_model.as_deref()
+                },
                 uses_codex_backend: true,
                 allow_provider_model_fallback: false,
             })

@@ -66,6 +66,7 @@ test('ordinary disable requests restoration from the saved reference and keeps m
   assert.deepEqual(profile, {
     schema_version: { major: 2, minor: 0 }, context_id: 'context/profile',
     model: { intent: 'restore', restore_point_ref: 'restore/model' }, collaboration: { intent: 'keep' },
+    restore_managed_changes: true,
   });
   const root = { ...codex, codex_access: { ...codex.codex_access, slot_occupied: true, selected_mode: 'root' } };
   assert.equal(agentSettingsSpec(root, 'model', true, draft).restore_native_model, 'native-on-restore');
@@ -150,6 +151,7 @@ for (const ecosystem of ['qoder', 'pi', 'dsh']) test(`${ecosystem} adds only sel
   assert.deepEqual(wire(agentSettingsSpec(saved, 'model', true, draft)), {
     schema_version: { major: 2, minor: 0 }, context_id: `context/${ecosystem}`,
     model: { intent: 'restore', restore_point_ref: `restore/${ecosystem}-model` }, collaboration: { intent: 'keep' },
+    restore_managed_changes: true,
   });
   assert.deepEqual(wire(agentSettingsSpec(saved, 'collaboration', true, draft)), {
     schema_version: { major: 2, minor: 0 }, context_id: `context/${ecosystem}`,

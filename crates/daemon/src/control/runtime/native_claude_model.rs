@@ -9,7 +9,7 @@ use hiroute_domain::{
     SecretStorePort, WorkspaceId, is_agent_access_grant_effect,
 };
 use hiroute_integrations::{
-    stage_claude_configuration, stage_claude_reconfiguration, stage_claude_restoration,
+    stage_claude_configuration, stage_claude_reconfiguration, stage_confirmed_claude_restoration,
 };
 
 pub(super) fn is_settings_claude_model(intent: &ExternalEffectIntentV1) -> bool {
@@ -185,12 +185,14 @@ impl LocalControlAdapter {
                 {
                     return Err(conflict("claude.settings.restore.context"));
                 }
-                stage_claude_restoration(
+                stage_confirmed_claude_restoration(
                     &self.artifacts,
                     operation_id,
                     intent,
                     original_operation,
                     original_intent,
+                    super::effects::restore_managed_model_changes(operation)
+                        .then_some(&payload.expected_content),
                 )
             }
         }

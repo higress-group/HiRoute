@@ -102,6 +102,12 @@ or an inherited `model_providers.hiroute`/`profiles.hiroute` entry is a conflict
 not adopt files by name or remove their authentication fields. Preserve your own files and
 resolve the conflicting entry manually before a fresh preview.
 
+On the Agent page, choose **Disable** and confirm to restore recorded model settings,
+including managed values edited before that Preview. If HiRoute created the dedicated
+CLI profile, the operation retains its full current file in the private encrypted
+backup and removes the active profile. A pre-existing profile keeps its unrelated
+settings and remains at the original path.
+
 Profile mode uses native `codex --profile hiroute`; it does not provide a Desktop profile
 launcher. Session histories remain scoped to their native provider; HiRoute does not merge
 histories or modify the session database. Gateway credentials authorize the selected models

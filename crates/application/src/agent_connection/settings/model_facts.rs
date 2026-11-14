@@ -12,6 +12,7 @@ pub struct SettingsModelCommonFacts {
     pub model_publication: Option<GatewayPublicationV1>,
     pub login_item_required: bool,
     pub login_item_removal_required: bool,
+    pub restore_file_conflict: bool,
     pub fixed_candidate_facts: Vec<crate::compiler::CandidateCompilationFactV1>,
 }
 
@@ -36,6 +37,7 @@ pub struct SettingsCodexModelFacts {
     pub restore_native_model_ids: Option<Vec<String>>,
     pub restore_inherits_root: bool,
     pub restored_native_model: Option<String>,
+    pub archive_codex_profile: bool,
 }
 
 #[derive(Default)]

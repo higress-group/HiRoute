@@ -36,6 +36,7 @@ fn settings_spec() -> AgentSettingsSpecV2 {
         },
         collaboration: AgentFacetIntent::Keep,
         restore_native_model: None,
+        restore_managed_changes: false,
         protected_native_model_ids: Vec::new(),
         access_token: hiroute_domain::AgentAccessTokenIntentV1::Keep,
     }

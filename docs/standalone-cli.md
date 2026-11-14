@@ -912,10 +912,12 @@ login item. HiRoute changes only the Codex fields that it owns. Continue using t
 ```
 
 Pass this spec through `agents restore preview`, copy the returned Preview fields to
-`agents restore apply`, and finish with `agents connect status`. Restore removes only fields
-still owned by HiRoute; concurrent user changes conflict instead of being overwritten. Claude
-Code uses its public profile/launcher contract. Do not configure a Responses-only Codex plan
-for a surface that supports only Messages.
+`agents restore apply`, and finish with `agents connect status`. To restore recorded model
+settings even after editing them, add `"restore_managed_changes": true` to `spec`, or pass
+`--restore-managed-changes` to `agents restore preview --context CONTEXT_ID --facet model`.
+Apply the resulting Preview only after reviewing the effect. If a native model selection
+still uses a route being removed, switch the model in the native client and preview again.
+File changes after Preview always require a new Preview.
 
 ## JSON request input
 
@@ -1247,8 +1249,8 @@ IPv6, multiple listeners, and firewall management are not supported.
   inspect the winning Operation; do not claim that new content was applied.
 - Lost Apply response: keep the original spec/digest/revisions/key and call
   `operations find` first. An explicit retry of the same content uses the original key.
-- Agent restore conflict: the user or Agent changed a managed field. Stop automatic overwrite,
-  read status, and confirm again.
+- Agent restore conflict: check the current configuration, restore point and model references.
+  To restore edited managed model settings, preview with `--restore-managed-changes` and confirm.
 - Successful model request with unknown cost: inspect the RoutingReceipt's actual model and
   usage. `null` without price evidence is correct and does not mean free.
 

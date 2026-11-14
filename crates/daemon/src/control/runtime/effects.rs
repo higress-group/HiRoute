@@ -22,6 +22,11 @@ const SOURCE_PREFIX: &str = "claude/settings/";
 const REQUIRED_MODE: u32 = 0o600;
 const AGENT_MANAGED_CONFIGURATION_EFFECT_ID: &str = "agent-connection-managed-configuration";
 
+/// Read the policy sealed in the accepted Preview. Released operations omit it.
+pub(super) fn restore_managed_model_changes(operation: &hiroute_domain::OperationV1) -> bool {
+    operation.plan.spec().desired_state["restore_managed_changes"] == true
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct AgentConfigurationEnvelopeV1 {

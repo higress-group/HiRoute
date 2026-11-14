@@ -321,6 +321,20 @@ fn native_owned_field_conflict_and_skill_user_edit_leave_files_unchanged() {
     );
     assert_eq!(fs::read_to_string(&path).unwrap(), current);
 
+    // A matching artifact fingerprint cannot authorize rendering bytes from another Preview.
+    let rejected = hiroute_integrations::stage_confirmed_codex_restoration(
+        &artifacts,
+        &restore_operation,
+        &restore,
+        &operation,
+        &install,
+        None,
+        Some(&CanonicalDigest::of_bytes(b"another snapshot")),
+    )
+    .unwrap_err();
+    assert_eq!(rejected.context, "native.restore.snapshot");
+    assert_eq!(fs::read_to_string(&path).unwrap(), current);
+
     let skill_root = crate::test_tempdir().unwrap();
     let skill_path = skill_root.path().join("SKILL.md");
     let install = intent(

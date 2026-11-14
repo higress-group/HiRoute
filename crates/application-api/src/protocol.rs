@@ -1146,7 +1146,7 @@ pub(crate) fn command_usage(command_id: &str, joined_path: &str) -> String {
         "routing.preview" => return "hiroute routing preview (--name NAME --purpose PURPOSE --mode fixed_model --model BINDING | --name NAME --purpose PURPOSE --mode smart_saving --economy BINDING --primary BINDING --decision local_rules | --plan ID <changes> | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
         "compute.connection.preview" => return "hiroute compute connection preview (--candidate REF --candidate-revision REV (--all-selectable | --model-ref REF...) | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
         "agents.connect.preview" => return "hiroute agents connect preview (--context ID [--hermes-root PATH] [--plan ID <native choices>] [--management enable|keep] [--collaboration explicit|delegate_by_default|keep] | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
-        "agents.restore.preview" => return "hiroute agents restore preview (--context ID --facet model|management_skill|collaboration [--hermes-root PATH] [--restore-native-model ID] | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
+        "agents.restore.preview" => return "hiroute agents restore preview (--context ID --facet model|management_skill|collaboration [--hermes-root PATH] [--restore-native-model ID] [--restore-managed-changes] | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]".into(),
         _ => {}
     }
 

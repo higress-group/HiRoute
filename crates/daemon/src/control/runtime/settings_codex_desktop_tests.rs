@@ -130,7 +130,7 @@ fn desktop_and_cli_profile_have_independent_lifecycles() {
     assert_eq!(fs::read(&desktop_config).unwrap(), desktop_bytes);
     apply(&service, &runtime, configure(&cli_context), "reenable-cli");
     let cli_bytes = fs::read(&profile).unwrap();
-    // Native edits remain preserved and prevent unsafe restore, without touching the CLI.
+    // The Desktop restore may replace its recorded fields while the CLI stays active.
     let desktop_text = String::from_utf8(desktop_bytes.clone()).unwrap();
     fs::write(
         &desktop_config,
@@ -139,11 +139,11 @@ fn desktop_and_cli_profile_have_independent_lifecycles() {
     .unwrap();
     assert_eq!(status(&desktop_context)["state"], "drift");
     assert_eq!(status(&cli_context)["state"], "configured");
-    fs::write(&desktop_config, &desktop_bytes).unwrap();
-    let desktop_restore = restore(
+    let mut desktop_restore = restore(
         &desktop_context,
         &status(&desktop_context)["restore_point_ref"],
     );
+    desktop_restore["restore_managed_changes"] = json!(true);
     apply(&service, &runtime, desktop_restore, "disable-desktop");
     assert_eq!(status(&cli_context)["state"], "configured");
     assert_eq!(fs::read(&profile).unwrap(), cli_bytes);

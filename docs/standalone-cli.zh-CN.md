@@ -754,9 +754,11 @@ Standalone daemon 已是 resident service，因此 preview 不要求 Desktop log
 ```
 
 对该 spec 依次调用 `agents restore preview`、复制 preview 返回字段并调用
-`agents restore apply`，最后运行 `agents connect status`。恢复只撤销仍由 HiRoute 拥有的字段；
-并发用户修改会导致冲突而不是被覆盖。Claude Code 使用其公开 profile/launcher 合同；不要把
-Codex 的 Responses 计划直接配置给只支持 Messages 的 surface。
+`agents restore apply`，最后运行 `agents connect status`。如果要还原已经手动修改过的受管模型
+设置，可在 `spec` 中加入 `"restore_managed_changes": true`，或在
+`agents restore preview --context CONTEXT_ID --facet model` 后加 `--restore-managed-changes`。
+核对预览后再应用。如果原生模型设置仍引用待移除的路由，先在原客户端切换模型，再重新预览。
+预览后修改文件需要重新预览。
 
 ## JSON 请求输入
 
@@ -959,7 +961,7 @@ HiRoute 不自动修改防火墙、TLS 或远端 Agent。暂不支持 IPv6、多
   不要把新内容说成已应用。
 - apply 响应丢失：保留原 spec/digest/revisions/key，先 `operations find`；同一内容的显式重试
   继续用原 key。
-- Agent restore 冲突：用户或 Agent 已修改受管字段；停止自动覆盖，读取 status 并重新确认。
+- Agent restore 冲突：核对当前配置、恢复点和模型引用。如果要还原已编辑的受管模型设置，用 `--restore-managed-changes` 重新预览并确认。
 - 模型请求成功但金额未知：查看 RoutingReceipt 的实际 model/usage；没有价格证据时 `null` 是
   正确结果，不等于免费。
 

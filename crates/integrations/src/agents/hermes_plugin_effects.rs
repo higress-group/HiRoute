@@ -78,13 +78,15 @@ pub fn validate_native_plugin_restoration(
     target: &str,
     operation: &OperationId,
     original: &ExternalEffectIntentV1,
+    restore_managed_changes: bool,
 ) -> PortResult<()> {
     if target != original.target() {
         return Err(invalid("hermes.plugin.target"));
     }
     let restore = load(port, operation, original)?;
     let current = port.read_native_target(target)?;
-    if !restore.borrowed
+    if !restore_managed_changes
+        && !restore.borrowed
         && current.as_ref().map(|b| CanonicalDigest::of_bytes(b)) != Some(restore.content_digest)
     {
         return Err(conflict("hermes.plugin.changed"));
@@ -162,6 +164,7 @@ pub fn stage_native_plugin_restoration(
     expected_content: &CanonicalDigest,
     original_operation: &OperationId,
     original: &ExternalEffectIntentV1,
+    restore_managed_changes: bool,
 ) -> PortResult<OwnedEffectV1> {
     if operation == original_operation {
         return Err(invalid("hermes.plugin.restore.binding"));
@@ -169,7 +172,13 @@ pub fn stage_native_plugin_restoration(
     if let Some(effect) = replay(port, operation, intent)? {
         return Ok(effect);
     }
-    validate_native_plugin_restoration(port, intent.target(), original_operation, original)?;
+    validate_native_plugin_restoration(
+        port,
+        intent.target(),
+        original_operation,
+        original,
+        restore_managed_changes,
+    )?;
     let restore = load(port, original_operation, original)?;
     let current = port.read_native_target(intent.target())?;
     if CanonicalDigest::of_bytes(current.as_deref().map_or(&[], Vec::as_slice)) != *expected_content
