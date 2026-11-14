@@ -333,6 +333,7 @@ def admit_test_profile(request, home, localappdata):
         },
         'hiroute_integrations.exe': {
             'agents::filesystem::tests::codex_desktop::codex_desktop_location_refresh_observes_install_update_and_uninstall_without_rebinding_home',
+            'agents::dsh_windows::tests::windows_dsh_recognizes_both_npm_node_shim_templates',
         },
         'hiroute_cli.exe': {
             'codex_desktop::tests::codex_desktop_local_launch_help_is_offline_and_rejects_paths_and_agent_authority',
