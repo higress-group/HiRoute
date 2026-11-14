@@ -573,7 +573,7 @@ long-term account acceptance.
 #### Scenario: A supported predecessor CPA survives an interrupted daemon upgrade
 
 - **WHEN** a supported Linux or macOS daemon exits unexpectedly and its predecessor CPA remains alive across a package upgrade
-- **THEN** the new daemon may stop that process using its recorded private loopback capability, the supported predecessor's reported version and matching process identity. A mismatched or unauthenticated process remains untouched and the private store is preserved.
+- **THEN** the new daemon verifies the process still owns its private launch directory, then authenticates the recorded loopback endpoint and checks its reported predecessor version and process ID. Termination addresses the verified process generation. If identity cannot be verified or the operating system cannot target that process, recovery preserves the process and private state.
 - **AND** recovery waits for confirmed termination before the current verified CPA can use the existing auth directory. An enabled saved source can resume with its original login, account and selected models. The predecessor remains ineligible for launch and request routing.
 
 #### Scenario: Saved subscription runtime is unavailable after startup

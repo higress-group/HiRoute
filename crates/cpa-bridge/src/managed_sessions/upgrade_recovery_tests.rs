@@ -51,9 +51,33 @@ fn managed_subscription_recovers_after_crash_with_previous_cpa_running() {
     assert_eq!(old["binary_version"], PREVIOUS_CPA_VERSION);
     assert_eq!(old["cpa_pid"], saved.pid);
 
-    // A response naming another PID must leave the process and private state alone.
+    // A live PID outside the private launch directory cannot supply stop authority.
+    let mut unrelated = ProcessGuard(
+        Command::new("/bin/sleep")
+            .current_dir(fixture.root.path())
+            .arg("30")
+            .spawn()
+            .unwrap(),
+    );
+    let mut wrong_owner = crate::owner::read_record(owner_path.parent().unwrap()).unwrap();
+    wrong_owner.cpa_pid = unrelated.0.id();
+    let wrong_owner = serde_json::to_vec(&wrong_owner).unwrap();
+    private_atomic_write(&owner_path, &wrong_owner).unwrap();
     let mismatch = fixture.root.path().join("wrong-process-id");
-    fs::write(&mismatch, b"").unwrap();
+    fs::write(&mismatch, unrelated.0.id().to_string()).unwrap();
+    let probe_log = fixture.root.path().join("record-model-catalog");
+    fs::write(&probe_log, b"").unwrap();
+    let rejected = ManagedCpaRuntimeSet::new(fixture.templates.clone()).unwrap();
+    assert!(rejected.login_session(&saved.login).is_none());
+    assert!(old_listener_is_live(saved.address));
+    assert!(unrelated.0.try_wait().unwrap().is_none());
+    assert_eq!(fs::read(&owner_path).unwrap(), wrong_owner);
+    assert!(!fixture.root.path().join("catalog.jsonl").exists());
+    fs::remove_file(probe_log).unwrap();
+    private_atomic_write(&owner_path, &ownership_before).unwrap();
+    drop(unrelated);
+
+    // A response naming another PID must leave the process and private state alone.
     let rejected = ManagedCpaRuntimeSet::new(fixture.templates.clone()).unwrap();
     assert!(rejected.login_session(&saved.login).is_none());
     assert!(old_listener_is_live(saved.address));
@@ -181,6 +205,15 @@ fn prepare_crash(root: &Path) {
 
 fn old_listener_is_live(address: SocketAddr) -> bool {
     TcpStream::connect_timeout(&address, Duration::from_millis(50)).is_ok()
+}
+
+struct ProcessGuard(Child);
+
+impl Drop for ProcessGuard {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
 }
 
 struct CrashOwner {

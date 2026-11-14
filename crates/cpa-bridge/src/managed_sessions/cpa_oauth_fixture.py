@@ -154,7 +154,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                            model_count=len(models))
             if parsed.path == '/v1/models':
                 return self.send({'data': models})
-            process_id = os.getpid() + (1 if (controls / 'wrong-process-id').exists() else 0)
+            override = controls / 'wrong-process-id'
+            process_id = int(override.read_text()) if override.exists() else os.getpid()
             return self.send({'models': models, 'hiroute_model_discovery': {
                 'schema': 'hiroute.cpa-model-discovery/v1',
                 'process_id': process_id,

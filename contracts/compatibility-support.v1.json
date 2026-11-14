@@ -1753,7 +1753,7 @@
       "field": "binary_version (8.0.48-hiroute.1)",
       "mode": "recovery_read_only",
       "owner": "cpa-bridge",
-      "reason": "Retire a live predecessor on Linux or macOS after an interrupted upgrade by authenticating the recorded private endpoint and matching its reported version and process identity. Only the current verified artifact can launch or serve.",
+      "reason": "Retire a live predecessor on Linux or macOS after an interrupted upgrade by matching its private launch directory, authenticating the recorded endpoint, and signaling the verified process generation. Only the current verified artifact can launch or serve.",
       "removal_condition": "No supported upgrade or retained crash state can contain a live CPA at this predecessor version.",
       "allowed_paths": [
         "crates/cpa-bridge/src/accounts/stock.rs",

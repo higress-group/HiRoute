@@ -168,6 +168,10 @@ impl CpaProcessHandle for FakeHandle {
         Ok(*self.process.exit.lock())
     }
 
+    fn has_work_dir(&self, expected: &Path) -> Result<bool, CpaProcessError> {
+        Ok(expected.is_dir())
+    }
+
     fn shutdown(&mut self, _timeout: Duration) -> Result<CpaExit, CpaProcessError> {
         let exit = CpaExit { code: Some(0) };
         *self.process.exit.lock() = Some(exit);

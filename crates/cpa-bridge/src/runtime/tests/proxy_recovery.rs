@@ -40,7 +40,7 @@ fn runtime_start_retires_only_an_authenticated_predecessor() {
         serde_json::from_slice::<serde_json::Value>(&std::fs::read(&owner_path).unwrap()).unwrap(),
         previous
     );
-    assert_eq!(backend.attach_count(), 0);
+    assert_eq!(backend.attach_count(), 1);
     assert_eq!(backend.spawn_count(), 1);
 
     control.set_fail_probes(false);
@@ -54,7 +54,7 @@ fn runtime_start_retires_only_an_authenticated_predecessor() {
     };
     assert_ne!(pid, replacement);
     assert!(!backend.pid_is_running(pid).unwrap());
-    assert_eq!(backend.attach_count(), 1);
+    assert_eq!(backend.attach_count(), 2);
     assert_eq!(backend.spawn_count(), 2);
     let running: serde_json::Value =
         serde_json::from_slice(&std::fs::read(owner_path).unwrap()).unwrap();

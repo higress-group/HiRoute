@@ -130,18 +130,31 @@ impl ManagedCpaRuntime {
         validate_runtime_files(layout)?;
         let secrets = InstanceSecrets::read(&layout.capability_path)?;
         let deadline = Instant::now() + self.spec.control_timeout;
-        let probe = || {
-            let timeout = deadline.saturating_duration_since(Instant::now());
-            #[cfg(any(target_os = "linux", target_os = "macos"))]
-            if is_previous_artifact(record) {
-                return self.control.probe_predecessor(
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        if is_previous_artifact(record) {
+            // Resolve the child in its private launch directory before sending
+            // the management bearer to the listener. Keep that identity pinned.
+            let mut process =
+                crate::process::attach_recovered_process(self.backend.as_ref(), record.cpa_pid)?;
+            if process.pid() != record.cpa_pid || !process.has_work_dir(&layout.work_dir)? {
+                return Err(CpaLifecycleError::UntrustedOrphan);
+            }
+            self.control
+                .probe_predecessor(
                     record.address,
                     &secrets,
                     &record.binary_version,
                     record.cpa_pid,
-                    timeout,
-                );
+                    deadline.saturating_duration_since(Instant::now()),
+                )
+                .map_err(|error| self.map_control_error(error))?;
+            if process.try_exit()?.is_some() {
+                return Err(CpaLifecycleError::UntrustedOrphan);
             }
+            return Ok((secrets, process));
+        }
+        let probe = || {
+            let timeout = deadline.saturating_duration_since(Instant::now());
             self.control
                 .probe_ready(record.address, &secrets, &record.binary_version, timeout)
         };

@@ -1,7 +1,7 @@
 //! Operating-system primitives shared by headless hosts.
 //!
 //! Business authorization and lifecycle policy remain with their existing owners.
-//! Windows FFI is isolated here; callers use owned handles and checked operations.
+//! Native FFI is isolated here; callers use owned handles and checked operations.
 
 pub mod directory_link;
 pub mod durable;
@@ -10,7 +10,7 @@ pub mod local_record;
 pub mod private_fs;
 
 #[cfg(target_os = "macos")]
-pub mod unix_process;
+pub mod macos_process;
 
 #[cfg(windows)]
 pub mod windows;

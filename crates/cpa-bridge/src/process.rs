@@ -1,5 +1,5 @@
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 #[cfg(not(windows))]
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
@@ -31,13 +31,18 @@ pub trait CpaProcessHandle: Send {
     fn pid(&self) -> u32;
     fn try_exit(&mut self) -> Result<Option<CpaExit>, CpaProcessError>;
     fn shutdown(&mut self, timeout: Duration) -> Result<CpaExit, CpaProcessError>;
+
+    /// Checks whether an attached process still owns the private launch directory.
+    fn has_work_dir(&self, _expected: &Path) -> Result<bool, CpaProcessError> {
+        Ok(false)
+    }
 }
 
 pub trait CpaProcessBackend: Send + Sync {
     fn spawn(&self, launch: &CpaLaunch) -> Result<Box<dyn CpaProcessHandle>, CpaProcessError>;
 
-    /// Attaches to a previously authenticated orphaned CPA child after the former HiRoute owner
-    /// has died. Callers must authenticate the recorded loopback endpoint before invoking this.
+    /// Holds the OS identity of a recorded child after the former HiRoute owner has died.
+    /// Callers authenticate the recorded child before any signal or routing.
     fn attach_authenticated(&self, pid: u32) -> Result<Box<dyn CpaProcessHandle>, CpaProcessError>;
 
     fn pid_is_running(&self, pid: u32) -> Result<bool, CpaProcessError>;

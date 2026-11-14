@@ -164,8 +164,10 @@ an orphan before checking its generated proxy and Claude cloaking policy.
 [Recovery regressions](../../crates/cpa-bridge/src/runtime/tests/proxy_recovery.rs)
 cover replacement of a stale policy. [Stop-only recovery](../../crates/cpa-bridge/src/runtime/recovery.rs)
 can retire the supported predecessor on Linux and macOS before the current CPA
-accesses the saved auth directory. The [crash and upgrade regression](../../crates/cpa-bridge/src/managed_sessions/upgrade_recovery_tests.rs)
-covers retained login and model selection and rejects a mismatched process identity.
+accesses the saved auth directory. The [attached process handle](../../crates/cpa-bridge/src/process/attached.rs)
+checks the private working directory and sends signals to a specific process generation.
+The [crash and upgrade regression](../../crates/cpa-bridge/src/managed_sessions/upgrade_recovery_tests.rs)
+covers retained login and model selection and rejects mismatched process identities.
 
 Native configuration precedence belongs to each reader. For example, Pi provider
 `baseUrl` overrides inherited catalog addresses, while provider `api` defaults apply
