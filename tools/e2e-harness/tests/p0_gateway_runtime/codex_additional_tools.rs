@@ -134,6 +134,36 @@ fn positioned_declarations_skip_standard_candidate_and_reach_native_in_order() {
     assert_eq!(wire["tools"], body["tools"]);
 }
 
+#[test]
+fn schema_incompatible_with_standard_responses_uses_native_candidate() {
+    let standard = NativeProvider::start(vec![]);
+    let native = NativeProvider::start(vec![reply(RESPONSES_OK)]);
+    let classifier = NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE)]);
+    let fixture = RuntimeFixture::launch_rest_classified_with_native_control(
+        &[&standard, &native, &classifier],
+        2,
+    );
+    select_standard_responses(&fixture);
+    let body = json!({"model":MODEL,"input":[
+        {"type":"additional_tools","id":"at_native_schema","role":"developer","tools":[
+            {"type":"function","name":"lookup","parameters":null}
+        ]},
+        {"role":"user","content":"Find the record."}
+    ]});
+
+    let response = send(&fixture, &body);
+    assert_eq!(
+        response.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&response.body)
+    );
+    assert_eq!((standard.calls(), native.calls()), (0, 1));
+    let wire = classifier_body(&native, 0);
+    assert_eq!(wire["input"], body["input"]);
+    assert!(wire.get("tools").is_none());
+}
+
 fn select_standard_responses(fixture: &RuntimeFixture) {
     let mut publication = fixture.publication();
     let candidate = &mut publication.aliases[0].candidates[0];
