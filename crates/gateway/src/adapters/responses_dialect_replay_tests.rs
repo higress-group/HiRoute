@@ -183,7 +183,11 @@ fn messages_resolves_repeated_responses_tool_definitions_with_replay() {
     );
     assert_eq!(wire["tool_choice"]["name"], "lookup");
 
+    drop(request);
+    backing.release();
+
     body["input"][0]["tools"][0]["parameters"]["required"] = json!(["different"]);
+    let backing = Backing::new();
     let conflict = backing.request(&body);
     assert!(matches!(
         super::super::project_candidate_request_template_with_history(
@@ -195,7 +199,7 @@ fn messages_resolves_repeated_responses_tool_definitions_with_replay() {
         ),
         Err(ProtocolAdapterError::ToolInterfaceUnrepresentable(_))
     ));
-    drop((request, conflict));
+    drop(conflict);
     backing.release();
 }
 

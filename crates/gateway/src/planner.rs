@@ -181,9 +181,8 @@ impl Planner {
         apply_context_hold(
             input,
             published.is_some(),
-            &group_ids,
+            group_ids.first(),
             &candidate_by_id,
-            &group_by_id,
             &mut evaluations,
             &mut frozen,
             &mut reason_ledger,
@@ -273,9 +272,8 @@ fn guard_anchor_score(
 fn apply_context_hold(
     input: &PlannerInputV1,
     projection_preflighted: bool,
-    selected_group_ids: &[String],
+    first_group_id: Option<&String>,
     candidate_by_id: &BTreeMap<&str, &PlannerCandidateFactsV1>,
-    group_by_id: &BTreeMap<&str, &MaterializedModelGroupV1>,
     evaluations: &mut Vec<CandidateEvaluationV1>,
     frozen: &mut Vec<FrozenCandidateV1>,
     reason_ledger: &mut Vec<ReasonLedgerEntryV1>,
@@ -287,11 +285,16 @@ fn apply_context_hold(
         reason_ledger.push(reason(LedgerReasonCodeV1::ContextHoldInvalidated, None));
         return Ok(());
     };
-    let Some(group) = group_by_id.get(hold.origin_group_id.as_str()).copied() else {
+    let Some(group) = input
+        .policy
+        .groups
+        .iter()
+        .find(|group| group.group_id == hold.origin_group_id)
+    else {
         reason_ledger.push(reason(LedgerReasonCodeV1::ContextHoldInvalidated, None));
         return Ok(());
     };
-    if selected_group_ids.first() != Some(&hold.origin_group_id) {
+    if first_group_id != Some(&hold.origin_group_id) {
         reason_ledger.push(reason(
             LedgerReasonCodeV1::ContextHoldInvalidated,
             Some(group.group_id.clone()),
