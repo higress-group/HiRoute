@@ -182,13 +182,11 @@ fn decode_responses(
         Some(Value::Array(items)) => {
             for (native_index, item) in items.iter().enumerate() {
                 if item.get("type").and_then(Value::as_str) == Some("additional_tools") {
-                    let additional =
-                        checked_object(context, item, &["type", "tools"], "additional_tools")?;
-                    additional_tools.push(
-                        additional
-                            .get("tools")
-                            .ok_or(ModelIrError::InvalidField("additional_tools.tools"))?,
-                    );
+                    additional_tools.push(responses::decode_additional_tools(
+                        context,
+                        item,
+                        !native_history.is_empty(),
+                    )?);
                     continue;
                 }
                 let message_index = messages.len();

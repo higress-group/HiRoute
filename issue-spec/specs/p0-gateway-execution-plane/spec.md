@@ -81,9 +81,22 @@ and Fixed-versus-Plan ownership follow [request routing](../request-routing/spec
 
 Responses function/custom namespaces retain group names/optional descriptions,
 child declarations, top-level tools/additional_tools merged order, strict/schema,
-required choice, parallel behavior, and supported controls. Chat mapping constructs
-one request-owned bidirectional table: flat names remain flat; namespace children
-use `namespace__local`, with global uniqueness and ASCII `[A-Za-z0-9_-]` length 1–64.
+required choice, parallel behavior, and supported controls.
+`additional_tools` accepts an optional nonempty, control-free item ID (or null)
+and an optional `developer` role. Omission retains the released declaration shape.
+These fields do not give the declaration a message position or a tool-call ID.
+Same-protocol native Responses candidates preserve the original item unless their
+endpoint dialect requires top-level tools. The registered Codex subscription
+endpoint and standard Responses JSON adapter lift only leading declarations into
+top-level `tools`, after existing top-level declarations in validated order.
+The projection preserves namespaces, schema values such as `enum` arrays, and
+call/result history. It excludes the candidate if a declaration follows history. Positioned
+declarations with item metadata also exclude cross-protocol mappings. Legacy
+metadata-free declarations retain their existing cross-protocol merge.
+
+Chat mapping constructs one request-owned bidirectional table. Flat names remain
+flat. Namespace children use `namespace__local`, with global uniqueness and ASCII
+`[A-Za-z0-9_-]` length 1–64.
 Reverse lookup uses that table, never parsing the delimiter. Identical duplicate
 declarations may collapse; conflicting identity/schema, target collisions, invalid/
 overlong names, or nested namespaces fail that path.

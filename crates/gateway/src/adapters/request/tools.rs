@@ -1,3 +1,4 @@
+use hiroute_diagnostics::event::RequestProjectionReason;
 use serde_json::{Map, Value, json};
 
 use crate::content_ref::JsonValueExt;
@@ -29,6 +30,49 @@ pub(super) fn insert_responses_tools(
         "parallel_tool_calls".into(),
         Value::Bool(request.parallel_tool_calls),
     );
+    Ok(())
+}
+
+pub(super) fn project_additional_responses_tools(
+    body: &mut Value,
+    request: &ModelRequestIRV1,
+) -> Result<(), ProtocolAdapterError> {
+    let Some(input) = body.get_mut("input").and_then(Value::as_array_mut) else {
+        return Ok(());
+    };
+    // Ingress records one position per message and skips additional_tools.
+    if request
+        .native_history
+        .as_ref()
+        .is_some_and(|history| history.len() == input.len())
+    {
+        return Ok(());
+    }
+    let is_declaration =
+        |item: &Value| item.get("type").and_then(Value::as_str) == Some("additional_tools");
+    let prefix = input.iter().take_while(|item| is_declaration(item)).count();
+    if input[prefix..].iter().any(is_declaration) {
+        return Err(ProtocolAdapterError::RequestUnrepresentable {
+            reason: RequestProjectionReason::NativeSemanticsUnsupported,
+            message_index: None,
+        });
+    }
+    if prefix == 0 {
+        return Ok(());
+    }
+    let declares_tools = input[..prefix].iter().any(|item| {
+        item.get("tools")
+            .and_then(Value::as_array)
+            .is_some_and(|tools| !tools.is_empty())
+    });
+    input.drain(..prefix);
+    if !declares_tools {
+        return Ok(());
+    }
+    // The ingress merge already checked identity collisions and retained tool
+    // order. Move only the declaration carrier before dialect-specific schema
+    // projection sees the top-level tools.
+    body["tools"] = Value::Array(render_responses_tools_in_order(request)?);
     Ok(())
 }
 
@@ -151,17 +195,12 @@ fn render_responses_tool(tool: &CanonicalTool) -> Result<Value, ProtocolAdapterE
                     "function tool cannot carry custom format".into(),
                 ));
             }
-            object.insert(
-                "parameters".into(),
-                tool.input_schema
-                    .as_ref()
-                    .ok_or_else(|| {
-                        ProtocolAdapterError::ClientUnrepresentable(
-                            "function tool requires an input schema".into(),
-                        )
-                    })?
-                    .wire_value(),
-            );
+            let schema = tool.input_schema.as_ref().ok_or_else(|| {
+                ProtocolAdapterError::ClientUnrepresentable(
+                    "function tool requires an input schema".into(),
+                )
+            })?;
+            object.insert("parameters".into(), render_responses_tool_json(schema));
             if let Some(strict) = tool.strict {
                 object.insert("strict".into(), Value::Bool(strict));
             }
@@ -173,11 +212,19 @@ fn render_responses_tool(tool: &CanonicalTool) -> Result<Value, ProtocolAdapterE
                 ));
             }
             if let Some(format) = &tool.format {
-                object.insert("format".into(), format.wire_value());
+                object.insert("format".into(), render_responses_tool_json(format));
             }
         }
     }
     Ok(Value::Object(object))
+}
+
+fn render_responses_tool_json(value: &Value) -> Value {
+    // Keep objects for raw JSON references until the template collector can
+    // distinguish them from string references (for example, a backed enum array).
+    let mut value = value.clone();
+    crate::content_ref::preserve_unbacked_wire_envelopes(&mut value);
+    value
 }
 
 fn render_responses_namespace(

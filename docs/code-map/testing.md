@@ -189,6 +189,9 @@ exercise accepted-event delivery, repeated tool requests, complete assessment me
 and retained-content policy through the production Gateway listener. Protocol-owned
 [projection tests](../../crates/gateway/src/adapters/response/client_projection_tests.rs)
 distinguish intentionally omitted content from deferred client output.
+The [Codex additional-tools listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/codex_additional_tools.rs)
+cover declared tool order and schemas, result replay, and candidate selection when
+an in-history declaration requires its native position.
 
 Start with the representative cases in the [capability map](README.md). A file
 named `product`, a golden containing `green`, or a zero process exit does not prove

@@ -1,5 +1,42 @@
 use super::*;
 
+pub(super) fn decode_additional_tools<'a>(
+    context: &DecodeContext,
+    item: &'a Value,
+    follows_history: bool,
+) -> Result<&'a Value, ModelIrError> {
+    let object = checked_object(
+        context,
+        item,
+        &["type", "id", "role", "tools"],
+        "additional_tools",
+    )?;
+    if object
+        .get("id")
+        .filter(|id| !id.is_null())
+        .is_some_and(|id| {
+            id.as_str()
+                .is_none_or(|id| id.is_empty() || id.chars().any(char::is_control))
+        })
+    {
+        return Err(ModelIrError::InvalidField("additional_tools.id"));
+    }
+    if object
+        .get("role")
+        .is_some_and(|role| role.as_str() != Some("developer"))
+    {
+        return Err(ModelIrError::InvalidField("additional_tools.role"));
+    }
+    if follows_history && (object.contains_key("id") || object.contains_key("role")) {
+        // A positioned native declaration cannot be made available to earlier turns.
+        // Legacy declarations without metadata retain their existing canonical merge.
+        context.mark_modeled_native_only();
+    }
+    object
+        .get("tools")
+        .ok_or(ModelIrError::InvalidField("additional_tools.tools"))
+}
+
 pub(super) fn decode_responses_input(
     context: &DecodeContext,
     value: &Value,

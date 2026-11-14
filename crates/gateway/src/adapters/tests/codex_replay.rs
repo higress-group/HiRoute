@@ -111,6 +111,135 @@ fn codex_subscription_replay_indexes_skip_additional_tool_declarations() {
 }
 
 #[test]
+fn additional_tools_validates_optional_metadata_and_conflicting_declarations() {
+    let user = json!({"role":"user","content":"use the lookup tool"});
+    let lookup = json!({"type":"function","name":"lookup","parameters":{"type":"object"}});
+    for metadata in [
+        json!({}),
+        json!({"id":null}),
+        json!({"role":"developer"}),
+        json!({"id":"at_lookup", "role":"developer"}),
+    ] {
+        let mut declaration = json!({"type":"additional_tools","tools":[lookup.clone()]});
+        declaration
+            .as_object_mut()
+            .unwrap()
+            .extend(metadata.as_object().unwrap().clone());
+        let body =
+            json!({"model":"route","tools":[lookup.clone()],"input":[declaration,user.clone()]});
+        let request = decode_ingress_request(IngressProtocol::Responses, &body).unwrap();
+        assert_eq!(request.messages.len(), 1);
+        assert_eq!(
+            request.native_history_layout().unwrap()[0].native_index,
+            Some(1)
+        );
+        assert!(request.responses_item_ids.is_empty());
+        assert_eq!(request.tools.len(), 1);
+        assert_eq!(request.native_body, Some(body.clone()));
+        let profile = codex_subscription_profile();
+        let projected = project_candidate_request(&request, &profile).unwrap().body;
+        assert_eq!(projected["tools"], json!([lookup.clone()]));
+        assert_eq!(projected["input"], json!([user.clone()]));
+    }
+
+    let body = json!({"model":"route","input":[
+        {"type":"additional_tools","id":"at_lookup","role":"developer","tools":[lookup]},user
+    ]});
+    for (field, invalid, expected) in [
+        ("id", json!(0), "additional_tools.id"),
+        ("id", json!(""), "additional_tools.id"),
+        ("id", json!("at_\n"), "additional_tools.id"),
+        ("role", json!(null), "additional_tools.role"),
+        ("role", json!("user"), "additional_tools.role"),
+        ("role", json!(true), "additional_tools.role"),
+        ("tools", json!({}), "tools"),
+    ] {
+        let mut invalid_body = body.clone();
+        invalid_body["input"][0][field] = invalid;
+        assert_eq!(
+            decode_ingress_request(IngressProtocol::Responses, &invalid_body).unwrap_err(),
+            ModelIrError::InvalidField(expected)
+        );
+    }
+    let mut conflict = body.clone();
+    conflict["tools"] =
+        json!([{"type":"function","name":"lookup","parameters":{"type":"boolean"}}]);
+    assert_eq!(
+        decode_ingress_request(IngressProtocol::Responses, &conflict).unwrap_err(),
+        ModelIrError::InvalidField("conflicting flat tool declaration")
+    );
+    let mut unknown = body;
+    unknown["input"][0]["future_control"] = json!(true);
+    assert_eq!(
+        decode_ingress_request(IngressProtocol::Responses, &unknown).unwrap_err(),
+        ModelIrError::UnsupportedField("additional_tools.future_control".into())
+    );
+}
+
+#[test]
+fn additional_tools_after_history_requires_the_native_item_position() {
+    let array = json!([
+        {"role":"user","content":"first turn"},
+        {"type":"additional_tools","id":"at_late","role":"developer","tools":[
+            {"type":"function","name":"lookup","parameters":{"type":"object"}}
+        ]},
+        {"role":"user","content":"use lookup now"}
+    ]);
+    let body = json!({"model":"route","input":array});
+    let request = decode_ingress_request(IngressProtocol::Responses, &body).unwrap();
+    assert_eq!(
+        request.native_history_layout().unwrap()[1].native_index,
+        Some(2)
+    );
+    for profile in [
+        codex_subscription_profile(),
+        CandidateProtocolProfile::exact_portable_path(
+            IngressProtocol::Responses,
+            IngressProtocol::ChatCompletions,
+            "native-chat",
+            fixed_reasoning("fixed"),
+        ),
+    ] {
+        assert!(matches!(
+            project_candidate_request_template(&request, &profile),
+            Err(ProtocolAdapterError::RequestUnrepresentable {
+                message_index: None,
+                ..
+            })
+        ));
+    }
+    let profile = exact_state_profile(IngressProtocol::Responses, IngressProtocol::Responses);
+    assert_eq!(
+        project_candidate_request(&request, &profile).unwrap().body["input"],
+        body["input"]
+    );
+
+    // A retained metadata-free request still uses the released Chat merge.
+    let mut legacy = body;
+    let declaration = legacy["input"][1].as_object_mut().unwrap();
+    declaration.remove("id");
+    declaration.remove("role");
+    let legacy = decode_ingress_request(IngressProtocol::Responses, &legacy).unwrap();
+    let chat = CandidateProtocolProfile::exact_portable_path(
+        IngressProtocol::Responses,
+        IngressProtocol::ChatCompletions,
+        "native-chat",
+        fixed_reasoning("fixed"),
+    );
+    assert_eq!(
+        project_candidate_request(&legacy, &chat).unwrap().body["tools"][0]["function"]["name"],
+        "lookup"
+    );
+}
+
+fn codex_subscription_profile() -> CandidateProtocolProfile {
+    let mut profile = exact_state_profile(IngressProtocol::Responses, IngressProtocol::Responses);
+    profile.connector.connector_id = "connector.cpa.codex".into();
+    profile.connector.endpoint_id = "endpoint.cpa.codex".into();
+    profile
+}
+
+#[test]
 fn codex_subscription_replay_normalizes_before_prefix_cleanup_reindexes_items() {
     for additional_tools in [false, true] {
         assert_codex_replay_wire(additional_tools, Some(4));
@@ -156,8 +285,9 @@ fn assert_codex_replay_wire(additional_tools: bool, cleanup: Option<usize>) {
         body["input"].as_array_mut().unwrap().insert(
             0,
             json!({
-                "type":"additional_tools","tools":[{
-                    "type":"function","name":"read","parameters":{"type":"object"}
+                "type":"additional_tools","role":"developer","id":"at_native","tools":[{
+                    "type":"function","name":"read","parameters":{"type":"object",
+                        "description":"large tool schema 中文 ".repeat(1024)}
                 }]
             }),
         );
@@ -180,16 +310,25 @@ fn assert_codex_replay_wire(additional_tools: bool, cleanup: Option<usize>) {
     let original = request.clone();
     store.prevalidate(&model_content_refs(&request)).unwrap();
     for connector in ["connector.cpa.codex", "connector.openai.p0"] {
-        let mut profile =
-            exact_state_profile(IngressProtocol::Responses, IngressProtocol::Responses);
-        profile.connector.connector_id = connector.into();
+        let profile = if connector == "connector.cpa.codex" {
+            codex_subscription_profile()
+        } else {
+            let mut profile =
+                exact_state_profile(IngressProtocol::Responses, IngressProtocol::Responses);
+            profile.connector.connector_id = connector.into();
+            profile
+        };
         let mut expected = body["input"].clone();
+        let mut expected_tools = None;
         if cleanup.is_some() {
             expected.as_array_mut().unwrap().retain(|item| {
                 !matches!(item["id"].as_str(), Some("rs-old-first" | "rs-old-second"))
             });
         }
         if connector == "connector.cpa.codex" {
+            if additional_tools {
+                expected_tools = Some(expected.as_array_mut().unwrap().remove(0)["tools"].clone());
+            }
             for item in expected.as_array_mut().unwrap() {
                 if item["type"] == "reasoning"
                     && (item["status"] == "completed"
@@ -216,6 +355,7 @@ fn assert_codex_replay_wire(additional_tools: bool, cleanup: Option<usize>) {
                 rendered["input"], expected,
                 "actual Replay wire must preserve the endpoint dialect with additional_tools={additional_tools} and cleanup={cleanup:?}"
             );
+            assert_eq!(rendered.get("tools"), expected_tools.as_ref());
             assert_eq!(request, original);
         }
     }
