@@ -104,6 +104,48 @@ fn missing_selected_qoder_never_switches_to_a_different_installed_cli() {
     ));
 }
 
+#[cfg(windows)]
+#[test]
+fn windows_qoder_scan_distinguishes_absence_from_unusable_path() {
+    const CASE: &str = "agents::filesystem::tests::qoder::windows_qoder_scan_distinguishes_absence_from_unusable_path";
+    const SEARCH_ROOT: &str = "HIROUTE_TEST_QODER_SEARCH_ROOT";
+    let Some(root) = std::env::var_os(SEARCH_ROOT).map(PathBuf::from) else {
+        let directory = tempfile::tempdir().unwrap();
+        let search = directory.path().join("search");
+        fs::create_dir(&search).unwrap();
+        let child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", CASE, "--nocapture"])
+            .env(SEARCH_ROOT, directory.path())
+            .env("PATH", search)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&child.stdout);
+        assert!(
+            child.status.success() && stdout.contains("1 passed;"),
+            "{stdout}\n{}",
+            String::from_utf8_lossy(&child.stderr)
+        );
+        return;
+    };
+    let mut layout = layout(&root);
+    layout.qoder_executable = PathBuf::from("qoder");
+    let scanner = FilesystemAgentScannerV1::new(layout, registry());
+    let reason = || {
+        let outcome = scanner.scan_agent("agent_qoder_default").unwrap().outcome;
+        let AgentDiscoveryOutcomeV1::ReportOnly { reason, .. } = outcome else {
+            panic!("unexpected Qoder installation");
+        };
+        reason
+    };
+    assert_eq!(reason(), AgentReportOnlyReasonV1::NotFoundInScope);
+
+    fs::create_dir(root.join("search/qoder.exe")).unwrap();
+    assert_eq!(
+        reason(),
+        AgentReportOnlyReasonV1::ExecutableProbeUnavailable
+    );
+}
+
 #[test]
 #[cfg(unix)]
 fn failed_explicit_reverification_invalidates_previous_installed_skill_proof() {

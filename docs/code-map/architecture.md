@@ -169,6 +169,12 @@ checks the private working directory and sends signals to a specific process gen
 The [crash and upgrade regression](../../crates/cpa-bridge/src/managed_sessions/upgrade_recovery_tests.rs)
 covers retained login and model selection and rejects mismatched process identities.
 
+On Windows, [CPA auth file I/O](../../crates/cpa-bridge/src/windows_private.rs)
+admits owner-only inherited ACLs under the protected auth directory and reads
+the verified handle. Control readback and borrowed access copies share that
+boundary. [The pin regression](../../crates/cpa-bridge/src/accounts/stock/pin_tests.rs)
+exercises a replacement during the management PATCH.
+
 Native configuration precedence belongs to each reader. For example, Pi provider
 `baseUrl` overrides inherited catalog addresses, while provider `api` defaults apply
 only to explicit models; [filesystem tests](../../crates/integrations/src/agents/filesystem_tests/pi.rs)

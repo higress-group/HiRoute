@@ -19,7 +19,7 @@ use crate::CpaLifecycleError;
 use crate::accounts::{CpaAccountKind, ManagedAccountIdentity};
 #[cfg(not(windows))]
 use crate::config::ensure_private_dir;
-use crate::config::private_atomic_write;
+use crate::config::private_atomic_write_auth;
 
 const LIMIT: u64 = 128 * 1024;
 const FILE_NAME: &str = "hiroute-managed-claude.json";
@@ -418,7 +418,7 @@ impl BorrowedClaudeLease {
         #[cfg(windows)]
         verify_native(&lease.native)?;
         if !same {
-            private_atomic_write(&self.path, &rendered)?;
+            private_atomic_write_auth(&self.path, &rendered)?;
         }
         after_writes();
         #[cfg(windows)]
@@ -467,11 +467,7 @@ fn verify_native(
 
 #[cfg(windows)]
 fn read_private(path: &Path) -> Result<Zeroizing<Vec<u8>>, CpaLifecycleError> {
-    // On Windows this helper reads only our managed access-only copy. External
-    // native credentials use ReadGuard above and retain their readable ACLs.
-    crate::windows_private::read(path, LIMIT)
-        .map(Zeroizing::new)
-        .map_err(native_read_error)
+    crate::windows_private::read_auth_file(path, LIMIT).map_err(native_read_error)
 }
 
 #[cfg(not(windows))]

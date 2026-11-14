@@ -5,6 +5,7 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
 use hiroute_platform::windows::{diagnostic_files as native, durable, security};
+use zeroize::Zeroizing;
 
 pub(crate) fn directory(path: &Path) -> io::Result<File> {
     let directory = security::ensure_private_directory(path)?;
@@ -22,6 +23,16 @@ pub(crate) fn file(path: &Path) -> io::Result<File> {
     Ok(file)
 }
 
+/// CPA can replace an auth file with a new file that inherits the private
+/// directory's ACL. Read through the verified file handle.
+pub(crate) fn auth_file(path: &Path) -> io::Result<File> {
+    let parent = existing_directory(path.parent().ok_or(io::ErrorKind::InvalidInput)?)?;
+    security::open_inherited_private_file_at(
+        &parent,
+        path.file_name().ok_or(io::ErrorKind::InvalidInput)?,
+    )
+}
+
 pub(crate) fn read(path: &Path, limit: u64) -> io::Result<Vec<u8>> {
     let file = file(path)?;
     if file.metadata()?.len() > limit {
@@ -35,14 +46,38 @@ pub(crate) fn read(path: &Path, limit: u64) -> io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
+pub(crate) fn read_auth_file(path: &Path, limit: u64) -> io::Result<Zeroizing<Vec<u8>>> {
+    let file = auth_file(path)?;
+    let mut bytes = Zeroizing::new(Vec::new());
+    file.take(limit + 1).read_to_end(bytes.as_mut())?;
+    if bytes.len() as u64 > limit {
+        return Err(io::ErrorKind::InvalidData.into());
+    }
+    Ok(bytes)
+}
+
 pub(crate) fn write(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    write_with_existing_check(path, bytes, |_, file| {
+        security::verify_owner_only_handle(file, false)
+    })
+}
+
+pub(crate) fn write_auth_file(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    write_with_existing_check(path, bytes, security::verify_inherited_private_file_handle)
+}
+
+fn write_with_existing_check(
+    path: &Path,
+    bytes: &[u8],
+    verify_existing: impl FnOnce(&File, &File) -> io::Result<()>,
+) -> io::Result<()> {
     let parent_path = path.parent().ok_or(io::ErrorKind::InvalidInput)?;
     let parent = existing_directory(parent_path)?;
     let leaf = path.file_name().ok_or(io::ErrorKind::InvalidInput)?;
     let leaf_text = leaf.to_str().ok_or(io::ErrorKind::InvalidInput)?;
     let replace = match native::open_file(&parent, leaf_text, native::OpenMode::Read) {
         Ok(existing) => {
-            security::verify_owner_only_handle(&existing, false)?;
+            verify_existing(&parent, &existing)?;
             true
         }
         Err(error) if error.kind() == io::ErrorKind::NotFound => false,

@@ -70,9 +70,9 @@ impl FilesystemAgentScannerV1 {
         directories.extend([
             self.layout.qoder_home.join(".local/bin"),
             self.layout.qoder_home.join(".qoder/bin"),
-            PathBuf::from("/usr/local/bin"),
-            PathBuf::from("/usr/bin"),
         ]);
+        #[cfg(unix)]
+        directories.extend([PathBuf::from("/usr/local/bin"), PathBuf::from("/usr/bin")]);
         #[cfg(target_os = "macos")]
         directories.push(PathBuf::from("/opt/homebrew/bin"));
         let mut first_failure = None;

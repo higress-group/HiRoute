@@ -304,6 +304,15 @@ def admit_test_profile(request, home, localappdata):
     if (request['binary'] == 'hiroute_local_storage.exe' and not request['ignored']
             and request['case'] in {prefix + name for name in artifact_cases}):
         return 'temporary_artifact_component'
+    # These regressions use only temporary auth files and a temporary search path.
+    windows_regressions = {
+        ('hiroute_cpa_bridge.exe',
+         'accounts::stock::pin_tests::windows_pin_reads_accept_cpa_replacement_with_private_inherited_acl'),
+        ('hiroute_integrations.exe',
+         'agents::filesystem::tests::qoder::windows_qoder_scan_distinguishes_absence_from_unusable_path'),
+    }
+    if not request['ignored'] and (request['binary'], request['case']) in windows_regressions:
+        return 'temporary_artifact_component'
     # These exact Codex cases use tempfile-owned paths or in-process test doubles.
     # The explicit installation probe only reads the current user's package and
     # runs its engine's fixed --version entry; it never changes a native profile.
