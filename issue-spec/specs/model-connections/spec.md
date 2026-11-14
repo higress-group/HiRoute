@@ -570,6 +570,12 @@ An unauthenticated process remains untouched. Stop-only recovery never starts
 a replacement. This policy is not evidence of upstream quota treatment or
 long-term account acceptance.
 
+#### Scenario: A supported predecessor CPA survives an interrupted daemon upgrade
+
+- **WHEN** a supported Linux or macOS daemon exits unexpectedly and its predecessor CPA remains alive across a package upgrade
+- **THEN** the new daemon may stop that process using its recorded private loopback capability, the supported predecessor's reported version and matching process identity. A mismatched or unauthenticated process remains untouched and the private store is preserved.
+- **AND** recovery waits for confirmed termination before the current verified CPA can use the existing auth directory. An enabled saved source can resume with its original login, account and selected models. The predecessor remains ineligible for launch and request routing.
+
 #### Scenario: Saved subscription runtime is unavailable after startup
 
 - **WHEN** an authorized saved subscription candidate cannot prepare its CPA runtime and a later candidate in the same published plan remains usable

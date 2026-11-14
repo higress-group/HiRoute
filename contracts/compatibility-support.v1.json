@@ -1749,6 +1749,19 @@
       ]
     },
     {
+      "contract": "hiroute.cpa-owner/v1",
+      "field": "binary_version (8.0.48-hiroute.1)",
+      "mode": "recovery_read_only",
+      "owner": "cpa-bridge",
+      "reason": "Retire a live predecessor on Linux or macOS after an interrupted upgrade by authenticating the recorded private endpoint and matching its reported version and process identity. Only the current verified artifact can launch or serve.",
+      "removal_condition": "No supported upgrade or retained crash state can contain a live CPA at this predecessor version.",
+      "allowed_paths": [
+        "crates/cpa-bridge/src/accounts/stock.rs",
+        "crates/cpa-bridge/src/managed_sessions/upgrade_recovery_tests.rs",
+        "crates/cpa-bridge/src/runtime/recovery.rs"
+      ]
+    },
+    {
       "contract": "hiroute.worker-dependency-selection-confirmation/v1",
       "field": "stable schema23/24/25 selection/effect constraints and original Operation journal bytes",
       "mode": "recovery_read_only",

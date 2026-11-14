@@ -9,5 +9,8 @@ pub mod file_security;
 pub mod local_record;
 pub mod private_fs;
 
+#[cfg(target_os = "macos")]
+pub mod unix_process;
+
 #[cfg(windows)]
 pub mod windows;

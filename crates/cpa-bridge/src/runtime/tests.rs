@@ -214,6 +214,20 @@ impl CpaControlPlane for FakeControl {
         Ok(())
     }
 
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn probe_predecessor(
+        &self,
+        address: SocketAddr,
+        secrets: &InstanceSecrets,
+        version: &str,
+        pid: u32,
+        timeout: Duration,
+    ) -> Result<(), AccountDiscoveryError> {
+        assert_eq!(version, recovery::PREVIOUS_CPA_VERSION);
+        assert_ne!(pid, 0);
+        self.probe_ready(address, secrets, VERSION, timeout)
+    }
+
     fn discover_and_pin(
         &self,
         address: SocketAddr,
