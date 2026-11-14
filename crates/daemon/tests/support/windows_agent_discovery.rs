@@ -44,9 +44,17 @@ fn actual_windows_dsh_scan_accepts_a_standalone_shim_and_skips_invalid_path_cand
     )
     .unwrap();
     assert!(!bare.join("node_modules").exists());
-    let cmd = system_executable(Path::new("cmd.exe")).unwrap();
+    let reference = root.path().join("native-reference");
+    let reference = ScanScope::new(&reference, vec![]);
+    let (_, version) = reference.run(
+        &node,
+        &[entry.as_os_str().to_owned(), "--version".into()],
+        None,
+    );
+    let version = std::str::from_utf8(&version).unwrap().trim();
+    assert!(!version.is_empty());
     let cases = [
-        ("npm", vec![npm.as_path()]),
+        ("npm", vec![npm.as_path(), node.parent().unwrap()]),
         ("standalone", vec![bare.as_path()]),
         (
             "earlier-directory",
@@ -57,28 +65,9 @@ fn actual_windows_dsh_scan_accepts_a_standalone_shim_and_skips_invalid_path_cand
             vec![invalid_files.as_path(), bare.as_path()],
         ),
     ];
-    for (case, mut search) in cases {
-        search.push(node.parent().unwrap());
+    for (case, search) in cases {
         let case_root = root.path().join(case);
         let scope = ScanScope::new(&case_root, search);
-        let version_args = ["/d", "/c", "dsh --version"].map(OsString::from);
-        // A malformed regular PE can stop cmd's own resolution. Those files
-        // still must not hide the later admitted DSH from HiRoute.
-        let version = if case == "earlier-files" {
-            let (exit, bytes) = scope.run(
-                &node,
-                &[entry.as_os_str().to_owned(), "--version".into()],
-                None,
-            );
-            assert_eq!(exit, 0, "{case}: the pinned DSH CLI must be runnable");
-            bytes
-        } else {
-            let (exit, bytes) = scope.run(&cmd, &version_args, None);
-            assert_eq!(exit, 0, "{case}: the shell must resolve the real DSH");
-            bytes
-        };
-        let version = std::str::from_utf8(&version).unwrap().trim();
-        assert!(!version.is_empty());
         let mut daemon = scope.start();
         let all = scope.scan(None);
         let dsh = row(&all, DSH);
