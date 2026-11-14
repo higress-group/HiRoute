@@ -58,6 +58,7 @@ impl ChatToolProjection {
         let mut entries = Vec::with_capacity(declarations.len());
         let mut declaration_indices = Vec::with_capacity(declarations.len());
         let mut emitted = BTreeMap::<String, usize>::new();
+        let mut namespace_descriptions = BTreeMap::new();
         for (index, &(namespace, tool)) in declarations.iter().enumerate() {
             validate_declaration(tool)?;
             let namespace_name = namespace.map(|namespace| namespace.name.as_str());
@@ -70,10 +71,11 @@ impl ChatToolProjection {
                 let (first_namespace, first_tool) = declarations[first_index];
                 if first_namespace.map(|value| value.name.as_str()) != namespace_name
                     || !same_tool_definition(first_tool, tool, replay)
-                    || !same_tool_description(
+                    || !same_namespace_description(
                         first_namespace.and_then(|value| value.description.as_deref()),
                         namespace.and_then(|value| value.description.as_deref()),
                         replay,
+                        &mut namespace_descriptions,
                     )
                 {
                     return Err(unrepresentable(
@@ -325,6 +327,33 @@ fn same_tool_description(
         }
 }
 
+fn same_namespace_description<'a>(
+    left: Option<&'a str>,
+    right: Option<&'a str>,
+    replay: Option<&ReplayStore>,
+    digests: &mut BTreeMap<&'a str, Option<[u8; 32]>>,
+) -> bool {
+    if left == right {
+        return true;
+    }
+    let (Some(left), Some(right), Some(replay)) = (left, right, replay) else {
+        return false;
+    };
+    if left.content_ref().is_none() && right.content_ref().is_none() {
+        return false;
+    }
+    // Every child uses the same namespace description. Hash each description
+    // only once during this mapping, even when many children repeat.
+    let mut digest = |text: &'a str| {
+        *digests
+            .entry(text)
+            .or_insert_with(|| tool_json_digest(&Value::String(text.to_owned()), replay))
+    };
+    digest(left)
+        .zip(digest(right))
+        .is_some_and(|(left, right)| left == right)
+}
+
 fn same_tool_json(
     left: Option<&Value>,
     right: Option<&Value>,
@@ -338,14 +367,15 @@ fn same_tool_json(
     };
     // Compare compact references by their decoded, canonical JSON content.
     // Only a candidate that must map conflicting identities reads these bytes.
-    let digest = |value| {
-        let mut hash = Sha256::new();
-        crate::context_hold::write_canonical_json_with_replay(&mut hash, value, replay)?;
-        Some(hash.finalize())
-    };
-    digest(left)
-        .zip(digest(right))
+    tool_json_digest(left, replay)
+        .zip(tool_json_digest(right, replay))
         .is_some_and(|(left, right)| left == right)
+}
+
+fn tool_json_digest(value: &Value, replay: &ReplayStore) -> Option<[u8; 32]> {
+    let mut hash = Sha256::new();
+    crate::context_hold::write_canonical_json_with_replay(&mut hash, value, replay)?;
+    Some(hash.finalize().into())
 }
 
 fn ordered_declarations(
