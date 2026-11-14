@@ -75,18 +75,37 @@ impl FilesystemAgentScannerV1 {
         ]);
         #[cfg(target_os = "macos")]
         directories.push(PathBuf::from("/opt/homebrew/bin"));
-        let mut first_failure = None;
-        for directory in directories.into_iter().take(128) {
-            for name in [selected.as_os_str(), std::ffi::OsStr::new("qodercli")] {
-                match super::super::executable::resolve(&directory.join(name)) {
-                    Ok(Some(path)) => return Ok(Some(path)),
-                    Ok(None) => {}
-                    Err(error) => {
-                        first_failure.get_or_insert(error);
+        directories.truncate(128);
+        // A PATH entry is a place to look, not a verdict about the installation. Windows
+        // entries are commonly junctions or symbolic links (the Oracle `javapath` mount
+        // point, a version manager's `nodejs` link), so joining first and admitting the
+        // result would report an honest absence as an unobservable probe.
+        #[cfg(windows)]
+        let searched = super::super::executable::resolve_in(
+            &directories,
+            &[selected.as_path(), std::path::Path::new("qodercli")],
+        );
+        #[cfg(not(windows))]
+        let searched = {
+            let mut failure = None;
+            for directory in directories.iter() {
+                for name in [selected.as_os_str(), std::ffi::OsStr::new("qodercli")] {
+                    match super::super::executable::resolve(&directory.join(name)) {
+                        Ok(Some(path)) => return Ok(Some(path)),
+                        Ok(None) => {}
+                        Err(error) => {
+                            failure.get_or_insert(error);
+                        }
                     }
                 }
             }
-        }
+            failure.map_or(Ok(None), Err)
+        };
+        let mut first_failure = match searched {
+            Ok(Some(path)) => return Ok(Some(path)),
+            Ok(None) => None,
+            Err(error) => Some(error),
+        };
         // Standalone installations may expose only a versioned native binary. One bounded
         // directory listing is sufficient; never recurse through HOME or inspect binary bytes.
         let directory = self.layout.qoder_home.join(".qoder/bin/qodercli");
