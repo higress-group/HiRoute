@@ -187,13 +187,23 @@ pub fn open_own_bundle_in_workspace() -> bool {
 /// falls back to a separately installed `codex` on PATH and does not authenticate a release.
 pub fn codex_desktop_engine() -> Option<std::path::PathBuf> {
     #[cfg(target_os = "macos")]
-    {
-        workspace::codex_desktop_engine()
-    }
+    return workspace::codex_desktop_engine();
     #[cfg(not(target_os = "macos"))]
-    {
-        codex_installation::installed().map(|app| app.engine)
-    }
+    return codex_desktop_engine_location()
+        .ok()
+        .flatten()
+        .map(|location| location.path().to_owned());
+}
+
+/// Carry the installed engine's Windows package identity to native discovery.
+#[cfg(not(target_os = "macos"))]
+pub fn codex_desktop_engine_location()
+-> std::io::Result<Option<hiroute_platform::desktop_engine::DesktopEngineLocation>> {
+    #[cfg(windows)]
+    let installation = codex_installation::installed()?;
+    #[cfg(target_os = "linux")]
+    let installation = codex_installation::installed();
+    Ok(installation.map(|app| app.engine))
 }
 
 mod codex_instance;

@@ -2,6 +2,7 @@
 use super::*;
 #[cfg(windows)]
 use crate::config::ensure_private_dir;
+use crate::config::private_atomic_write;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Barrier, Condvar, Mutex as StdMutex, mpsc};

@@ -21,6 +21,10 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
+        Self::with_patch_effect(|_| {})
+    }
+
+    fn with_patch_effect(persist: impl Fn(&Path) + Send + 'static) -> Self {
         let root = crate::private_test_support::tempdir().unwrap();
         let path = root.path().join("codex-a.json");
         #[cfg(not(windows))]
@@ -56,6 +60,7 @@ impl Fixture {
         let account_read_count = account_reads.clone();
         let catalog_read_count = catalog_reads.clone();
         let fault_value = fault.clone();
+        let auth_path = root.path().join("codex-a.json");
         let worker = thread::spawn(move || {
             let mut account_reads = 0;
             let mut model_reads = 0;
@@ -99,6 +104,7 @@ impl Fixture {
                     if reject.load(Ordering::SeqCst) {
                         (503, "{}".to_owned())
                     } else {
+                        persist(&auth_path);
                         (200, "{}".to_owned())
                     }
                 } else if header.starts_with("GET /v0/management/auth-files?name=") {
@@ -354,6 +360,95 @@ fn repeated_pin_reads_do_not_refresh_remote_catalog() {
     assert_eq!(fixture.patches.load(Ordering::SeqCst), 1);
     assert!(fixture.discover(true).is_err());
     assert_eq!(fixture.patches.load(Ordering::SeqCst), 2);
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_pin_reads_accept_cpa_replacement_with_private_inherited_acl() {
+    use hiroute_platform::windows::{
+        job::{Child, Launch, Stream},
+        security,
+    };
+    use std::ffi::OsString;
+
+    const CASE: &str = "accounts::stock::pin_tests::windows_pin_reads_accept_cpa_replacement_with_private_inherited_acl";
+    const AUTH_PATH: &str = "HIROUTE_TEST_PIN_REPLACEMENT_PATH";
+    const CONTROLS: &[u8] =
+        br#"{"prefix":"hiroute-codex-current","request_retry":0,"disable_cooling":true}"#;
+    if let Some(path) = std::env::var_os(AUTH_PATH) {
+        let path = std::path::PathBuf::from(path);
+        let stage = path.with_extension("tmp");
+        fs::write(&stage, CONTROLS).unwrap();
+        fs::rename(stage, path).unwrap();
+        return;
+    }
+
+    let fixture = Fixture::with_patch_effect(replace_with_inherited_auth_file);
+    let auth_path = fixture.root.path().join("codex-a.json");
+    let initial =
+        security::file_identity(&crate::windows_private::file(&auth_path).unwrap()).unwrap();
+    let accounts = fixture
+        .discover_with_timeout(true, crate::MANAGED_CPA_CONTROL_TIMEOUT)
+        .unwrap();
+    assert_eq!(
+        accounts[0].observed_model_ids,
+        BTreeSet::from(["future-model".into()])
+    );
+    let file = crate::windows_private::auth_file(&auth_path).unwrap();
+    assert_ne!(security::file_identity(&file).unwrap(), initial);
+    assert!(security::verify_owner_only_handle(&file, false).is_err());
+    drop(file);
+
+    assert_eq!(fixture.discover(false).unwrap(), accounts);
+    assert_eq!(fixture.patches.load(Ordering::SeqCst), 1);
+    let alias = auth_path.with_extension("link");
+    fs::hard_link(&auth_path, &alias).unwrap();
+    assert!(matches!(
+        fixture.discover(false),
+        Err(AccountDiscoveryError::AuthDirectory(error))
+            if error.kind() == std::io::ErrorKind::PermissionDenied
+    ));
+    fs::remove_file(alias).unwrap();
+
+    crate::config::private_atomic_write_auth(&auth_path, CONTROLS).unwrap();
+    crate::windows_private::file(&auth_path).unwrap();
+    hiroute_platform_test_support::grant_everyone_read(&auth_path, false).unwrap();
+    assert!(matches!(
+        fixture.discover(false),
+        Err(AccountDiscoveryError::AuthDirectory(error))
+            if error.kind() == std::io::ErrorKind::PermissionDenied
+    ));
+    assert!(crate::config::private_atomic_write_auth(&auth_path, CONTROLS).is_err());
+
+    fn replace_with_inherited_auth_file(auth_path: &Path) {
+        let binary = std::env::current_exe().unwrap();
+        // The child uses the same owner-only token defaults as production CPA.
+        let mut env = vec![(AUTH_PATH.into(), auth_path.as_os_str().to_owned())];
+        env.extend(
+            ["SystemRoot", "WINDIR"]
+                .into_iter()
+                .filter_map(|key| std::env::var_os(key).map(|value| (key.into(), value))),
+        );
+        let child = Child::spawn(Launch {
+            program: &binary,
+            args: &["--exact", CASE].map(OsString::from),
+            env: &env,
+            cwd: auth_path.parent(),
+            stdin: Stream::Null,
+            stdout: Stream::Null,
+            stderr: Stream::Null,
+        })
+        .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(code) = child.exit_code().unwrap() {
+                assert_eq!(code, 0);
+                break;
+            }
+            assert!(Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
 }
 
 #[test]

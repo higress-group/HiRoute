@@ -1,13 +1,30 @@
 //! An explicitly requested native compatibility check. Configuration overrides exist only in
 //! the child process; no managed or daily configuration file is created or restored.
 use super::*;
+use hiroute_platform::desktop_engine::DesktopEngineLocation;
 
 impl CodexNativeIngressProbe {
     pub fn run_ephemeral(
         self,
         executable: &Path,
     ) -> Result<CodexIngressEvidence, NativeIngressProbeError> {
-        self.run_isolated(executable, None)
+        self.run_isolated(&resolve(executable)?, None)
+    }
+
+    pub(in crate::agents) fn run_resolved_ephemeral(
+        self,
+        executable: &DesktopEngineLocation,
+    ) -> Result<CodexIngressEvidence, NativeIngressProbeError> {
+        #[cfg(windows)]
+        let _hold = match executable {
+            DesktopEngineLocation::Package(package) => Some(
+                package
+                    .reopen()
+                    .map_err(|_| fail("registered package executable"))?,
+            ),
+            DesktopEngineLocation::File(_) => None,
+        };
+        self.run_isolated(executable.path(), None)
     }
 
     pub fn run_collaboration(
@@ -15,17 +32,14 @@ impl CodexNativeIngressProbe {
         executable: &Path,
         cli: &Path,
     ) -> Result<CodexIngressEvidence, NativeIngressProbeError> {
-        self.run_isolated(executable, Some(cli))
+        self.run_isolated(&resolve(executable)?, Some(cli))
     }
 
     fn run_isolated(
         self,
-        executable: &Path,
+        binary: &Path,
         cli: Option<&Path>,
     ) -> Result<CodexIngressEvidence, NativeIngressProbeError> {
-        let binary = super::super::executable::resolve(executable)
-            .map_err(|_| fail("trusted executable"))?
-            .ok_or_else(|| fail("executable"))?;
         let collaboration = cli.is_some();
         if super::super::codex_profile::codex_has_system_configuration()
             .map_err(|_| fail("organization configuration isolation"))?
@@ -59,7 +73,7 @@ impl CodexNativeIngressProbe {
             "model_providers.hiroute_native_probe={{name=\"HiRoute native check\",base_url={},wire_api=\"responses\",experimental_bearer_token=\"hiroute-native-probe-no-authority\",requires_openai_auth=false}}",
             serde_json::to_string(&self.endpoint).map_err(|_| fail("endpoint encoding"))?
         );
-        let mut command = Command::new(&binary);
+        let mut command = Command::new(binary);
         command.arg("exec").arg("--ignore-rules");
         #[cfg(windows)]
         if collaboration {
@@ -166,6 +180,12 @@ impl CodexNativeIngressProbe {
             collaboration,
         })
     }
+}
+
+fn resolve(executable: &Path) -> Result<std::path::PathBuf, NativeIngressProbeError> {
+    super::super::executable::resolve(executable)
+        .map_err(|_| fail("trusted executable"))?
+        .ok_or_else(|| fail("executable"))
 }
 
 #[cfg(test)]

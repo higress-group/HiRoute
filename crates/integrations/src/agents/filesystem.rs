@@ -28,6 +28,7 @@ use super::{
     AGENT_SCAN_OBSERVATION_SCHEMA_V1, AgentDiscoveryOutcomeV1, AgentReportOnlyReasonV1,
     AgentScanObservationV1, ConfigObservationV1, resolve_agent_observation,
 };
+use hiroute_platform::desktop_engine::DesktopEngineLocation;
 
 #[path = "filesystem/claude_settings.rs"]
 mod claude_settings;
@@ -35,7 +36,7 @@ mod claude_settings;
 mod dsh_desktop;
 pub use dsh_desktop::DshDesktopModelCheckError;
 #[path = "dsh_native.rs"]
-mod dsh_native;
+pub(super) mod dsh_native;
 #[path = "claude_observation.rs"]
 mod main_observation;
 #[path = "opencode_scanner.rs"]
@@ -245,7 +246,9 @@ impl AgentFilesystemLayoutV1 {
 
 #[derive(Clone)]
 pub struct FilesystemAgentScannerV1 {
-    pub(super) codex_desktop_location: std::sync::Arc<std::sync::Mutex<Option<PathBuf>>>,
+    pub(super) codex_desktop_location: std::sync::Arc<
+        std::sync::Mutex<Result<Option<DesktopEngineLocation>, super::executable::ProbeFailure>>,
+    >,
     pub(super) dynamic_codex_desktop_location: bool,
     pi_collaboration_cli:
         std::sync::Arc<std::sync::Mutex<Option<(PathBuf, hiroute_domain::CanonicalDigest)>>>,
@@ -273,24 +276,16 @@ impl FilesystemAgentScannerV1 {
         }
     }
 
-    fn located_codex_engine(&self) -> Result<Option<PathBuf>, super::executable::ProbeFailure> {
-        let mut first_failure = None;
-        for candidate in self
-            .codex_desktop_engine_path()
-            .iter()
-            .chain(std::iter::once(&self.layout.codex_executable))
-        {
-            match super::executable::resolve(candidate) {
-                Ok(Some(path)) => return Ok(Some(path)),
-                Ok(None) => {}
-                Err(error) => {
-                    first_failure.get_or_insert(error);
-                }
-            };
+    fn located_codex_engine(
+        &self,
+    ) -> Result<Option<DesktopEngineLocation>, super::executable::ProbeFailure> {
+        let desktop = self.located_codex_desktop_engine();
+        if matches!(desktop, Ok(Some(_))) {
+            return desktop;
         }
-        match first_failure {
-            Some(error) => Err(error),
-            None => Ok(None),
+        match super::executable::resolve(&self.layout.codex_executable) {
+            Ok(Some(path)) => Ok(Some(DesktopEngineLocation::File(path))),
+            cli => desktop.and(cli.map(|path| path.map(DesktopEngineLocation::File))),
         }
     }
 
@@ -321,9 +316,10 @@ impl FilesystemAgentScannerV1 {
             .map(|context| context.model_target())
             .unwrap_or_default();
         Self {
-            codex_desktop_location: std::sync::Arc::new(std::sync::Mutex::new(
-                layout.codex_desktop_executable.clone(),
-            )),
+            codex_desktop_location: std::sync::Arc::new(std::sync::Mutex::new(Ok(layout
+                .codex_desktop_executable
+                .clone()
+                .map(DesktopEngineLocation::File)))),
             dynamic_codex_desktop_location: false,
             layout,
             opencode_model_target,
@@ -358,7 +354,7 @@ impl FilesystemAgentScannerV1 {
             .located_codex_engine()
             .map_err(|_| super::native_ingress_probe::fail("Codex engine location"))?
             .ok_or_else(|| super::native_ingress_probe::fail("Codex engine location"))?;
-        let evidence = super::CodexNativeIngressProbe::bind()?.run_ephemeral(&engine)?;
+        let evidence = super::CodexNativeIngressProbe::bind()?.run_resolved_ephemeral(&engine)?;
         let mut cache = self
             .codex_ingress
             .lock()
@@ -526,10 +522,8 @@ impl FilesystemAgentScannerV1 {
                             installation,
                             &target,
                         );
-                        self.located_codex_engine()
-                            .ok()
-                            .flatten()
-                            .unwrap_or_else(|| self.layout.codex_executable.clone())
+                        // Codex evidence uses the native configuration and the latest explicit check.
+                        self.layout.codex_executable.clone()
                     }
                     AgentKindV1::ClaudeCode => {
                         super::observed_capabilities::attach_file_capabilities(
@@ -570,7 +564,12 @@ impl FilesystemAgentScannerV1 {
     }
 
     pub(super) fn scan_codex_for(&self, agent_id: &str) -> FilesystemAgentDiscoveryV1 {
-        match self.located_codex_engine() {
+        let engine = if agent_id == super::CODEX_DESKTOP_AGENT_ID {
+            self.located_codex_desktop_engine()
+        } else {
+            self.located_codex_engine()
+        };
+        match engine {
             Ok(Some(_)) => self.codex_file_discovery(agent_id),
             Ok(None) => probe_report(agent_id, AgentKindV1::Codex, ExecutableProbe::NotFound),
             Err(reason) => probe_report(
@@ -698,19 +697,14 @@ impl FilesystemAgentScannerV1 {
     ) -> BTreeSet<hiroute_domain::AgentModelSurfaceV2> {
         let available = |path: &Path| matches!(super::executable::resolve(path), Ok(Some(_)));
         match agent_id {
-            super::CODEX_DESKTOP_AGENT_ID => self
-                .codex_desktop_engine_path()
-                .as_deref()
-                .filter(|path| available(path))
-                .map(|_| [hiroute_domain::AgentModelSurfaceV2::CodexDesktop].into())
-                .unwrap_or_default(),
+            super::CODEX_DESKTOP_AGENT_ID
+                if matches!(self.located_codex_desktop_engine(), Ok(Some(_))) =>
+            {
+                [hiroute_domain::AgentModelSurfaceV2::CodexDesktop].into()
+            }
             "agent_codex_default" => {
                 let mut surfaces = BTreeSet::new();
-                if self
-                    .codex_desktop_engine_path()
-                    .as_deref()
-                    .is_some_and(available)
-                {
+                if matches!(self.located_codex_desktop_engine(), Ok(Some(_))) {
                     surfaces.insert(hiroute_domain::AgentModelSurfaceV2::CodexDesktop);
                 }
                 if available(&self.layout.codex_executable) {

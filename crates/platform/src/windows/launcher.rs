@@ -14,6 +14,18 @@ use std::{
 pub const DESCRIPTOR_ENV: &str = "HIROUTE_NATIVE_LAUNCH_DESCRIPTOR";
 const LIMIT: u64 = 64 * 1024;
 
+/// Checks the image format without launching it. Windows still decides whether
+/// the selected program can start when the caller attempts a real launch.
+pub fn is_executable_image(path: &Path) -> bool {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::GetBinaryTypeW;
+
+    let path: Vec<_> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+    let mut kind = 0;
+    // SAFETY: path is a NUL-terminated wide string and kind is a live out parameter.
+    unsafe { GetBinaryTypeW(path.as_ptr(), &mut kind) != 0 }
+}
+
 pub fn descriptor(binary: &Path, prefix: &[PathBuf], overrides: &[String]) -> io::Result<Vec<u8>> {
     let file = security::open_identity(binary, false)?;
     let (volume, index) = security::file_identity(&file)?;

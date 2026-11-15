@@ -30,6 +30,19 @@ pub(super) fn attach_optional_file_capabilities(
     );
 }
 
+#[cfg(windows)]
+pub(super) fn attach_package_file_capabilities(
+    installation: &mut SupportedAgentInstallationV1,
+    executable: &hiroute_platform::windows::app_package::RegisteredPackageExecutable,
+    target: &Path,
+) {
+    attach_capabilities(
+        installation,
+        windows_dependencies(Some((executable.path(), executable.reopen())), target),
+        "hiroute.native-files/v1",
+    );
+}
+
 /// Settings support is derived from the selected configuration target only. A concrete
 /// executable is located separately; its inode, digest, release or version is not a save gate.
 pub(super) fn attach_target_file_capabilities(
@@ -400,13 +413,31 @@ pub(super) fn dependencies(
     executable: Option<&Path>,
     target: &Path,
 ) -> Result<(CanonicalDigest, bool), ()> {
+    let executable = executable
+        .map(|path| super::executable::resolve(path).map_err(|_| ())?.ok_or(()))
+        .transpose()?;
+    windows_dependencies(
+        executable.as_deref().map(|path| {
+            (
+                path,
+                hiroute_platform::windows::security::open_identity(path, false),
+            )
+        }),
+        target,
+    )
+}
+
+#[cfg(windows)]
+fn windows_dependencies(
+    executable: Option<(&Path, std::io::Result<std::fs::File>)>,
+    target: &Path,
+) -> Result<(CanonicalDigest, bool), ()> {
     use hiroute_platform::file_security::capture;
     use hiroute_platform::windows::security::{file_identity, file_link_count, open_identity};
     use std::os::windows::fs::MetadataExt;
-    let identity = |path: &Path, directory: bool| -> std::io::Result<_> {
-        let file = open_identity(path, directory)?;
+    let identity = |file: &std::fs::File, directory: bool| -> std::io::Result<_> {
         let meta = file.metadata()?;
-        let permissions = capture(&file)?;
+        let permissions = capture(file)?;
         let version = if directory {
             None
         } else {
@@ -417,21 +448,19 @@ pub(super) fn dependencies(
             ))
         };
         Ok((
-            file_identity(&file)?,
+            file_identity(file)?,
             permissions,
             version,
-            file_link_count(&file)?,
+            file_link_count(file)?,
         ))
     };
     let binary = executable
-        .map(|path| {
-            let path = super::executable::resolve(path)
-                .map_err(|_| ())?
-                .ok_or(())?;
-            Ok::<_, ()>((path.clone(), identity(&path, false).map_err(|_| ())?))
+        .map(|(path, file)| {
+            let file = file.map_err(|_| ())?;
+            Ok::<_, ()>((path, identity(&file, false).map_err(|_| ())?))
         })
         .transpose()?;
-    let file = match identity(target, false) {
+    let file = match open_identity(target, false).and_then(|file| identity(&file, false)) {
         Ok(value) => Some(value),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
         Err(_) => return Err(()),
@@ -439,7 +468,7 @@ pub(super) fn dependencies(
     let mut parent = target.parent().ok_or(())?;
     let mut parent_identity = None;
     for _ in 0..32 {
-        match identity(parent, true) {
+        match open_identity(parent, true).and_then(|file| identity(&file, true)) {
             Ok(value) => {
                 parent_identity = Some(value);
                 break;

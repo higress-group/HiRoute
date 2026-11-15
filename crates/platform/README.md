@@ -84,10 +84,11 @@ generic full access. Daemon hosts call it before C/Go storage creation; it does
 not change groups, privileges, integrity, session or existing objects. The Job
 launcher initializes the independently identified child token before resuming
 its initial thread, and duplicates a borrowed primary token before assignment.
-`open_inherited_private_file_at` is limited to controlled CPA-generated files
-under a held strictly private directory: actual user Owner, one user full-access
-ACE, no reparse and one link. It accepts the inherited ACE flag, while ordinary
-private verification continues to require the protected descriptor. Borrowed
+`open_inherited_private_file_at` admits controlled child-generated files under a
+held strictly private directory: actual user Owner, one user full-access ACE,
+no reparse and one link. CPA uses it for OAuth credentials and access copies
+that its control updates can replace. It accepts the inherited ACE flag, while
+ordinary private verification requires the protected descriptor. Borrowed
 native-client credentials retain their separate accessible-file contract.
 
 `windows::pipe` provides owner-only local byte streams. Its namespace binds the

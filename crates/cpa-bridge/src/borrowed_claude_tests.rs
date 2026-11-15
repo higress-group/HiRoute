@@ -1,6 +1,7 @@
 use super::*;
 #[cfg(windows)]
 use crate::config::ensure_private_dir;
+use crate::config::private_atomic_write;
 
 #[cfg(target_os = "macos")]
 fn assert_keychain_waiter_budget(test_name: &str, cancel_waiter: bool) {

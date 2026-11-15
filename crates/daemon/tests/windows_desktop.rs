@@ -19,41 +19,9 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use windows_sys::Win32::Security::{
-    CreateWellKnownSid, EqualSid, TOKEN_GROUPS, TokenGroups, WinBuiltinAdministratorsSid,
-};
-
 fn standard_session() {
     install::require_x64().unwrap();
-    let token = windows_account::process_token(std::process::id());
-    let sid = background::sid_string(&windows_account::token_sid(&token)).unwrap();
-    assert_ne!(windows_account::assert_standard(&token, &sid), 0);
-    let mut admin = [0_usize; 9];
-    let mut size = std::mem::size_of_val(&admin) as u32;
-    // SAFETY: aligned native SID buffer with its actual writable capacity.
-    assert_ne!(
-        unsafe {
-            CreateWellKnownSid(
-                WinBuiltinAdministratorsSid,
-                std::ptr::null_mut(),
-                admin.as_mut_ptr().cast(),
-                &mut size,
-            )
-        },
-        0
-    );
-    let groups = windows_account::information(&token, TokenGroups);
-    // SAFETY: GetTokenInformation returned this aligned, complete TOKEN_GROUPS.
-    let groups = unsafe { &*groups.as_ptr().cast::<TOKEN_GROUPS>() };
-    for group in
-        unsafe { std::slice::from_raw_parts(groups.Groups.as_ptr(), groups.GroupCount as usize) }
-    {
-        assert_eq!(
-            unsafe { EqualSid(group.Sid, admin.as_mut_ptr().cast()) },
-            0,
-            "standard-user evidence rejects deny-only Administrators membership too"
-        );
-    }
+    windows_account::assert_current_standard_account();
 }
 
 fn hash(path: &Path) -> String {

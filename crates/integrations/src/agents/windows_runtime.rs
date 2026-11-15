@@ -13,19 +13,38 @@ pub fn windows_agent_command(
     args: &[PathBuf],
     search: &str,
 ) -> io::Result<(PathBuf, Vec<PathBuf>)> {
-    let entry = command_entry(program)?;
-    if is_native(&entry) {
-        return Ok((entry, args.to_vec()));
-    }
-    let node = node_path(Some(std::ffi::OsStr::new(search)), &entry)?;
+    let (program, entry) = command_invocation(program, Some(std::ffi::OsStr::new(search)))?;
     let mut args = args.to_vec();
-    args.insert(0, entry);
-    Ok((node, args))
+    if let Some(entry) = entry {
+        args.insert(0, entry);
+    }
+    Ok((program, args))
 }
 
-fn is_native(path: &Path) -> bool {
+pub(super) fn is_native(path: &Path) -> bool {
     path.extension()
         .is_some_and(|ext| ext.as_encoded_bytes().eq_ignore_ascii_case(b"exe"))
+}
+
+pub(super) fn command_invocation(
+    program: &Path,
+    search: Option<&std::ffi::OsStr>,
+) -> io::Result<(PathBuf, Option<PathBuf>)> {
+    let entry = match command_entry(program) {
+        Ok(entry) => entry,
+        Err(error)
+            if error.kind() == io::ErrorKind::NotFound && super::dsh_windows::is_shim(program) =>
+        {
+            let (node, entry) = super::dsh_windows::standalone_shim(program, search)?;
+            return Ok((node, Some(entry)));
+        }
+        Err(error) => return Err(error),
+    };
+    if is_native(&entry) {
+        Ok((entry, None))
+    } else {
+        Ok((node_path(search, &entry)?, Some(entry)))
+    }
 }
 
 pub(super) fn command_entry(program: &Path) -> io::Result<PathBuf> {
@@ -95,7 +114,7 @@ pub fn windows_npm_entry(shim: &Path) -> io::Result<PathBuf> {
 /// pathname is read or canonicalized; the existing npm producer parser is shared.
 pub fn windows_npm_entry_with_inspection(
     shim: &Path,
-    mut inspect: impl FnMut(&Path) -> io::Result<()>,
+    inspect: impl FnMut(&Path) -> io::Result<()>,
 ) -> io::Result<PathBuf> {
     let name = shim
         .file_stem()
@@ -107,7 +126,7 @@ pub fn windows_npm_entry_with_inspection(
         "codex-acp" => "@agentclientprotocol/codex-acp",
         "claude-agent-acp" => "@agentclientprotocol/claude-agent-acp",
         "pi" => "@earendil-works/pi-coding-agent",
-        "dsh" => "@deepseek-ai/dsh",
+        "dsh" => super::dsh_windows::PACKAGE,
         "qoder" | "qodercli" => "@qoder-ai/qodercli",
         "opencode" => "opencode-ai",
         _ => return Err(io::Error::other("unknown npm producer")),
@@ -131,7 +150,15 @@ pub fn windows_npm_entry_with_inspection(
     } else {
         bin_directory.join("node_modules")
     };
-    let root = modules.join(package);
+    declared_npm_bin(&modules.join(package), package, name, inspect)
+}
+
+pub(super) fn declared_npm_bin(
+    root: &Path,
+    package: &str,
+    name: &str,
+    mut inspect: impl FnMut(&Path) -> io::Result<()>,
+) -> io::Result<PathBuf> {
     let manifest = root.join("package.json");
     inspect(&manifest)?;
     if std::fs::metadata(&manifest)?.len() > 64 * 1024 {
@@ -225,15 +252,11 @@ pub(super) fn spawn(
             }
         }
     }
-    let entry = command_entry(selected)?;
-    let program = if is_native(&entry) {
-        entry
-    } else {
-        let search = value("PATH", &env);
-        let node = node_path(search.as_deref(), &entry)?;
+    let search = value("PATH", &env);
+    let (program, entry) = command_invocation(selected, search.as_deref())?;
+    if let Some(entry) = entry {
         args.insert(0, entry.into_os_string());
-        node
-    };
+    }
     let env = env.into_iter().collect::<Vec<_>>();
     Child::spawn(Launch {
         program: &program,

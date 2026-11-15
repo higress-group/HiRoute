@@ -325,6 +325,13 @@ It records `read_only_dsh_discovery`; it does not establish model configuration,
 an actual model request or UI acceptance. Other test names and mismatched ignored
 selection retain the ordinary fresh-profile admission.
 
+The two ignored public scan cases in [Windows Agent discovery](../crates/daemon/tests/support/windows_agent_discovery.rs)
+run the measured CLI and Control daemon in temporary roots and record
+`read_only_agent_discovery`. Use the configured standard-user session. The DSH
+case requires the pinned npm entry and Node. The Codex case requires the official
+MSIX registered for that user and runs with an isolated PATH and HOME so the
+only visible Codex engine is the bundled one.
+
 `windows_headless.exe` case `actual_windows_dsh_desktop_additional_plugin_models`
 uses the official installed Desktop carrier and its bundled Host, a dedicated DSH
 home, and the measured HiRoute CLI and daemon. It covers public Save and Restore,

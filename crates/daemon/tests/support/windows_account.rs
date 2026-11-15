@@ -109,6 +109,41 @@ pub fn process_token(pid: u32) -> File {
     unsafe { File::from_raw_handle(token.cast()) }
 }
 
+/// Require an interactive user whose token has no Administrators group,
+/// including a deny-only SID in a UAC-filtered Administrator token.
+pub fn assert_current_standard_account() {
+    let token = process_token(std::process::id());
+    let sid = background::sid_string(&token_sid(&token)).unwrap();
+    assert_ne!(assert_standard(&token, &sid), 0);
+    let mut admin = [0_usize; 9];
+    let mut size = std::mem::size_of_val(&admin) as u32;
+    // SAFETY: admin is an aligned output buffer with its actual capacity.
+    assert_ne!(
+        unsafe {
+            CreateWellKnownSid(
+                WinBuiltinAdministratorsSid,
+                null_mut(),
+                admin.as_mut_ptr().cast(),
+                &mut size,
+            )
+        },
+        0
+    );
+    let groups = information(&token, TokenGroups);
+    // SAFETY: the live token query buffer holds the complete TOKEN_GROUPS array.
+    let groups = unsafe { &*groups.as_ptr().cast::<TOKEN_GROUPS>() };
+    for group in
+        unsafe { std::slice::from_raw_parts(groups.Groups.as_ptr(), groups.GroupCount as usize) }
+    {
+        // SAFETY: both SID buffers remain live for comparison.
+        assert_eq!(
+            unsafe { EqualSid(group.Sid, admin.as_mut_ptr().cast()) },
+            0,
+            "standard-user evidence rejects deny-only Administrators membership too"
+        );
+    }
+}
+
 /// Inspect the actual business process, not an installer token or Task EnginePID.
 pub fn assert_standard(token: &File, expected_sid: &str) -> u32 {
     assert_eq!(
