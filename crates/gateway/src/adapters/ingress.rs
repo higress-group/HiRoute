@@ -89,46 +89,6 @@ fn decode_request_fields(
     Ok(request)
 }
 
-fn validate_responses_named_choice(
-    tools: &responses::DecodedResponsesTools,
-    choice: &ToolChoice,
-) -> Result<(), ModelIrError> {
-    let mut namespace_names = BTreeSet::new();
-    for namespace in &tools.namespaces {
-        if !namespace_names.insert(namespace.name.as_str()) {
-            return Err(ModelIrError::InvalidField("duplicate namespace name"));
-        }
-        let mut child_names = BTreeSet::new();
-        if namespace
-            .tools
-            .iter()
-            .any(|tool| !child_names.insert(tool.name.as_str()))
-        {
-            return Err(ModelIrError::InvalidField("duplicate namespace tool name"));
-        }
-    }
-    let ToolChoice::RequiredNamed { tool_kind, name } = choice else {
-        return Ok(());
-    };
-    let flat_matches = tools
-        .tools
-        .iter()
-        .filter(|tool| tool.kind == *tool_kind && tool.name == *name)
-        .count();
-    let namespace_matches = tools
-        .namespaces
-        .iter()
-        .flat_map(|namespace| namespace.tools.iter())
-        .filter(|tool| tool.kind == *tool_kind && tool.name == *name)
-        .count();
-    if flat_matches.saturating_add(namespace_matches) != 1 {
-        return Err(ModelIrError::UnsupportedField(
-            "ambiguous responses named tool choice".into(),
-        ));
-    }
-    Ok(())
-}
-
 fn decode_responses(
     context: &DecodeContext,
     body: &Value,
@@ -182,13 +142,11 @@ fn decode_responses(
         Some(Value::Array(items)) => {
             for (native_index, item) in items.iter().enumerate() {
                 if item.get("type").and_then(Value::as_str) == Some("additional_tools") {
-                    let additional =
-                        checked_object(context, item, &["type", "tools"], "additional_tools")?;
-                    additional_tools.push(
-                        additional
-                            .get("tools")
-                            .ok_or(ModelIrError::InvalidField("additional_tools.tools"))?,
-                    );
+                    additional_tools.push(responses::decode_additional_tools(
+                        context,
+                        item,
+                        !native_history.is_empty(),
+                    )?);
                     continue;
                 }
                 let message_index = messages.len();
@@ -264,7 +222,6 @@ fn decode_responses(
         IngressProtocol::Responses,
         object.get("tool_choice"),
     )?;
-    validate_responses_named_choice(&tools, &tool_choice)?;
     Ok(ModelRequestIRV1 {
         native_body: None,
         native_only: false,

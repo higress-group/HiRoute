@@ -2446,6 +2446,19 @@
       ]
     },
     {
+      "contract": "hiroute.model-request-ir/v1",
+      "field": "Responses additional_tools without id or role",
+      "mode": "legacy_adapter",
+      "owner": "gateway/protocol-adapters",
+      "reason": "Retain released metadata-free tool declarations, including their availability to cross-protocol tool adapters. Native Responses keeps the original envelope when supported. Endpoints that require top-level tools move only leading declarations in input order, including repetitions. Cross-protocol mappings resolve collisions in the target tool identity space.",
+      "removal_condition": "Retire only after a versioned ingress contract no longer accepts the released metadata-free representation.",
+      "allowed_paths": [
+        "crates/gateway/src/adapters/responses_ingress.rs",
+        "crates/gateway/src/adapters/request/tools.rs",
+        "crates/gateway/src/adapters/tool_projection.rs"
+      ]
+    },
+    {
       "contract": "hiroute.operation-input/v1",
       "field": "inline operation_json plan and large step compensation in supported pre-schema32 journals",
       "mode": "recovery_read_only",

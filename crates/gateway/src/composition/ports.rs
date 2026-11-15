@@ -10,6 +10,7 @@ use crate::ports::{
     CasOutcome, CredentialLeaseRequest, ExecutionScope, HeaderSecretLeaseRequest,
     ProbeLeaseOutcome, RuntimeStateEntry, RuntimeStateKey,
 };
+use crate::replay::ReplayStore;
 use crate::responses_reasoning::{ReasoningReplayProjection, ReasoningSource};
 use crate::server::core_runtime::adapters;
 use crate::server::core_runtime::model_ir::{ModelIrError, ModelRequestIRV1};
@@ -43,6 +44,7 @@ pub trait PlannerInputAuthority: Send + Sync {
         authorized: &AuthorizedRequestPlan,
         budget: &hiroute_gateway_core::runtime::body::StreamBudget,
         reasoning: super::ResponsesReasoningReplay,
+        _replay: &ReplayStore,
     ) -> Result<super::PreparedPlannerInput, PortError> {
         let mut templates = super::RequestTemplates::new(budget.clone());
         templates.reasoning = reasoning;
@@ -141,7 +143,7 @@ impl PlannerInputAuthority for PublicationPlannerInputAuthority {
         request: ModelRequestIRV1,
         authorized: &AuthorizedRequestPlan,
     ) -> Result<PlannerInputV1, PortError> {
-        build_planner_input(request, authorized, None)
+        build_planner_input(request, authorized, None, None)
     }
 
     fn build_prepared_input(
@@ -150,10 +152,11 @@ impl PlannerInputAuthority for PublicationPlannerInputAuthority {
         authorized: &AuthorizedRequestPlan,
         budget: &hiroute_gateway_core::runtime::body::StreamBudget,
         reasoning: super::ResponsesReasoningReplay,
+        replay: &ReplayStore,
     ) -> Result<super::PreparedPlannerInput, PortError> {
         let mut templates = super::RequestTemplates::new(budget.clone());
         templates.reasoning = reasoning;
-        let input = build_planner_input(request, authorized, Some(&mut templates))?;
+        let input = build_planner_input(request, authorized, Some(&mut templates), Some(replay))?;
         Ok(super::PreparedPlannerInput { input, templates })
     }
 }
@@ -177,7 +180,7 @@ impl PlannerInputAuthority for FilePlannerInputAuthority {
         request: ModelRequestIRV1,
         authorized: &AuthorizedRequestPlan,
     ) -> Result<PlannerInputV1, PortError> {
-        build_planner_input(request, authorized, None)
+        build_planner_input(request, authorized, None, None)
     }
 }
 
@@ -185,6 +188,7 @@ fn build_planner_input(
     request: ModelRequestIRV1,
     authorized: &AuthorizedRequestPlan,
     mut templates: Option<&mut super::RequestTemplates>,
+    replay: Option<&ReplayStore>,
 ) -> Result<PlannerInputV1, PortError> {
     let authorities = authorized
         .candidates()
@@ -274,7 +278,7 @@ fn build_planner_input(
                 })
             });
         let projection =
-            project_candidate_facts_with_history(&request, &profile, reasoning_replay)?;
+            project_candidate_facts_with_history(&request, &profile, reasoning_replay, replay)?;
         if let Some((reason, message_index)) = projection.rejection
             && let Some(observation) = crate::server::core_runtime::observation::active_request()
         {
@@ -359,20 +363,23 @@ fn project_candidate_facts(
     request: &ModelRequestIRV1,
     profile: &CandidateProtocolProfile,
 ) -> Result<CandidateProjectionFacts, PortError> {
-    project_candidate_facts_with_history(request, profile, ReasoningReplayProjection::default())
+    project_candidate_facts_with_history(
+        request,
+        profile,
+        ReasoningReplayProjection::default(),
+        None,
+    )
 }
 
 fn project_candidate_facts_with_history(
     request: &ModelRequestIRV1,
     profile: &CandidateProtocolProfile,
     reasoning_replay: ReasoningReplayProjection<'_>,
+    replay: Option<&ReplayStore>,
 ) -> Result<CandidateProjectionFacts, PortError> {
     let tool_interface_unrepresentable = request.ingress_protocol == IngressProtocol::Responses
         && match profile.capability.upstream_protocol {
-            IngressProtocol::Responses => false,
-            IngressProtocol::ChatCompletions => {
-                adapters::ChatToolProjection::for_request(request).is_err()
-            }
+            IngressProtocol::Responses | IngressProtocol::ChatCompletions => false,
             IngressProtocol::Messages => {
                 !request.tool_namespaces.is_empty()
                     || request
@@ -404,6 +411,7 @@ fn project_candidate_facts_with_history(
         profile,
         None,
         reasoning_replay,
+        replay,
     ) {
         Ok(projected) => Ok(CandidateProjectionFacts {
             target_serialized_bytes: u64::try_from(projected.wire_len)
@@ -412,6 +420,14 @@ fn project_candidate_facts_with_history(
             rejection: None,
             template: Some(projected),
         }),
+        Err(adapters::ProtocolAdapterError::ToolInterfaceUnrepresentable(_)) => {
+            Ok(CandidateProjectionFacts {
+                target_serialized_bytes: 1,
+                exclusion: Some(ExclusionReasonCodeV1::ToolInterfaceUnsupported),
+                rejection: None,
+                template: None,
+            })
+        }
         Err(adapters::ProtocolAdapterError::RequestUnrepresentable {
             reason,
             message_index,

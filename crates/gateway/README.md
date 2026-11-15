@@ -175,6 +175,14 @@ response-scoped synthetic item identity across incremental and buffered renderer
 provider-native item IDs stay exact. The [request regression](src/adapters/tests/codex_replay.rs)
 and [response lifecycle scenarios](src/adapters/response/client_stream_tests.rs)
 cover endpoint isolation, replay and identity consistency.
+The [native tool projection](src/adapters/request/native.rs) also lifts leading
+Responses Lite `additional_tools` declarations into top-level `tools` for the
+registered Codex subscription and standard Responses JSON candidates. It appends
+the original declarations after existing top-level tools, including repeated
+names and Replay-backed schemas. Other native Responses candidates retain the
+envelope and its position. An in-history declaration excludes candidates that
+would move it before earlier messages. The [cross-protocol tool adapter](src/adapters/tool_projection.rs)
+checks for ambiguous definitions when it maps declarations to a target name.
 [The standard Responses JSON dialect](src/adapters/responses_dialect.rs) is an explicit
 request/attempt adapter contract. New registered Token Plan sources select it through
 their exact Responses endpoint, including the ordinary source-local `UserDeclared`

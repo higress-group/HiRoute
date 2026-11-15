@@ -80,15 +80,33 @@ and Fixed-versus-Plan ownership follow [request routing](../request-routing/spec
 ### Requirement: Namespace/custom tool mapping is exact and reversible
 
 Responses function/custom namespaces retain group names/optional descriptions,
-child declarations, top-level tools/additional_tools merged order, strict/schema,
-required choice, parallel behavior, and supported controls. Chat mapping constructs
-one request-owned bidirectional table: flat names remain flat; namespace children
-use `namespace__local`, with global uniqueness and ASCII `[A-Za-z0-9_-]` length 1–64.
-Reverse lookup uses that table, never parsing the delimiter. Identical duplicate
-declarations may collapse; conflicting identity/schema, target collisions, invalid/
-overlong names, or nested namespaces fail that path.
+child declarations, top-level tools/additional_tools order, strict/schema,
+required choice, parallel behavior, and supported controls.
+`additional_tools` accepts an optional nonempty, control-free item ID (or null)
+and an optional `developer` role. Omission retains the released declaration shape.
+These fields do not give the declaration a message position or a tool-call ID.
+Same-protocol native Responses candidates preserve the original item unless their
+endpoint dialect requires top-level tools. The registered Codex subscription
+endpoint and standard Responses JSON adapter lift only leading declarations
+into top-level `tools`. Append those declarations after existing top-level
+tools in input order. Preserve repetitions, namespaces, native field values,
+schema types, and call/result history. The upstream interprets repeated
+definitions and named choices on both same-protocol paths. A candidate that
+would lift a declaration following history is excluded. An incompatible schema
+excludes the adapter that requires its schema dialect and leaves native replay
+available. Positioned declarations with item metadata also exclude cross-protocol
+mappings. Legacy metadata-free declarations remain available to those mappings.
 
-Chat cannot preserve namespace group description, so such requests exclude Chat.
+Chat mapping constructs one request-owned bidirectional table. Flat names remain
+flat. Namespace children use `namespace__local`, with global uniqueness and ASCII
+`[A-Za-z0-9_-]` length 1–64.
+Reverse lookup uses that table, never parsing the delimiter. A tool adapter
+that maps declarations to one target identity can collapse exact repetitions.
+Conflicting definitions, ambiguous named choices, and collisions between distinct
+identities exclude the affected mapping. Chat also excludes invalid or overlong
+target names. Nested namespaces are unsupported.
+
+Chat prefixes each child's description with the labeled namespace description.
 Freeform custom without format may use only an exact closed input-string wrapper
 with no invented strict value, unpacked precisely on return. Nonempty grammar/format
 or inexact wrapper cannot map. Messages has no namespace/custom support. Native

@@ -21,13 +21,16 @@ pub(crate) fn evaluate_candidate(
     candidate: &PlannerCandidateFactsV1,
     cost_policy: StaticCostPolicyV1,
     limits: &RequestOwnedLimitsV1,
+    projection_preflighted: bool,
 ) -> Result<EligibleProjection, ExclusionReasonCodeV1> {
     let requirements = request.requirements();
     protocol_gate(request, &requirements, &candidate.protocol_profile)?;
     if let Some(exclusion) = candidate.request_projection_exclusion {
         return Err(exclusion);
     }
-    tool_projection_gate(request, &candidate.protocol_profile)?;
+    if !projection_preflighted {
+        tool_projection_gate(request, &candidate.protocol_profile)?;
+    }
     let reasoning = reasoning_gate(&candidate.protocol_profile)?;
     let context = context_gate(request, candidate, reasoning)?;
     if context.is_none()
@@ -93,7 +96,7 @@ fn tool_projection_gate(
     match profile.capability.upstream_protocol {
         IngressProtocol::Responses => Ok(()),
         IngressProtocol::ChatCompletions => {
-            crate::server::core_runtime::adapters::ChatToolProjection::for_request(request)
+            crate::server::core_runtime::adapters::ChatToolProjection::for_request(request, None)
                 .map(|_| ())
                 .map_err(|_| ExclusionReasonCodeV1::ToolInterfaceUnsupported)
         }
