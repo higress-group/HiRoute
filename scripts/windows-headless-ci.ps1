@@ -312,6 +312,7 @@ if ($Scope -eq 'components') {
     'private_fs::removal::tests::read_only_retired_copy_can_be_removed',
     'private_fs::removal::tests::replaced_root_and_descendant_are_never_adopted',
     'windows::read_lease::tests::admitted_installed_hardlinks_keep_identity_and_write_delete_fences',
+    'windows::app_package::tests::package_image_refuses_ancestor_junctions_and_changed_files',
     'windows::background::tests::native_argv_quotes_spaces_quotes_and_trailing_slashes_without_shell',
     'windows::background::tests::profile_is_absolute_and_definition_rejects_unknown_or_foreign_owner',
     'windows::installed_apps::tests::windows_uninstall_locations_select_exact_app_and_versioned_names_read_only',
