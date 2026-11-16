@@ -1727,7 +1727,9 @@ fn release_agent_scanner(
         scanner
     };
     #[cfg(not(target_os = "macos"))]
-    scanner.refresh_codex_desktop_location(hiroute_desktop_host_effects::codex_desktop_engine);
+    scanner.refresh_codex_desktop_location(
+        hiroute_desktop_host_effects::codex_desktop_engine_location,
+    );
     Ok(scanner)
 }
 

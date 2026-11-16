@@ -76,6 +76,8 @@ pub enum ProtocolAdapterError {
     Serialization(String),
     #[error("client renderer cannot express canonical semantics: {0}")]
     ClientUnrepresentable(String),
+    #[error("tool interface cannot be projected: {0}")]
+    ToolInterfaceUnrepresentable(String),
     #[error("request projection is unsupported: {reason:?}, canonical message {message_index:?}")]
     RequestUnrepresentable {
         reason: hiroute_diagnostics::event::RequestProjectionReason,
@@ -111,9 +113,9 @@ impl ProtocolAdapterError {
             | Self::Context(ContextProjectionError::UnknownEstimator) => "CONTEXT_LIMIT_UNKNOWN",
             Self::Context(ContextProjectionError::ArithmeticOverflow) => "CONTEXT_LIMIT_UNKNOWN",
             Self::Serialization(_) => "PROTOCOL_SERIALIZATION_FAILED",
-            Self::ClientUnrepresentable(_) | Self::RequestUnrepresentable { .. } => {
-                "CLIENT_PROTOCOL_UNREPRESENTABLE"
-            }
+            Self::ClientUnrepresentable(_)
+            | Self::ToolInterfaceUnrepresentable(_)
+            | Self::RequestUnrepresentable { .. } => "CLIENT_PROTOCOL_UNREPRESENTABLE",
         }
     }
 }

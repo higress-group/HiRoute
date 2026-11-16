@@ -404,7 +404,7 @@ pub fn restore_codex_native(
     current: &str,
     restore: &CodexNativeRestore,
 ) -> Result<Zeroizing<String>, CodexNativeError> {
-    restore_codex_native_with_model(current, restore, None)
+    restore_codex_native_with_model(current, restore, None, false)
 }
 
 pub fn codex_explicit_model(text: &str) -> Result<Option<String>, CodexNativeError> {
@@ -431,6 +431,7 @@ pub fn restore_codex_native_with_model(
     current: &str,
     restore: &CodexNativeRestore,
     native_model: Option<&str>,
+    restore_managed_changes: bool,
 ) -> Result<Zeroizing<String>, CodexNativeError> {
     if native_model.is_some_and(|model| !valid_client_model_name(model)) {
         return Err(CodexNativeError::InvalidIntent);
@@ -458,7 +459,9 @@ pub fn restore_codex_native_with_model(
         if item.map(fingerprint) == field.before.as_ref().map(fingerprint) {
             continue;
         }
-        if item.map(fingerprint).as_ref() != Some(&field.after) {
+        if item.map(fingerprint).as_ref() != Some(&field.after)
+            && (!restore_managed_changes || item.is_some_and(|item| !item.is_value()))
+        {
             return Err(CodexNativeError::FieldConflict);
         }
         pending.push(field);
@@ -468,6 +471,9 @@ pub fn restore_codex_native_with_model(
             .path
             .split_last()
             .ok_or(CodexNativeError::UnsupportedLayout)?;
+        if restore_managed_changes && optional_table(&document, parent)?.is_none() {
+            create_tables(&mut document, parent, &mut Vec::new())?;
+        }
         let table = table_at_mut(&mut document, parent)?;
         match &field.before {
             Some(before) => {
@@ -478,7 +484,11 @@ pub fn restore_codex_native_with_model(
                 ) {
                     *value.decor_mut() = current.decor().clone();
                 }
-                *table.get_mut(key).ok_or(CodexNativeError::FieldConflict)? = restored;
+                if let Some(item) = table.get_mut(key) {
+                    *item = restored;
+                } else {
+                    table.insert(key, restored);
+                }
             }
             None => {
                 table.remove(key);
@@ -505,6 +515,9 @@ pub fn restore_codex_native_with_model(
             .split_last()
             .ok_or(CodexNativeError::UnsupportedLayout)?;
         let table = table_at_mut(&mut document, parent)?;
+        if restore_managed_changes && table.get("model").is_some_and(|item| !item.is_value()) {
+            return Err(CodexNativeError::UnsupportedLayout);
+        }
         let value = toml_edit::value(native_model);
         if let Some(current) = table.get_mut("model") {
             *current = value;

@@ -295,6 +295,7 @@ impl LocalControlAdapter {
                         &target,
                         &original.operation_id,
                         intent,
+                        spec.restore_managed_changes,
                     ))?;
                 Vec::new()
             }
@@ -302,9 +303,23 @@ impl LocalControlAdapter {
         };
         let (additional_dependencies, opencode_default_in_use) =
             if kind == hiroute_domain::AgentKindV1::OpenCode {
+                let restoring_providers = match &previous {
+                    Some((operation, intent))
+                        if spec.restore_managed_changes
+                            && matches!(spec.model, AgentFacetIntent::Restore { .. }) =>
+                    {
+                        hiroute_integrations::additional_restore_provider_ids(
+                            &self.artifacts,
+                            &operation.operation_id,
+                            intent,
+                        )
+                        .map_err(super::super::map_port)?
+                    }
+                    _ => Vec::new(),
+                };
                 let (digest, in_use) = self
                     .scanner
-                    .opencode_model_facts(&provider_id, &models)
+                    .opencode_model_facts(&provider_id, &models, &restoring_providers)
                     .map_err(|_| ControlReadError::SnapshotChanged)?;
                 (Some(digest), in_use)
             } else {
@@ -385,13 +400,19 @@ impl LocalControlAdapter {
                         content,
                     })
                 } else if let Some((operation, intent)) = old {
-                    hiroute_integrations::validate_native_plugin_restoration(
+                    let validation = hiroute_integrations::validate_native_plugin_restoration(
                         &self.artifacts,
                         &file_target,
                         operation,
                         intent,
-                    )
-                    .map_err(super::super::map_port)?;
+                        spec.restore_managed_changes,
+                    );
+                    if spec.restore_managed_changes {
+                        qoder_model_conflict =
+                            qoder_model_conflict.or(qoder_model_validation(validation)?);
+                    } else {
+                        validation.map_err(super::super::map_port)?;
+                    }
                     Some(NativePluginFileFacts {
                         role,
                         before_fingerprint,
@@ -523,6 +544,7 @@ impl LocalControlAdapter {
                 model_publication: Some(active),
                 login_item_required: false,
                 login_item_removal_required: false,
+                restore_file_conflict: false,
                 fixed_candidate_facts: Vec::new(),
             },
             native: SettingsModelNativeFacts::Additional(SettingsAdditionalModelFacts {

@@ -1,6 +1,7 @@
 use serde_json::{Map, Value, json};
 
 use crate::content_ref::{ContentValueExt, JsonValueExt};
+use crate::replay::ReplayStore;
 use crate::responses_reasoning::ReasoningReplayProjection;
 use crate::server::core_runtime::model_ir::*;
 use crate::server::core_runtime::profiles::{
@@ -71,7 +72,9 @@ pub fn project_candidate_request(
     };
     let chat_tool_projection =
         if !native && profile.capability.upstream_protocol == IngressProtocol::ChatCompletions {
-            Some(ChatToolProjection::for_request(request)?)
+            let projection = ChatToolProjection::for_request(request, None)?;
+            projection.named_choice(&request.tool_choice)?;
+            Some(projection)
         } else {
             None
         };
@@ -89,7 +92,9 @@ pub fn project_candidate_request(
                     .expect("Chat projection was constructed"),
                 None,
             )?,
-            IngressProtocol::Messages => serialize_messages(request, profile, reasoning, None)?,
+            IngressProtocol::Messages => {
+                serialize_messages(request, profile, reasoning, None, None)?
+            }
         }
     };
     let (mut body, function_encoding_projection, _) = native::project(
@@ -733,6 +738,7 @@ fn serialize_messages(
     profile: &CandidateProtocolProfile,
     reasoning: &ReasoningProfileCapability,
     omit_reasoning_prefix: Option<usize>,
+    replay: Option<&ReplayStore>,
 ) -> Result<Value, ProtocolAdapterError> {
     let mut body = Map::new();
     body.insert(
@@ -852,7 +858,7 @@ fn serialize_messages(
         ));
     }
     body.insert("messages".into(), Value::Array(messages));
-    insert_messages_tools(&mut body, request)?;
+    insert_messages_tools(&mut body, request, replay)?;
     render_reasoning(&mut body, reasoning, profile)?;
     Ok(Value::Object(body))
 }

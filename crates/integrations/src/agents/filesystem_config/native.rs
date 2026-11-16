@@ -363,15 +363,24 @@ fn validate_native_bytes(bytes: &[u8]) -> Result<(), AgentFilesystemScanError> {
     Ok(())
 }
 
-/// Restore only the original values of fields still owned by the applied semantic change.
+/// Restore only the original values of fields recorded by the applied semantic change.
 /// Original helper/token bytes remain in this protected caller-owned buffer, never the change.
 pub(in crate::agents) fn restore_claude_change_bytes(
     current: &[u8],
     original: &[u8],
     change: &AgentConfigChangeV1,
+    restore_managed_changes: bool,
 ) -> Result<Zeroizing<Vec<u8>>, AgentFilesystemScanError> {
     validate_native_bytes(original)?;
-    if !claude_change_bytes_are_applied(current, change)? {
+    if restore_managed_changes {
+        // Values in the managed slots can be arbitrary JSON; validate their restored form.
+        if current.len() as u64 > MAX_CONFIG_BYTES {
+            return Err(AgentFilesystemScanError::ConfigTooLarge);
+        }
+        serde_json::from_slice::<StrictJson>(current)
+            .map_err(|_| AgentFilesystemScanError::InvalidConfig)?;
+        validate_change(change)?;
+    } else if !claude_change_bytes_are_applied(current, change)? {
         return Err(AgentFilesystemScanError::SourceChanged);
     }
     let mut root: Value =
@@ -435,7 +444,9 @@ pub(in crate::agents) fn restore_claude_change_bytes(
         serde_json::to_vec_pretty(&root).map_err(|_| AgentFilesystemScanError::InvalidConfig)?,
     );
     result.push(b'\n');
-    if result.len() as u64 > MAX_CONFIG_BYTES {
+    if restore_managed_changes {
+        validate_native_bytes(&result)?;
+    } else if result.len() as u64 > MAX_CONFIG_BYTES {
         return Err(AgentFilesystemScanError::ConfigTooLarge);
     }
     Ok(result)
@@ -592,7 +603,7 @@ mod tests {
                 .contains("do-not-run")
         );
 
-        let restored = restore_claude_change_bytes(&updated, &original, &rebased).unwrap();
+        let restored = restore_claude_change_bytes(&updated, &original, &rebased, false).unwrap();
         assert_eq!(
             serde_json::from_slice::<Value>(&restored).unwrap(),
             serde_json::from_slice::<Value>(&original).unwrap()

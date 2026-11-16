@@ -312,6 +312,7 @@ fn claude_context_policy_detects_overrides_and_restores_owned_values() {
         &rendered,
         &serde_json::to_vec(&original).unwrap(),
         &change,
+        false,
     )
     .unwrap();
     assert_eq!(

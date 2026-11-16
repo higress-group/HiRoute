@@ -152,7 +152,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                       if data and data.get('prefix') and not blocked else [])
             record_catalog('models', route=parsed.path, blocked=blocked,
                            model_count=len(models))
-            return self.send({'data' if parsed.path == '/v1/models' else 'models': models})
+            if parsed.path == '/v1/models':
+                return self.send({'data': models})
+            override = controls / 'wrong-process-id'
+            process_id = int(override.read_text()) if override.exists() else os.getpid()
+            return self.send({'models': models, 'hiroute_model_discovery': {
+                'schema': 'hiroute.cpa-model-discovery/v1',
+                'process_id': process_id,
+                'evicted_accounts': 0,
+                'first_failure': None,
+                'latest': None,
+                'registration_pending': False,
+            }})
         if parsed.path in ('/v0/management/auth-files', '/v8/management/credentials'):
             name = query.get('name', [''])[0]
             if name == '.__hiroute_ready_probe__' or data is None:

@@ -75,7 +75,7 @@ pub(super) fn prepare(
             options,
             &["--context", "--hermes-root", "--restore-native-model"],
             &["--facet"],
-            &[],
+            &["--restore-managed-changes"],
         )?
     } else {
         Flags::parse(
@@ -128,6 +128,12 @@ pub(super) fn prepare(
         }
         if let Some(model) = flags.get("--restore-native-model") {
             spec["restore_native_model"] = json!(model);
+        }
+        if flags.has("--restore-managed-changes") {
+            if spec["model"].is_null() {
+                return Err(error(ErrorCode::InvalidArguments));
+            }
+            spec["restore_managed_changes"] = json!(true);
         }
     } else {
         if let Some(plan) = flags.get("--plan") {

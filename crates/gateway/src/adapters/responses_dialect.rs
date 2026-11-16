@@ -1,6 +1,6 @@
 //! The explicit standard-Responses JSON dialect owns both directions of negotiation.
 //! Native Responses is deliberately not an alias for this contract.
-use super::schema_encoding::project_schema as schema_node;
+use super::schema_encoding::project_schema;
 use crate::content_ref::MARKER_PREFIX;
 use serde_json::{Map, Value, json};
 
@@ -107,7 +107,7 @@ pub(super) fn project_request(
     })
 }
 
-fn project_tool(tool: &mut Value) -> Result<bool, ModelIrError> {
+fn project_tool(tool: &mut Value) -> Result<bool, ProtocolAdapterError> {
     let object = tool
         .as_object_mut()
         .ok_or(ModelIrError::InvalidField("tools[]"))?;
@@ -115,7 +115,7 @@ fn project_tool(tool: &mut Value) -> Result<bool, ModelIrError> {
     match object.get("type").and_then(Value::as_str) {
         Some("function") => {
             if let Some(schema) = object.get_mut("parameters") {
-                negotiated |= schema_node(schema)?;
+                negotiated |= project_tool_schema(schema)?;
             }
         }
         Some("namespace") => {
@@ -132,7 +132,8 @@ fn project_tool(tool: &mut Value) -> Result<bool, ModelIrError> {
         _ => {
             return Err(ModelIrError::UnsupportedField(
                 "standard Responses tool declaration".into(),
-            ));
+            )
+            .into());
         }
     }
     Ok(negotiated)
@@ -212,7 +213,7 @@ fn project_peer(item: &mut Value) -> Result<(), ModelIrError> {
 pub(super) fn project_portable_tools(
     body: &mut Value,
     protocol: IngressProtocol,
-) -> Result<bool, ModelIrError> {
+) -> Result<bool, ProtocolAdapterError> {
     let mut negotiated = false;
     if let Some(tools) = body.get_mut("tools").and_then(Value::as_array_mut) {
         for tool in tools {
@@ -224,9 +225,16 @@ pub(super) fn project_portable_tools(
                 IngressProtocol::Responses => None,
             };
             if let Some(schema) = schema {
-                negotiated |= schema_node(schema)?;
+                negotiated |= project_tool_schema(schema)?;
             }
         }
     }
     Ok(negotiated)
+}
+
+fn project_tool_schema(schema: &mut Value) -> Result<bool, ProtocolAdapterError> {
+    // Ingress retains native schema values. Only the selected adapter requires
+    // the shape understood by JSON Schema encoding negotiation.
+    project_schema(schema)
+        .map_err(|error| ProtocolAdapterError::ToolInterfaceUnrepresentable(error.to_string()))
 }

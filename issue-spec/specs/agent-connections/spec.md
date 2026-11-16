@@ -160,6 +160,15 @@ owned file tail retains its same-Operation recovery guard. Registered historical
 revoke tails keep their own existing ordering and cannot regrant durably withdrawn
 authority merely because later cleanup fails. Rollback handles only owned effects.
 
+Desktop Disable SHALL preview and confirm restoration of recorded model settings even
+when their managed values were edited before Preview. The same policy is available
+to CLI and Local Control through the explicit model-restore intent
+`restore_managed_changes`. Omission retains the existing conditional ownership
+policy, including for previously accepted operations. Preview SHALL bind this
+policy, the exact file snapshot and the active restore point. Restore SHALL preserve
+unrelated settings and borrowed resources. If a user-managed model selection still
+uses a route being removed, Preview SHALL require a replacement in the native client.
+
 File conflict before a switch leaves the original connection effective, preserves
 user edits, and can abandon proven untouched staging to release the writer. Repair
 then uses the applicable fresh operation or exact pending-tail retry, never one to
@@ -281,10 +290,12 @@ Preserve existing preferences, comments, unrelated providers and unknown fields;
 record original values and file existence in the protected field-restoration journal.
 Both ordinary and inline TOML provider maps support the same configure, adjustment
 and restore lifecycle without normalizing the user's existing map representation.
-Restore removes only owned effects and preserves the original file and later unrelated
-edits. Preview/Apply still fence exact source bytes and reject concurrent changes.
-Malformed, inaccessible or same-name identity conflicts remain refused with actionable
-configuration-conflict guidance, rather than a misleading stale-preview retry.
+Restore preserves the original file and later unrelated edits when the profile file
+existed before connection. With confirmed managed-change restore, a dedicated profile
+created by HiRoute is removed from the native path and its complete current bytes are
+retained in the private encrypted Operation backup. Preview/Apply fence exact source
+bytes and reject concurrent changes. Shared or pre-existing targets must have a safe
+editable layout. Inaccessible or unowned targets remain refused.
 Creating a profile rejects inherited same-name provider
 auth residue rather than clearing it with an empty table. Added auth/header fields
 inside an owned provider are conflicts, not silently cleaned. Root selector
@@ -319,7 +330,14 @@ On macOS, the native host resolves the installed Codex bundle and launches it wi
 CODEX_ELECTRON_USER_DATA_PATH and matching `--user-data-dir`. Real HOME stays
 unchanged. No ordinary configuration, auth, instructions or session files are
 copied. Windows SHALL resolve the current user's installed `OpenAI.Codex` MSIX
-registration and desktop executable, and launch it directly with the same private
+registration and desktop executable. Both the ordinary and independent Desktop
+Agent entries SHALL discover the bundled engine under a standard user without a
+separate Codex CLI. Their available surfaces SHALL list only Codex Desktop in
+that installation. The package lookup SHALL open the known image without needing
+to read the protected WindowsApps parent directory, while rejecting reparse
+aliases. An unsuccessful registration query or inspection of a registered
+image SHALL be reported as unavailable. A successful query with no matching
+registration SHALL report absence. Windows SHALL launch the desktop executable directly with the same private
 environment and user-data argument. Shell activation through Explorer, which would
 lose the isolated environment, SHALL NOT be used. Native launching SHALL be exposed
 through HiRoute's Windows Shell as well as its macOS Desktop.
@@ -403,8 +421,9 @@ are read-only while enabled. Restoring either mode returns the first-managed pro
 auth/model state, not the current managed selection. If original model field was
 absent, remove the owned field without requiring native account/cache/model call.
 Restoring an explicit/substitute model retains exact required directory checks.
-An old restore point containing an invalid managed alias fails explicitly rather
-than silently selecting another source or permanent native default.
+Conditional restore still validates the original explicit model against its catalog.
+Confirmed managed-change restore returns the recorded value without a catalog lookup.
+An explicitly requested substitute always requires proof from the original catalog.
 
 ### Requirement: Codex catalog resolution is target-specific and preserves bytes
 
@@ -478,12 +497,10 @@ acceptance proves earlier-session discovery and resume through the ordinary entr
 while the on-demand HiRoute profile remains configured; profile isolation alone
 does not establish resume success.
 
-Restore preserves unrelated user fields and new content in a created profile.
-Originally missing profile fields resume inheriting current root rather than writing
-old inherited values into the profile. No online/model-auth probe is required to
-undo owned selection. Before ordinary Disable, validate target/protected restore
-record and conditional write; drift preserves file and original connection with
-not-completed feedback. Proven untouched staging may roll back; a restored-file then
+Originally missing profile fields resume inheriting current root. No online/model-auth
+probe is required to undo owned selection. Before Disable, validate the target,
+protected restore record and current file snapshot. A change after Preview preserves
+the new file and original connection with not-completed feedback. Proven untouched staging may roll back; a restored-file then
 service failure uses journal/conditional compensation, releasing writer when safe.
 Unparseable UTF-8 or inaccessible target is local scan diagnostic, not total scan
 failure. Persisted service-tail recovery needs its exact recorded dependency bytes;
@@ -509,8 +526,8 @@ configuration instead of leaving a falsely connected Agent.
 Effective explicit current model is env.ANTHROPIC_MODEL before top-level model,
 and must be covered by this grant. With neither, account-dependent Default cannot
 be inferred from three preset mappings: mappings may save with Default unverified,
-then user explicitly selects/tests a mapped preset. Native user changes survive
-restore except conflicting owned fields, which fail closed.
+then user explicitly selects/tests a mapped preset. Confirmed Disable restores the
+original values of the recorded settings and preserves other edits.
 
 `hiroute agent launch` remains optional isolated diagnosis, not a configuration
 activation requirement or displayed setup command. It derives from current successful
@@ -687,8 +704,17 @@ native evidence. Model and collaboration restore remain independent.
 
 Settings reads SHALL resolve the current executable and native configuration without
 running a diagnostic version command. Explicit discovery MAY obtain the version.
+Windows PATH lookup SHALL continue past unusable DSH candidates and retain the
+first failure if no valid installation follows. It SHALL support the ordinary
+npm layout and a standalone dsh.cmd that invokes Node with the declared DSH npm
+entry and forwards its arguments, including the generated npm wrapper that
+addresses the package relative to the launcher. The standalone launcher is a locator. HiRoute
+SHALL start the resolved program with an argument vector and SHALL NOT evaluate
+the batch script.
 A model facts capture SHALL check the public composition once and bind that result
-to its observed installation and model-configuration dependencies. It SHALL reread
+to its observed installation and model-configuration dependencies. On Windows
+the installation binding SHALL include the selected program and declared entry
+used to run the check. It SHALL reread
 those dependencies after both native snapshots and reject changes. Preview and
 Apply admission SHALL perform independent captures; no composition result may be
 reused across them. Apply SHALL reproduce current facts, confirm the accepted intent
@@ -811,10 +837,11 @@ selection can be applied. Preview SHALL identify that recovery step before write
 a surviving borrowed or foreign adapter SHALL instead require explicit user review.
 Reapplying the normal selection SHALL reinstall the adapter through the same
 transaction, including after a daemon restart or a plugin-free configuration.
-Reconfiguration, activation, drift detection, interrupted-operation retry and
-restore SHALL verify the adapter's exact owned bytes. A conflicting foreign file
-SHALL be preserved. Identical pre-existing files MAY be borrowed and SHALL survive
-restore. Published operations without adapter effects retain their original
+Reconfiguration, drift detection and conditional restore SHALL verify the adapter's
+exact owned bytes. Confirmed managed-change restore MAY remove an edited owned
+adapter after matching its confirmed snapshot and original ownership record.
+Identical pre-existing files MAY be borrowed and SHALL survive restore, including
+after an edit. Published operations without adapter effects retain their original
 recovery contract; explicit reconfiguration can add the current adapter.
 DSH SHALL preserve the original ownership of its Cordis adapter registration across
 unrelated user edits, model changes and token rotation. Restore SHALL remove an owned
@@ -1009,8 +1036,8 @@ independent Skill resources retain their 16 KiB limit.
 
 #### Scenario: Restore the managed connection
 
-- **WHEN** the owner restores the Hermes connection after unrelated native edits
-- **THEN** existing conditional ownership restores the managed fields/resources and preserves unrelated changes; an owned-field conflict retains the existing conflict/recovery outcome.
+- **WHEN** the owner confirms Disable after editing the managed main model
+- **THEN** the recorded model settings are restored and owned resources removed, preserving unrelated edits and borrowed resources. A remaining reference to an owned provider blocks removal.
 
 #### Scenario: An installation is outside the supported connection boundary
 
@@ -1086,6 +1113,13 @@ Desktop SHALL retain the supported local Agent catalog when an installation or e
 
 - **WHEN** a supported Agent has no discovered effective configuration
 - **THEN** its catalog entry remains visible with an honest discovery state and a rescan action; settings cannot be applied without a validated context.
+
+#### Scenario: An earlier Windows PATH entry cannot be used
+
+- **WHEN** an Agent is discovered by executable name and an earlier PATH entry is missing, is not a directory, or cannot supply an admitted executable
+- **THEN** discovery SHALL continue in search order and use the first candidate that passes the Agent's executable path checks
+- **AND** an exhausted search SHALL report an unavailable probe if an entry could not be inspected or a candidate failed path admission, and report no match when the search confirms absence
+- **AND** an explicitly selected executable remains subject to its own path checks and does not fall back to a different launcher after a failed admission.
 
 #### Scenario: Remember and revalidate a custom directory
 

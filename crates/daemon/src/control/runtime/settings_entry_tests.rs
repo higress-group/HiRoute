@@ -318,16 +318,75 @@ fn v2_settings_first_save_without_native_probe_and_reenable_identical_catalog() 
         configured_references,
         "a collaboration-only Operation must not shadow the model facet"
     );
-    let restore = json!({"schema_version":{"major":2,"minor":0},"context_id":context,
+    let mut restore = json!({"schema_version":{"major":2,"minor":0},"context_id":context,
         "model":{"intent":"restore","restore_point_ref":codex_model_restore_point_ref(&same_operation)}});
+    let older = ordinary.dispatch_wire(request("PreviewAgentConnectionRestore", json!({"spec": {
+        "schema_version":{"major":2,"minor":0},"context_id":context,"restore_managed_changes":true,
+        "model":{"intent":"restore","restore_point_ref":codex_model_restore_point_ref(&first_operation)}
+    }}), None));
+    let older = older.data.unwrap();
+    assert_eq!(older["applicable"], false);
+    assert!(
+        older["blockers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|block| block["reason"] == "restore_point_unavailable")
+    );
+    let edited = fs::read_to_string(&path).unwrap().replacen(
+        &format!("model = \"{}\"", plan.model_alias.as_str()),
+        "model = 'user-edit-before-disable'",
+        1,
+    );
+    assert!(edited.contains("user-edit-before-disable"));
+    fs::write(&path, &edited).unwrap();
+    let strict = ordinary
+        .dispatch_wire(request(
+            "PreviewAgentConnectionRestore",
+            json!({"spec":restore}),
+            None,
+        ))
+        .data
+        .unwrap();
+    restore["restore_managed_changes"] = json!(true);
+    let preview = ordinary
+        .dispatch_wire(request(
+            "PreviewAgentConnectionRestore",
+            json!({"spec":restore}),
+            None,
+        ))
+        .data
+        .unwrap();
+    assert_eq!(preview["applicable"], true, "{preview}");
+    assert_ne!(preview["accept_digest"], strict["accept_digest"]);
+    let late = format!("# concurrent edit\n{edited}");
+    fs::write(&path, &late).unwrap();
+    let stale = ordinary.dispatch_wire(request("ApplyAgentConnectionRestore", json!({
+        "spec":restore,"accept_digest":preview["accept_digest"],"dependency_digest":preview["dependency_digest"],
+        "expected_revisions":preview["expected_revisions"],"idempotency_key":"stale-disable"
+    }), None));
+    assert_eq!(
+        stale.error.unwrap().code,
+        api::ErrorCode::ChangePreviewStale
+    );
+    assert_eq!(fs::read_to_string(&path).unwrap(), late);
+    assert_eq!(references(), configured_references);
     apply(&ordinary, &runtime, restore, "catalog-disable");
     assert_attributed_session(&runtime, "original");
     assert!(
         references().references.is_empty(),
         "model Restore must release references while collaboration remains configured"
     );
-    assert_eq!(fs::read(&path).unwrap(), before);
+    assert_eq!(
+        fs::read_to_string(&path).unwrap(),
+        format!(
+            "# concurrent edit\n{}",
+            std::str::from_utf8(before).unwrap()
+        )
+    );
     assert_eq!(fs::read(&artifact_path).unwrap(), catalog_bytes);
+    // Re-enable with the same original input for the content-addressed catalog assertions.
+    fs::write(&path, before).unwrap();
     let protected_config = fs::read(&path).unwrap();
     let pending = ordinary.dispatch_wire(request(
         "PreviewAgentConnectionChange",

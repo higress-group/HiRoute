@@ -111,8 +111,17 @@ class Runner(unittest.TestCase):
                      case='codex_installation::tests::actual_windows_codex_desktop_package_has_its_own_engine')
         self.assertEqual(host.admit_test_profile(temporary, home, local), 'temporary_artifact_component')
         self.assertEqual(host.admit_test_profile(probe, home, local), 'read_only_installation_component')
-        for request in [temporary, probe]:
-            for changed in [dict(binary='windows_headless.exe'),
+        discovery = dict(binary='windows_headless.exe', ignored=True,
+                         case='windows_agent_discovery::actual_windows_codex_desktop_only_registers_both_agent_entries')
+        self.assertEqual(host.admit_test_profile(discovery, home, local), 'read_only_agent_discovery')
+        path_scan = dict(binary='windows_headless.exe', ignored=True,
+                         case='windows_agent_discovery::actual_windows_claude_scan_continues_past_unavailable_path_entries')
+        self.assertEqual(host.admit_test_profile(path_scan, home, local), 'read_only_agent_discovery')
+        explicit_path = dict(binary='hiroute_integrations.exe', ignored=False,
+                             case='agents::executable::windows_tests::windows_explicit_executable_does_not_skip_an_unavailable_preferred_file')
+        self.assertEqual(host.admit_test_profile(explicit_path, home, local), 'temporary_artifact_component')
+        for request in [temporary, probe, discovery, path_scan, explicit_path]:
+            for changed in [dict(binary='other_harness.exe'),
                             dict(case=request['case'] + '_other'),
                             dict(ignored=not request['ignored'])]:
                 with self.subTest(request=request, changed=changed), \

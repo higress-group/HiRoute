@@ -1075,7 +1075,14 @@ fn smart_saving_cannot_downgrade_to_state_owner_when_primary_lacks_image_capabil
     let output = Planner.plan(&continuation).unwrap();
     assert_eq!(output.branch, PlannedBranchV1::SmartSavingComplex);
     assert_eq!(
-        evaluate_candidate(&complex_request, &glm, smart.cost_policy, &smart.limits).unwrap_err(),
+        evaluate_candidate(
+            &complex_request,
+            &glm,
+            smart.cost_policy,
+            &smart.limits,
+            false
+        )
+        .unwrap_err(),
         ExclusionReasonCodeV1::VisionUnsupported
     );
     assert!(output.ledger.ordered_candidates.is_empty());

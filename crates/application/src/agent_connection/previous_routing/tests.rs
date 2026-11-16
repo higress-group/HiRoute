@@ -23,6 +23,7 @@ fn fixture(id: &str, previous: Option<&str>, opus: &str, sonnet: &str) -> Node {
             management_skill: Default::default(),
             native_target: None,
             restore_native_model: None,
+            restore_managed_changes: false,
             protected_native_model_ids: vec![],
             access_token: AgentAccessTokenIntentV1::Regenerate,
         },

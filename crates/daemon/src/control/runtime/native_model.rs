@@ -16,7 +16,7 @@ use hiroute_integrations::{
     CodexFileConfiguration, CodexSelectionTarget,
     codex_catalog_baseline as decode_catalog_baseline, restage_codex_catalog,
     sample_codex_catalog_plan, sample_codex_hiroute_only_catalog_plan, stage_codex_catalog,
-    stage_codex_configuration, stage_codex_reconfiguration, stage_codex_restoration,
+    stage_codex_configuration, stage_codex_reconfiguration, stage_confirmed_codex_restoration,
 };
 
 pub(super) fn is_settings_codex_model(intent: &ExternalEffectIntentV1) -> bool {
@@ -213,6 +213,7 @@ impl LocalControlAdapter {
             text,
             &restore,
             native_model.as_deref(),
+            false,
         )
         .map_err(|_| conflict("codex.restore.ack.fields"))?;
         // Only acknowledge complete cleanup. Remaining owned fields require user repair;
@@ -564,13 +565,15 @@ impl LocalControlAdapter {
                 {
                     return Err(conflict("codex.settings.restore.changed"));
                 }
-                stage_codex_restoration(
+                stage_confirmed_codex_restoration(
                     &self.artifacts,
                     operation_id,
                     intent,
                     original_operation,
                     original_intent,
                     native_model.as_deref(),
+                    super::effects::restore_managed_model_changes(operation)
+                        .then_some(&payload.expected_content),
                 )
             }
         }

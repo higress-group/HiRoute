@@ -50,6 +50,7 @@ fn preview(client: &LocalControlClient, spec: &AgentSettingsSpecV2) -> io::Resul
         || returned.model != spec.model
         || returned.collaboration != spec.collaboration
         || returned.restore_native_model != spec.restore_native_model
+        || returned.restore_managed_changes != spec.restore_managed_changes
         || !returned.is_restore_only()
     {
         return Err(io::Error::other("AGENT_RESTORE_DECISION_REQUIRED"));

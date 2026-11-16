@@ -545,6 +545,18 @@ pub(crate) fn private_atomic_write(path: &Path, bytes: &[u8]) -> Result<(), CpaC
     }
 }
 
+pub(crate) fn private_atomic_write_auth(path: &Path, bytes: &[u8]) -> Result<(), CpaConfigError> {
+    #[cfg(windows)]
+    {
+        crate::request_context::io_check().map_err(CpaConfigError::Io)?;
+        crate::windows_private::write_auth_file(path, bytes).map_err(CpaConfigError::Io)
+    }
+    #[cfg(not(windows))]
+    {
+        private_atomic_write(path, bytes)
+    }
+}
+
 #[cfg(unix)]
 fn validate_private_dir(path: &Path) -> Result<(), CpaConfigError> {
     let metadata = fs::symlink_metadata(path).map_err(CpaConfigError::Io)?;

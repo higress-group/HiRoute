@@ -304,6 +304,17 @@ def admit_test_profile(request, home, localappdata):
     if (request['binary'] == 'hiroute_local_storage.exe' and not request['ignored']
             and request['case'] in {prefix + name for name in artifact_cases}):
         return 'temporary_artifact_component'
+    # These regressions use only temporary files and search paths.
+    windows_regressions = {
+        ('hiroute_cpa_bridge.exe',
+         'accounts::stock::pin_tests::windows_pin_reads_accept_cpa_replacement_with_private_inherited_acl'),
+        ('hiroute_integrations.exe',
+         'agents::filesystem::tests::qoder::windows_qoder_scan_distinguishes_absence_from_unusable_path'),
+        ('hiroute_integrations.exe',
+         'agents::executable::windows_tests::windows_explicit_executable_does_not_skip_an_unavailable_preferred_file'),
+    }
+    if not request['ignored'] and (request['binary'], request['case']) in windows_regressions:
+        return 'temporary_artifact_component'
     # These exact Codex cases use tempfile-owned paths or in-process test doubles.
     # The explicit installation probe only reads the current user's package and
     # runs its engine's fixed --version entry; it never changes a native profile.
@@ -311,14 +322,20 @@ def admit_test_profile(request, home, localappdata):
         'hiroute_platform.exe': {
             'directory_link::tests::codex_skill_source_link_replacement_and_removal_flow_through_shared_link',
             'directory_link::tests::codex_skill_directory_link_shares_updates_without_replacing_private_entries',
+            'windows::app_package::tests::package_image_refuses_ancestor_junctions_and_changed_files',
         },
         'hiroute_desktop_host_effects.exe': {
+            'codex_installation::tests::appx_query_distinguishes_absence_from_invalid_registration',
             'codex_instance::tests::codex_desktop_shares_skills_without_adopting_existing_entries',
             'codex_installation::tests::codex_desktop_cache_prefers_current_entry_and_compares_versions_numerically',
             'codex_installation::tests::codex_desktop_package_requires_its_own_engine_and_isolates_only_child_environment',
         },
         'hiroute_product_session.exe': {
             'codex_desktop::tests::codex_desktop_launch_reads_only_current_exact_model_authority',
+        },
+        'hiroute_integrations.exe': {
+            'agents::filesystem::tests::codex_desktop::codex_desktop_location_refresh_observes_install_update_and_uninstall_without_rebinding_home',
+            'agents::dsh_windows::tests::windows_dsh_recognizes_both_npm_node_shim_templates',
         },
         'hiroute_cli.exe': {
             'codex_desktop::tests::codex_desktop_local_launch_help_is_offline_and_rejects_paths_and_agent_authority',
@@ -330,6 +347,14 @@ def admit_test_profile(request, home, localappdata):
     if (request['binary'] == 'hiroute_desktop_host_effects.exe' and request['ignored']
             and request['case'] == 'codex_installation::tests::actual_windows_codex_desktop_package_has_its_own_engine'):
         return 'read_only_installation_component'
+    if (request['binary'] == 'windows_headless.exe' and request['ignored']
+            and request['case'] in {
+                'windows_agent_discovery::actual_windows_codex_desktop_only_registers_both_agent_entries',
+                'windows_agent_discovery::actual_windows_dsh_scan_accepts_a_standalone_shim_and_skips_invalid_path_candidates',
+                'windows_agent_discovery::actual_windows_claude_scan_continues_past_unavailable_path_entries',
+            }):
+        # These scans own their runtime, storage and native configuration roots.
+        return 'read_only_agent_discovery'
     # DSH discovery checks either use only owned temporary files/registry keys or
     # read the installed official client. They never install/stop HiRoute, change
     # HOME, or write the account's native configuration. Keep this an exact list;

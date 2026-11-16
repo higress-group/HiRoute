@@ -71,6 +71,7 @@ export function agentSettingsSpec(agent: Agent, facet: AgentFacet, restore: bool
       context_id: agent.codex_access && !agent.codex_access.slot_occupied
         ? (codexMode === 'root' ? agent.codex_access.root_context_id : agent.codex_access.profile_context_id)
         : agent.context_id,
+      restore_managed_changes: restore || undefined,
       restore_native_model: restore && agent.agent_id === 'agent_codex_default' && agent.codex_access?.selected_mode === 'root' && restoreNativeModel
         ? restoreNativeModel : undefined,
       model: restore

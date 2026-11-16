@@ -76,6 +76,30 @@ impl CpaControlPlane for StockCpaControlPlane {
         Ok(())
     }
 
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn probe_predecessor(
+        &self,
+        address: SocketAddr,
+        secrets: &InstanceSecrets,
+        version: &str,
+        pid: u32,
+        timeout: Duration,
+    ) -> Result<(), AccountDiscoveryError> {
+        let response = request(LoopbackRequest {
+            address,
+            method: "GET",
+            path: "/v0/management/auth-files/models?name=.__hiroute_ready_probe__",
+            authorization: Some(&secrets.management),
+            body: &[],
+            timeout,
+        })?;
+        let value = validate_management_response(&response, version)?;
+        if model_discovery::reporting_process(&value) != Some(pid) {
+            return Err(AccountDiscoveryError::RunningProcessMismatch);
+        }
+        Ok(())
+    }
+
     fn discover_and_pin(
         &self,
         address: SocketAddr,
@@ -447,7 +471,7 @@ fn patch_account_controls(
         body: &body,
         timeout,
     })?;
-    validate_management_response(&response, expected_version)
+    validate_management_response(&response, expected_version).map(|_| ())
 }
 
 fn account_controls_body(
@@ -494,10 +518,7 @@ fn get_account_models(
         body: &[],
         timeout,
     })?;
-    validate_management_response(&response, expected_version)?;
-    let value: Value =
-        serde_json::from_slice(&response.body).map_err(AccountDiscoveryError::Json)?;
-    reject_secret_material(&value)?;
+    let value = validate_management_response(&response, expected_version)?;
     trace.model_discovery(&value);
     let models = value
         .get("models")

@@ -214,6 +214,68 @@ impl Patch {
         self.replace_row(self.routing_adapter_index()?, desired)
     }
 
+    pub fn restore_routing_adapter(
+        &self,
+        original: &Self,
+        providers: &std::collections::BTreeMap<String, hiroute_domain::CanonicalDigest>,
+    ) -> Result<Zeroizing<Vec<u8>>, QoderNativeError> {
+        let Some(index) = self.routing_adapter_index()? else {
+            return Ok(self.bytes.clone());
+        };
+        let mut row = self.rows[index].clone();
+        let entries = row["insert"].as_array_mut().expect("routing insert");
+        let mut owned = entries
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry["id"] == "hiroute-routing");
+        let (entry_index, entry) = owned.next().expect("routing insert entry");
+        if owned.next().is_some() {
+            return Err(qoder_error("DSH routing adapter conflict"));
+        }
+        if original.routing_adapter()?.is_some() {
+            // A pre-existing registration is borrowed. Only the provider additions belong to us.
+            if !providers.is_empty()
+                && let Some(config) = entries[entry_index].get_mut("config")
+            {
+                let config = config
+                    .as_object_mut()
+                    .ok_or_else(|| qoder_error("DSH routing adapter config"))?;
+                if let Some(added) = config.get_mut("providers") {
+                    let added = added
+                        .as_object_mut()
+                        .ok_or_else(|| qoder_error("DSH routing adapter providers"))?;
+                    added.retain(|id, _| !providers.contains_key(id));
+                    if added.is_empty() {
+                        config.remove("providers");
+                    }
+                }
+                if config.is_empty() {
+                    entries[entry_index]
+                        .as_object_mut()
+                        .expect("routing entry")
+                        .remove("config");
+                }
+            }
+        } else {
+            // Foreign configuration in this registration needs a destination chosen by the user.
+            if entry.get("config").is_some_and(|config| {
+                config.as_object().is_none_or(|config| {
+                    config.iter().any(|(key, value)| {
+                        key != "providers"
+                            || value.as_object().is_none_or(|added| {
+                                added.keys().any(|id| !providers.contains_key(id))
+                            })
+                    })
+                })
+            }) {
+                return Err(qoder_error("DSH foreign routing configuration"));
+            }
+            entries.remove(entry_index);
+        }
+        let empty = entries.is_empty() && row.as_object().is_some_and(|row| row.len() == 1);
+        self.replace_row(Some(index), (!empty).then_some(&row))
+    }
+
     pub fn remove_empty_legacy_provider_row(
         &self,
         original: &Self,

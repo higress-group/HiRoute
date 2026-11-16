@@ -631,7 +631,7 @@ const scenarios = [
     assert(!feedback.includes('有前置条件尚未满足'), 'Known blockers fell back to generic repeated text');
     assert(c().operations.length === 0 && c().mutations === 0 && calls('check_agent_live').length === 0, 'Blocked save applied settings or called a model');
   }),
-  scenario('codex.restore.conflict-active', ['agent-recovery'], 'Codex file conflicts preserve active access and allow other settings', async () => {
+  scenario('codex.restore.conflict-active', ['agent-recovery'], 'Codex file changes preserve active access and allow a new Disable preview', async () => {
     await freshCodex('splitCodexStatus');
     const agent = c().agents.agents.find(agent => agent.agent_id === 'agent_codex_default');
     agent.codex_access.conflict_fields = ['model_providers.hiroute.name'];
@@ -640,6 +640,7 @@ const scenarios = [
     await until(() => document.querySelector('[data-codex-restore-conflict]'), 'file conflict diagnosis');
     const alert = document.querySelector('[data-codex-restore-conflict]');
     assert(alert.textContent.includes('原连接仍有效') && alert.textContent.includes('model_providers.hiroute.name'), 'Conflict hides active access or fields');
+    assert(alert.textContent.includes('点击“停用”可检查当前配置并确认还原'), 'File change does not point to the current Disable flow');
     assert(!alert.textContent.includes('旧令牌已失效') && !alert.textContent.includes('新的配置保存会暂停'), 'Ordinary conflict claims revoked access or globally blocked settings');
     assert(!facet('model').disabled, 'Unrelated configuration action is blocked');
     await openEditor('model');
@@ -1230,7 +1231,7 @@ const scenarios = [
     assert(JSON.stringify(configureSpecs().at(-1).model.settings) === JSON.stringify(saved), 'Token rotation used another selection');
     await until(() => ![...document.querySelectorAll('.detail-section-head button')].find(button => button.textContent === '停用')?.disabled, 'model restore ready');
     const beforeRestore = c().operations.length;
-    for (const [reason, guidance] of [['qoder_default_in_use', '通过 /model 切换到其他模型'], ['qoder_model_file_conflict', '不会覆盖冲突字段或无关配置']]) {
+    for (const [reason, guidance] of [['qoder_default_in_use', '通过 /model 切换到其他模型'], ['qoder_model_file_conflict', '检查配置文件格式及路由条目']]) {
       restoreBlocker = reason;
       [...document.querySelectorAll('.detail-section-head button')].find(button => button.textContent === '停用').click();
       await until(() => document.querySelector('.agent-feedback')?.textContent.includes(guidance), `restore guidance: ${reason}`);
@@ -1240,12 +1241,14 @@ const scenarios = [
     restoreBlocker = null;
     [...document.querySelectorAll('.detail-section-head button')].find(button => button.textContent === '停用').click();
     await until(() => c().operations.length === beforeRestore + 1 && agent.settings.state === 'not_configured', 'model restore request');
+    assert(configureSpecs().at(-1).restore_managed_changes === true, 'Disable did not authorize restoration of recorded model changes');
     assert(configureSpecs().at(-1).collaboration.intent === 'keep' && agent.settings.collaboration.state === 'configured', 'Model restore removed task collaboration');
     agent.settings = c().qoderRouted().agents[0].settings; c().refresh(); await tick();
     await until(() => facet('model')?.textContent === '调整' && !facet('model').disabled, 'model connection refreshed');
     const recovery = document.querySelector('.native-details'); if (!recovery.open) recovery.querySelector('summary').click(); await tick();
     document.querySelector('[data-agent-disable="collaboration"]').click();
     await until(() => configureSpecs().some(spec => spec.collaboration.intent === 'restore'), 'independent collaboration restore');
+    assert(configureSpecs().at(-1).restore_managed_changes === undefined, 'Collaboration restore authorized model changes');
     assert(configureSpecs().at(-1).model.intent === 'keep' && agent.settings.current_selection.mode === 'qoder_additional', 'Collaboration restore removed model routes');
   }),
   ...['pi', 'dsh', 'opencode'].map(ecosystem => scenario(`${ecosystem}.routing.default-in-use`, ['agent-recovery'], `${ecosystem} preserves a route used by its native default and directs recovery to the selected client`, async () => {
@@ -1257,9 +1260,9 @@ const scenarios = [
       preview: { applicable: false, blockers: [{ reason: 'additional_default_in_use' }] }, mutation: null,
     });
     [...document.querySelectorAll('.detail-section-head button')].find(button => button.textContent === '停用').click();
-    await until(() => document.querySelector('.agent-feedback')?.textContent.includes('当前默认模型仍引用'), 'default reference recovery');
+    await until(() => document.querySelector('.agent-feedback')?.textContent.includes('默认模型或其他模型设置仍引用'), 'model reference recovery');
     const guidance = document.querySelector('.agent-feedback').textContent;
-    assert(guidance.includes('所选客户端中切换到其他模型') && guidance.includes('HiRoute 不会替你更改默认模型'), 'Recovery did not direct the user to their selected client');
+    assert(guidance.includes('所选客户端中将这些设置切换到其他模型') && guidance.includes('再点击“停用”'), 'Recovery did not direct the user to their selected client');
     assert(!guidance.includes('Pi 中') && !guidance.includes('/model'), 'Shared recovery assumed another ecosystem or a CLI-only selector');
     assert(c().operations.length === 0 && JSON.stringify(agent.settings) === JSON.stringify(before), 'Blocked removal changed model routes or task collaboration');
     assert(configureSpecs().at(-1).collaboration.intent === 'keep', 'Model recovery tried to restore task collaboration');

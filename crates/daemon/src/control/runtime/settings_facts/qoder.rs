@@ -8,7 +8,23 @@ impl LocalControlAdapter {
         spec: &AgentSettingsSpecV2,
         class: SettingsAgentClass,
     ) -> Result<AgentSettingsPlanningInput, ControlReadError> {
-        let discovery = if class == SettingsAgentClass::OpenCode {
+        let discovery = if spec.restore_managed_changes
+            && spec.keeps_skills()
+            && matches!(spec.model, AgentFacetIntent::Restore { .. })
+        {
+            let kind = match class {
+                SettingsAgentClass::OpenCode => hiroute_domain::AgentKindV1::OpenCode,
+                SettingsAgentClass::Dsh | SettingsAgentClass::DshDesktop => {
+                    hiroute_domain::AgentKindV1::DeepseekHarness
+                }
+                SettingsAgentClass::Pi => hiroute_domain::AgentKindV1::Pi,
+                _ => hiroute_domain::AgentKindV1::Qoder,
+            };
+            let target = class
+                .native_path(&self.scanner)
+                .ok_or(ControlReadError::NotFound)?;
+            FilesystemAgentScannerV1::owned_model_restore_discovery(class.agent_id(), kind, &target)
+        } else if class == SettingsAgentClass::OpenCode {
             self.scanner.opencode_settings_discovery()
         } else if class == SettingsAgentClass::DshDesktop {
             self.scanner.dsh_desktop_settings_discovery()

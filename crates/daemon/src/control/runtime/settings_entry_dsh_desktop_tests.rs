@@ -242,10 +242,17 @@ fn desktop_and_web_models_install_independently_and_restore_after_reopen_without
         "missing app must block Configure, not Restore"
     );
     assert_eq!(fs::read(&desktop).unwrap(), configured_desktop);
+    let edited = String::from_utf8(configured_desktop)
+        .unwrap()
+        .replace("hiroute-routing.mjs", "edited-routing.mjs");
+    assert!(edited.contains("edited-routing.mjs"));
+    private_file(&desktop, edited.as_bytes());
+    let mut restore = restore_spec(&fixture, &model_status(&fixture));
+    restore["restore_managed_changes"] = json!(true);
     apply(
         &fixture.service,
         &fixture.runtime,
-        restore_spec(&fixture, &model_status(&fixture)),
+        restore,
         "desktop-restore",
     );
     assert_eq!(model_status(&fixture)["state"], "not_configured");

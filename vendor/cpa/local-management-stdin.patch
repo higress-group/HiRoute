@@ -1878,10 +1878,10 @@ index 0000000..30e6697
 +}
 diff --git a/internal/runtime/executor/codex_models.go b/internal/runtime/executor/codex_models.go
 new file mode 100644
-index 0000000..f17845a
+index 0000000..d226d4b
 --- /dev/null
 +++ b/internal/runtime/executor/codex_models.go
-@@ -0,0 +1,173 @@
+@@ -0,0 +1,168 @@
 +package executor
 +
 +import (
@@ -1899,6 +1899,10 @@ index 0000000..f17845a
 +	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 +	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 +)
++
++// Use a qualified Codex CLI version for independent OAuth model discovery.
++// The account catalog is version-gated independently of the executor's User-Agent.
++const codexManagedModelDiscoveryVersion = "0.169.0"
 +
 +// DiscoverModels uses the same account, proxy and TLS transport as Codex requests.
 +// The remote list controls membership; bundled metadata only enriches matching IDs.
@@ -2035,20 +2039,11 @@ index 0000000..f17845a
 +}
 +
 +func codexModelDiscoveryVersion(auth *cliproxyauth.Auth) (string, error) {
-+	version, _ := auth.Metadata["hiroute_client_version"].(string)
 +	refreshToken, _ := auth.Metadata["refresh_token"].(string)
 +	if strings.TrimSpace(refreshToken) != "" {
-+		// Independently authorized credentials belong to CPA. Advertise the same
-+		// upstream client version its executor actually uses, including at the
-+		// first OAuth registration before HiRoute has patched account controls.
-+		// Access-only native leases must still provide their observed version.
-+		clientIdentity, _, _ := strings.Cut(codexUserAgent, " ")
-+		var ok bool
-+		version, ok = strings.CutPrefix(clientIdentity, codexOriginator+"/")
-+		if !ok {
-+			return "", fmt.Errorf("codex model discovery: executor client version unavailable")
-+		}
++		return codexManagedModelDiscoveryVersion, nil
 +	}
++	version, _ := auth.Metadata["hiroute_client_version"].(string)
 +	version = strings.TrimSpace(version)
 +	if version == "" || len(version) > 128 || strings.ContainsAny(version, "\r\n\x00") {
 +		return "", fmt.Errorf("codex model discovery: local client version unavailable")
@@ -2057,10 +2052,10 @@ index 0000000..f17845a
 +}
 diff --git a/internal/runtime/executor/codex_models_test.go b/internal/runtime/executor/codex_models_test.go
 new file mode 100644
-index 0000000..c262d05
+index 0000000..1a00245
 --- /dev/null
 +++ b/internal/runtime/executor/codex_models_test.go
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,82 @@
 +package executor
 +
 +import (
@@ -2120,7 +2115,7 @@ index 0000000..c262d05
 +	}
 +}
 +
-+func TestCodexModelDiscoveryManagedUsesExecutorVersion(t *testing.T) {
++func TestCodexModelDiscoveryManagedUsesQualifiedVersion(t *testing.T) {
 +	for _, observedVersion := range []any{nil, "0.999.0"} {
 +		auth := &cliproxyauth.Auth{Provider: "codex", Metadata: map[string]any{
 +			"access_token": "fixture-access", "refresh_token": "independent-refresh",
@@ -2129,12 +2124,10 @@ index 0000000..c262d05
 +		calls := 0
 +		ctx := context.WithValue(context.Background(), "cliproxy.roundtripper", discoveryRoundTrip(func(req *http.Request) (*http.Response, error) {
 +			calls++
-+			identity, _, _ := strings.Cut(req.Header.Get("User-Agent"), " ")
-+			_, actualVersion, hasVersion := strings.Cut(identity, "/")
-+			if !hasVersion || actualVersion == "" || req.URL.Query().Get("client_version") != actualVersion {
-+				t.Fatal("managed discovery version differs from executor wire identity")
++			if got := req.URL.Query().Get("client_version"); got != "0.169.0" {
++				t.Fatalf("managed discovery sent client_version %q, want 0.169.0", got)
 +			}
-+			if req.URL.Query().Get("client_version") == "0.999.0" || req.Header.Get("Authorization") != "Bearer fixture-access" || req.Header.Get("ChatGPT-Account-ID") != "fixture-account" {
++			if req.Header.Get("User-Agent") != codexUserAgent || req.Header.Get("Authorization") != "Bearer fixture-access" || req.Header.Get("ChatGPT-Account-ID") != "fixture-account" {
 +				t.Fatal("managed discovery did not use its own credential and executor identity")
 +			}
 +			return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"models":[{"slug":"remote-managed-model"}]}`)), Request: req}, nil

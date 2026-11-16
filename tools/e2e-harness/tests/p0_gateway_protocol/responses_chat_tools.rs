@@ -286,17 +286,17 @@ fn production_responses_to_chat_tools_complete_two_turns_and_fallback_before_att
         "grammar fallback"
     );
 
+    let mut conflicting_declarations = codex_tools_request(false);
+    conflicting_declarations["input"] = json!([
+        {"type":"additional_tools","id":"at_conflict","role":"developer","tools":[conflicting_declarations["tools"][0].clone()]},
+        {"role":"user","content":"conflicting declaration request"}
+    ]);
+    conflicting_declarations["input"][0]["tools"][0]["tools"][0]["parameters"]["required"] =
+        json!(["different"]);
     let collision = request(
         address,
         "responses-chat-tools-token",
-        &json!({
-            "model":"responses-chat-tools",
-            "input":"collision request",
-            "tools":[
-                {"type":"function","name":"records__lookup","parameters":{"type":"object"}},
-                {"type":"namespace","name":"records","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]}
-            ]
-        }),
+        &conflicting_declarations,
     );
     assert_eq!(
         collision.status,
@@ -316,10 +316,9 @@ fn production_responses_to_chat_tools_complete_two_turns_and_fallback_before_att
             ["type"],
         "grammar"
     );
-    assert_eq!(
-        serde_json::from_slice::<Value>(http_body(&fallback_requests[1])).unwrap()["tools"][1]["type"],
-        "namespace"
-    );
+    let forwarded: Value = serde_json::from_slice(http_body(&fallback_requests[1])).unwrap();
+    assert_eq!(forwarded["tools"], conflicting_declarations["tools"]);
+    assert_eq!(forwarded["input"], conflicting_declarations["input"]);
 
     let options = request(
         address,
@@ -495,7 +494,7 @@ fn namespace_description() -> String {
 }
 
 fn codex_tools_request(stream: bool) -> Value {
-    json!({
+    let mut body = json!({
         "model":"responses-chat-tools",
         "stream":stream,
         "instructions":"isolated Codex worker",
@@ -530,11 +529,17 @@ fn codex_tools_request(stream: bool) -> Value {
                 "strict":false
             }]
         }]
-    })
+    });
+    let repeated = body["tools"][0].clone();
+    body["input"][2]["tools"]
+        .as_array_mut()
+        .unwrap()
+        .insert(0, repeated);
+    body
 }
 
 fn codex_tool_results_request(function_item: &Value, custom_item: &Value) -> Value {
-    json!({
+    let mut body = json!({
         "model":"responses-chat-tools",
         "stream":false,
         "input":[
@@ -550,7 +555,13 @@ fn codex_tool_results_request(function_item: &Value, custom_item: &Value) -> Val
         "parallel_tool_calls":true,
         "tool_choice":"auto",
         "tools":codex_tools_request(false)["tools"].clone()
-    })
+    });
+    let repeated = body["tools"][0].clone();
+    body["input"][5]["tools"]
+        .as_array_mut()
+        .unwrap()
+        .insert(0, repeated);
+    body
 }
 
 fn responses_chat_tools_snapshot(

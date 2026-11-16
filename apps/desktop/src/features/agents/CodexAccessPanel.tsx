@@ -91,8 +91,8 @@ export function CodexAccessPanel({ access, language, retryDisabled, onRetry }: {
     <CodexLaunchInstructions access={access} language={language} compact />
     {!access.pending_operation && !access.access_revoked && access.conflict_fields.length > 0 && <div className="callout warn" role="alert" data-codex-restore-conflict>
       <UiIcon name="warning" /><div>
-      <strong>{text('配置文件存在冲突', 'Configuration file conflict')}</strong>
-      <p>{text('文件冲突解决前无法完成停用，原连接仍有效。HiRoute 会保留你的修改；请处理以下字段后重新点击“停用”。其他配置仍可修改。', 'Disable cannot complete until the conflict is resolved; the original connection remains active. HiRoute preserves your edits. Resolve these fields, then click Disable again. Other settings remain editable.')}</p>
+      <strong>{text('HiRoute 管理的配置已被修改', 'HiRoute-managed settings changed')}</strong>
+      <p>{text('原连接仍有效。点击“停用”可检查当前配置并确认还原。', 'The connection is still active. Click Disable to review and confirm restoration.')}</p>
       <p><code className="configuration-path">{access.target_file}</code></p>
       <ul>{access.conflict_fields.map(field => <li key={field}><code>{field}</code></li>)}</ul>
       </div>

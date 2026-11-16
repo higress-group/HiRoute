@@ -149,7 +149,8 @@ fn pi_default_selected_after_prepare_blocks_final_removal_without_losing_models(
         .join("settings.json");
     let default_before = fs::read(&default_file).unwrap();
     let status = model_status(&fixture);
-    let restore = restore_spec(&fixture, &status);
+    let mut restore = restore_spec(&fixture, &status);
+    restore["restore_managed_changes"] = json!(true);
     let mut ports = fixture.runtime.application_ports();
     ports.mutation = Some(Arc::new(fault::FileRace {
         adapter: fixture.runtime.adapter.clone(),
@@ -324,7 +325,8 @@ fn qoder_restore_rejects_native_default_reference_then_preserves_unrelated_edits
         "qoder-default-install",
     );
     let status = model_status(&fixture);
-    let restore = restore_spec(&fixture, &status);
+    let mut restore = restore_spec(&fixture, &status);
+    restore["restore_managed_changes"] = json!(true);
     let provider =
         hiroute_application::agent_connection::additional_model_provider_id(&fixture.context);
     let alias = status["live_check_targets"][0]["client_model_ids"][0]
@@ -340,6 +342,7 @@ fn qoder_restore_rejects_native_default_reference_then_preserves_unrelated_edits
         .unwrap()
         .clone();
     native["model"]["name"] = json!(format!("{provider}/{alias}"));
+    native["providers"][&provider]["user_edit"] = json!("managed entry edited");
     native["unknown"]["new_user_value"] = json!(9);
     private_file(
         &fixture.native_config,
@@ -362,7 +365,7 @@ fn qoder_restore_rejects_native_default_reference_then_preserves_unrelated_edits
             .any(|block| block["reason"] == "qoder_default_in_use")
     );
     assert_eq!(fs::read(&fixture.native_config).unwrap(), prior);
-    assert_eq!(model_status(&fixture)["state"], "configured");
+    assert_eq!(model_status(&fixture)["state"], "drift");
     native["model"]["name"] = json!("native/default");
     private_file(
         &fixture.native_config,

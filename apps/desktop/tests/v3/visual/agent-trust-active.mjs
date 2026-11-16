@@ -53,6 +53,9 @@ try {
       }
       assertScenarioResults(selected, results);
       checks.push(...results);
+      if (selected.some(item => item.id === 'codex.restore.conflict-active')) {
+        checks.push(...await (await import('./agent-readback-captures.mjs')).codexDisableCaptures(client, fixtureUrl('agent-trust.html'), outputRoot));
+      }
       if (selected.some(item => item.capabilities.includes('desktop-management'))) {
         checks.push(...await (await import('./agent-readback-captures.mjs')).desktopManagementCaptures(client, baseUrl, outputRoot));
       }

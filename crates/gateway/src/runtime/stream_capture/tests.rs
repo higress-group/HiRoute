@@ -273,7 +273,7 @@ async fn capture_preserves_bytes_and_replays_request_bound_tools_across_chunks()
     let root = setup();
     let request = serde_json::json!({"model":"alias", "max_tokens":64,"messages":[{"role":"user","content":"hello"}], "tools":[{"name":"known","description":"tool", "input_schema":{"type":"object"}}]});
     let ir = adapters::decode_ingress_request(IngressProtocol::Messages, &request).unwrap();
-    let tools = adapters::ChatToolProjection::for_request(&ir).unwrap();
+    let tools = adapters::ChatToolProjection::for_request(&ir, None).unwrap();
     let body = serde_json::to_vec(&request).unwrap();
     let capture = Capture::open(
         &root,

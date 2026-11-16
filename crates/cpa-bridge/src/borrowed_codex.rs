@@ -14,7 +14,9 @@ use zeroize::Zeroizing;
 
 use crate::STOCK_CPA_CONTRACT_VERSION;
 use crate::accounts::{CpaAccountKind, ManagedAccountIdentity};
-use crate::config::{ensure_private_dir, private_atomic_write, validate_private_file};
+use crate::config::{
+    ensure_private_dir, private_atomic_write, private_atomic_write_auth, validate_private_file,
+};
 use crate::errors::CpaLifecycleError;
 
 const MANAGED_FILE_NAME: &str = "hiroute-managed-codex.json";
@@ -362,24 +364,24 @@ impl BorrowedCodexLease {
             None => 1,
         };
 
-        let flat_exists = self.flat_path.exists();
-        if flat_exists {
-            validate_private_file(&self.flat_path)
-                .map_err(|_| CpaLifecycleError::InvalidBorrowedCodexAuth)?;
-        }
-        let flat_matches = flat_exists
-            && private_file_matches(
-                &self.flat_path,
-                &source,
-                &prefix,
-                self.client_version.as_deref(),
-            )?;
+        let existing = match open_flat_access_lease(&self.flat_path) {
+            Ok(file) => Some(file),
+            Err(CpaLifecycleError::BorrowedCodexAuthMissing) => None,
+            Err(error) => return Err(error),
+        };
+        let flat_exists = existing.is_some();
+        let flat_matches = match existing {
+            Some(file) => {
+                private_file_matches(file, &source, &prefix, self.client_version.as_deref())?
+            }
+            None => false,
+        };
         source.verify_native_admission()?;
         if previous.is_none() && flat_exists && !flat_matches {
             return Err(CpaLifecycleError::InvalidBorrowedCodexAuth);
         }
         if !flat_matches {
-            private_atomic_write(&self.flat_path, &rendered)
+            private_atomic_write_auth(&self.flat_path, &rendered)
                 .map_err(|_| CpaLifecycleError::BorrowedCodexAuthIo)?;
         }
 
@@ -946,17 +948,32 @@ fn open_lock_nofollow(path: &Path) -> Result<File, CpaLifecycleError> {
         .map_err(|_| CpaLifecycleError::BorrowedCodexAuthIo)
 }
 
+#[cfg(windows)]
+fn open_flat_access_lease(path: &Path) -> Result<File, CpaLifecycleError> {
+    crate::windows_private::auth_file(path).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            CpaLifecycleError::BorrowedCodexAuthMissing
+        } else {
+            CpaLifecycleError::InvalidBorrowedCodexAuth
+        }
+    })
+}
+
+#[cfg(not(windows))]
+fn open_flat_access_lease(path: &Path) -> Result<File, CpaLifecycleError> {
+    if !path.exists() {
+        return Err(CpaLifecycleError::BorrowedCodexAuthMissing);
+    }
+    validate_private_file(path).map_err(|_| CpaLifecycleError::InvalidBorrowedCodexAuth)?;
+    File::open(path).map_err(|_| CpaLifecycleError::BorrowedCodexAuthIo)
+}
+
 fn private_file_matches(
-    path: &Path,
+    file: File,
     source: &OwnedNestedSource,
     prefix: &str,
     client_version: Option<&str>,
 ) -> Result<bool, CpaLifecycleError> {
-    #[cfg(windows)]
-    let file =
-        crate::windows_private::file(path).map_err(|_| CpaLifecycleError::BorrowedCodexAuthIo)?;
-    #[cfg(not(windows))]
-    let file = File::open(path).map_err(|_| CpaLifecycleError::BorrowedCodexAuthIo)?;
     let mut bytes = Zeroizing::new(Vec::new());
     file.take(MAX_AUTH_BYTES + 1)
         .read_to_end(bytes.as_mut())

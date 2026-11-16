@@ -168,6 +168,10 @@ impl CpaProcessHandle for FakeHandle {
         Ok(*self.process.exit.lock())
     }
 
+    fn has_work_dir(&self, expected: &Path) -> Result<bool, CpaProcessError> {
+        Ok(expected.is_dir())
+    }
+
     fn shutdown(&mut self, _timeout: Duration) -> Result<CpaExit, CpaProcessError> {
         let exit = CpaExit { code: Some(0) };
         *self.process.exit.lock() = Some(exit);
@@ -212,6 +216,20 @@ impl CpaControlPlane for FakeControl {
             return Err(AccountDiscoveryError::NotReady);
         }
         Ok(())
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn probe_predecessor(
+        &self,
+        address: SocketAddr,
+        secrets: &InstanceSecrets,
+        version: &str,
+        pid: u32,
+        timeout: Duration,
+    ) -> Result<(), AccountDiscoveryError> {
+        assert_eq!(version, recovery::PREVIOUS_CPA_VERSION);
+        assert_ne!(pid, 0);
+        self.probe_ready(address, secrets, VERSION, timeout)
     }
 
     fn discover_and_pin(

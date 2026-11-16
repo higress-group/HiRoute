@@ -99,6 +99,11 @@ the [Windows Shell entry](../../apps/shell/src-tauri/src/runtime/codex_desktop.r
 [native effect](../../crates/desktop-host-effects/src/codex_launch.rs). Web consoles
 copy that context-only local command without reading the Plan catalog; package
 discovery, fresh authority checks and graphical launch stay on its host.
+The [Windows package lookup](../../crates/desktop-host-effects/src/codex_installation.rs)
+passes the registered MSIX image identity to both entries. The
+[package image reader](../../crates/platform/src/windows/app_package.rs) opens the
+known file without enumerating WindowsApps and checks its identity on reuse.
+The scanner reports an unsuccessful AppX query or image inspection as unavailable.
 Windows skill junctions and Unix symlinks share the exclusive
 [directory-link boundary](../../crates/platform/src/directory_link.rs).
 Its model identity remains separate. The [settings planner](../../crates/daemon/src/control/runtime/settings_facts.rs)
@@ -225,8 +230,19 @@ JavaScript entries use the selected Node. Both launch paths share this dispatch,
 and native authentication evidence binds the actual PE identity even while its npm
 shim stays unchanged. The [native npm regression](../../crates/integrations/src/agents/windows_native_npm_tests.rs)
 executes the declared image without Node and rejects a changed engine identity.
-The `.cmd` shim is never evaluated. System shell selectors come from the actual
-Windows system directory. Worker and CPA subscription-source HOME discovery use
+The `.cmd` shim is never evaluated. [Shared executable discovery](../../crates/integrations/src/agents/executable.rs)
+continues a Windows PATH search after an unusable entry, retaining the failure if
+no candidate passes path admission. Explicit selections report that failure at
+the selected path. [DSH PATH discovery](../../crates/integrations/src/agents/dsh_windows.rs)
+continues after unusable candidates and can follow a standalone shim to its
+declared DSH npm entry, including the generated npm form with a relative target.
+The public composition check binds the chosen native program and its declared
+entry alongside the launcher. [Qoder lookup](../../crates/integrations/src/agents/qoder_discovery.rs)
+can confirm a missing candidate behind a PATH junction while retaining strict
+admission for an existing executable. The [Windows public scan regression](../../crates/daemon/tests/support/windows_agent_discovery.rs)
+runs the Claude PATH walk, both DSH lookup paths and the two Desktop-only Codex
+entries through a production Control daemon with temporary roots. System shell
+selectors come from the actual Windows system directory. Worker and CPA subscription-source HOME discovery use
 the same account native-profile selector in the daemon control runtime,
 while explicit ecosystem configuration roots retain their existing meaning.
 [Managed Claude drive paths](../../crates/integrations/src/agents/managed_launch/windows.rs)
@@ -328,6 +344,8 @@ HiRoute's provider routes alongside user plugins. Admission and the Host resolve
 the same provider exports from the running Electron app's bundled resources.
 [Native restore](../../crates/integrations/src/agents/additional_native.rs)
 recognizes both released provider placement and the independent Desktop entry.
+The shared [native restore boundary](../../crates/integrations/src/agents/native_effects.rs)
+checks the bytes used to render a confirmed Disable against its accepted snapshot.
 Windows rescans check Programs directories and read-only uninstall hints
 through [native registration inspection](../../crates/platform/src/windows/installed_apps.rs).
 The [scan response](../../crates/application/src/control_plane/agent_discovery.rs)

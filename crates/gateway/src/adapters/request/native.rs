@@ -192,6 +192,11 @@ pub(super) fn project(
     // Status sidecars use the original canonical indexes. Normalize before
     // prefix cleanup removes reasoning items and shifts later native positions.
     normalize_codex_replay(&mut body, profile, request);
+    // Decide on the original positions before reasoning cleanup can remove a
+    // historical item that was followed by a tool declaration.
+    if uses_top_level_responses_tools(profile) {
+        super::tools::project_additional_responses_tools(&mut body, request)?;
+    }
     if omit_prefix.is_some() && request.native_only {
         return Err(ProtocolAdapterError::ClientUnrepresentable(
             "unknown history cannot be cleaned".into(),
@@ -208,6 +213,13 @@ pub(super) fn project(
         0
     };
     project_dialect(body, profile, FunctionEncodingProjection::Preserve, removed)
+}
+
+fn uses_top_level_responses_tools(profile: &CandidateProtocolProfile) -> bool {
+    profile.capability.upstream_protocol == IngressProtocol::Responses
+        && (super::super::responses_dialect::standard_json(profile)
+            || (profile.connector.connector_id == "connector.cpa.codex"
+                && profile.connector.endpoint_id == "endpoint.cpa.codex"))
 }
 
 fn project_dialect(

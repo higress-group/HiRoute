@@ -39,6 +39,7 @@ pub enum SettingsBlockReason {
     NativeRoutingAdapterExternalResource,
     QoderModelFileConflict,
     HermesModelFileConflict,
+    NativeModelRestoreConflict,
     CodexContextOverride,
     ClaudeContextOverride,
     ClaudePlanCapabilityUnavailable,
@@ -75,6 +76,8 @@ pub enum AgentModelEffectPreviewV2 {
     Keep,
     Restore {
         restore_point_ref: String,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        archive_codex_profile: bool,
     },
     Configure {
         agent_class: String,

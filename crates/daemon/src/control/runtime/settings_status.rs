@@ -529,7 +529,7 @@ impl LocalControlAdapter {
                         // Recheck effective ownership/allowlists, without treating unrelated
                         // document changes as drift or rejecting a retained default selector.
                         self.scanner
-                            .opencode_model_facts(&provider_id, &models)
+                            .opencode_model_facts(&provider_id, &models, &[])
                             .is_ok()
                     });
                 let [mutation] = operation.plan.agent_access_grants() else {

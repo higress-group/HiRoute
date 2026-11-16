@@ -111,6 +111,12 @@ pub(crate) fn preview(
         (hiroute_application_api::AgentFacetIntent::Restore { restore_point_ref }, Some(_)) => {
             AgentModelEffectPreviewV2::Restore {
                 restore_point_ref: restore_point_ref.clone(),
+                archive_codex_profile: input
+                    .facts
+                    .model
+                    .as_ref()
+                    .and_then(crate::agent_connection::SettingsModelFacts::codex)
+                    .is_some_and(|codex| codex.archive_codex_profile),
             }
         }
         (hiroute_application_api::AgentFacetIntent::Keep, _) => AgentModelEffectPreviewV2::Keep,

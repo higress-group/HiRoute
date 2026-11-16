@@ -38,11 +38,13 @@ export function AgentSettingsFeedback({ preview, agent: selected, facet, default
         : block.reason === 'native_routing_adapter_external_resource'
           ? text('HiRoute 元数据插件路径存在外部或借用文件。请在所选 OpenCode 配置目录核对并手动停用该文件，再重新预览；HiRoute 不会删除它。其他外部插件仍可能等待依赖安装。', 'An external or borrowed file exists at the HiRoute metadata plugin path. Review and disable it manually in the selected OpenCode configuration directory, then preview again; HiRoute will not delete it. Other external plugins may still wait for dependencies.')
         : block.reason === 'additional_default_in_use'
-          ? text('当前默认模型仍引用将被移除的路由。请先在所选客户端中切换到其他模型，然后重试；HiRoute 不会替你更改默认模型。', 'The default model still uses a route being removed. Switch to another model in the selected client, then retry; HiRoute will not change the default for you.')
+          ? text('默认模型或其他模型设置仍引用将被移除的路由。请在所选客户端中将这些设置切换到其他模型，再点击“停用”。', 'A default or another model setting still uses a route being removed. Switch the affected settings to another model in the selected client, then click Disable again.')
         : block.reason === 'qoder_default_in_use'
           ? text('Qoder 当前默认模型仍引用将被移除的 HiRoute 路由。请先在 Qoder 中通过 /model 切换到其他模型，再重试；HiRoute 不会替你更改默认模型。', 'Qoder’s current default still uses a HiRoute route being removed. Switch to another model with /model in Qoder, then retry; HiRoute will not change the default for you.')
         : block.reason === 'qoder_model_file_conflict'
-          ? text('Qoder 中的受管路由配置已变化。请核对用户修改后重新预览；HiRoute 不会覆盖冲突字段或无关配置，任务协作无需停用。', 'Managed Qoder route settings have changed. Review your edits, then preview again; HiRoute will not overwrite conflicting fields or unrelated settings. Task collaboration can stay enabled.')
+          ? text('无法安全编辑所选客户端的路由配置。请检查配置文件格式及路由条目后重试。', 'The selected client’s routes cannot be edited safely. Check the configuration format and route entries, then retry.')
+        : block.reason === 'native_model_restore_conflict'
+          ? text('无法安全还原受管模型设置。请检查配置文件格式及受管条目后，再点击“停用”。', 'Managed model settings cannot be restored safely. Check the configuration format and managed entries, then click Disable again.')
         : block.reason === 'hermes_model_file_conflict'
           ? text('无法安全编辑 Hermes 主模型或插件配置。请检查所选配置目录的格式、受管字段和同名插件后重新预览；当前配置未修改。', 'Hermes main-model or plugin configuration cannot be edited safely. Check the selected configuration format, managed fields and existing plugin, then preview again. Configuration was not changed.')
         : block.reason === 'model_plan_unavailable' && selected?.agent_id === 'agent_codex_default' && defaultChoice.kind === 'preserve_native'

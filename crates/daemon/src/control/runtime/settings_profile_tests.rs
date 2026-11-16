@@ -307,13 +307,59 @@ fn profile_lifecycle_inheritance_slot_and_safe_restore() {
     // A fresh preview/operation completes restoration without metadata or a valid root.
     fs::write(&root, unavailable_root).unwrap();
     fs::remove_file(root.parent().unwrap().join("models_cache.json")).unwrap();
-    apply(&service, &runtime, restore, "retry-disable-after-race");
+    // The dedicated file was absent before connection. Its edited bytes can be archived
+    // without interpreting them as TOML, even if Codex itself can no longer read them.
+    let edited_profile = b"# user edit\n[unfinished profile\n";
+    fs::write(&profile, edited_profile).unwrap();
+    let mut restore = restore;
+    restore["restore_managed_changes"] = json!(true);
+    let preview = service
+        .dispatch_wire(request(
+            "PreviewAgentConnectionRestore",
+            json!({"spec":restore}),
+            None,
+        ))
+        .data
+        .unwrap();
+    assert_eq!(preview["model_effect"]["archive_codex_profile"], true);
+    let outcome = apply(&service, &runtime, restore, "retry-disable-after-race");
     assert!(!runtime.adapter.codex_access_view().unwrap().slot_occupied);
-    let remaining = fs::read_to_string(&profile).unwrap();
-    assert!(
-        remaining.contains("# user's concurrent edit") && remaining.contains("user_edit = true")
+    assert!(!profile.exists());
+    let id: OperationId = serde_json::from_value(outcome["operation_id"].clone()).unwrap();
+    let restore_store = dir.path().join("artifact-restores");
+    let marker = fs::read_dir(&restore_store)
+        .unwrap()
+        .filter_map(|entry| {
+            let path = entry.ok()?.path();
+            (path.extension()?.to_str()? == "json")
+                .then(|| fs::read(&path).ok())
+                .flatten()
+                .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        })
+        .find(|record| {
+            record["operation_id"] == id.as_str()
+                && record["effect_id"] == "agent-connection-managed-configuration"
+        })
+        .unwrap();
+    assert_eq!(marker["activated"], true);
+    assert_eq!(marker["after_exists"], false);
+    assert_eq!(marker["sensitive"], true);
+    assert_eq!(
+        marker["before_digest"],
+        json!(
+            CanonicalDigest::of(&json!({
+                "schema":"hiroute.posix-artifact-fingerprint/v1",
+                "content":CanonicalDigest::of_bytes(edited_profile),"mode":0o600
+            }))
+            .unwrap()
+        )
     );
-    assert!(!remaining.contains("X-HiRoute-Token") && !remaining.contains("model_provider ="));
+    let sealed = fs::read(restore_store.join(marker["backup_name"].as_str().unwrap())).unwrap();
+    assert!(
+        !sealed
+            .windows(edited_profile.len())
+            .any(|window| window == edited_profile)
+    );
     assert_eq!(fs::read_to_string(&root).unwrap(), unavailable_root);
     fs::write(&root, original).unwrap();
     ensure_target_cache(&runtime.adapter);
@@ -405,6 +451,10 @@ fn preexisting_profile_conflict_preserves_connection_and_other_writes() {
         .find(|a| a["agent_id"] == "agent_codex_default")
         .unwrap();
     let context = codex["codex_access"]["profile_context_id"].clone();
+    let profile = runtime.adapter.scanner.codex_profile_config_target();
+    fs::create_dir_all(profile.parent().unwrap()).unwrap();
+    fs::write(&profile, "# original profile\nmodel = 'original-native'\n").unwrap();
+    fs::set_permissions(&profile, fs::Permissions::from_mode(0o600)).unwrap();
     let plans = runtime
         .adapter
         .stores_lock()
@@ -441,7 +491,6 @@ fn preexisting_profile_conflict_preserves_connection_and_other_writes() {
         ))
         .data
         .unwrap();
-    let profile = runtime.adapter.scanner.codex_profile_config_target();
     let configured = fs::read_to_string(&profile).unwrap();
     let conflicted = configured.replace("name = \"HiRoute\"", "name = \"My Gateway\"");
     assert_ne!(conflicted, configured);
@@ -537,10 +586,12 @@ fn preexisting_profile_conflict_preserves_connection_and_other_writes() {
     assert!(runtime.adapter.guard_codex_pending_change(None).is_ok());
     fs::write(
         &profile,
-        format!("# kept user comments\nuser_option = 'retained'\n{configured}"),
+        format!("# kept user comments\nuser_option = 'retained'\n{conflicted}"),
     )
     .unwrap();
     let repaired = fs::read(&profile).unwrap();
+    let mut restore = restore;
+    restore["restore_managed_changes"] = json!(true);
     let mut fault_ports = runtime.application_ports();
     fault_ports.mutation = Some(Arc::new(fault::FileRace {
         adapter: runtime.adapter.clone(),
@@ -575,6 +626,7 @@ fn preexisting_profile_conflict_preserves_connection_and_other_writes() {
         cleaned.contains("# kept user comments") && cleaned.contains("user_option = 'retained'")
     );
     assert!(!cleaned.contains("X-HiRoute-Token"));
+    assert!(cleaned.contains("original-native"));
     assert!(!runtime.adapter.codex_access_view().unwrap().slot_occupied);
 }
 

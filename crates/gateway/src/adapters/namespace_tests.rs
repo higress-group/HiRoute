@@ -241,7 +241,7 @@ fn chat_projection_reverses_namespaced_function_and_custom_calls_for_responses_c
         }),
     )
     .unwrap();
-    let projection = ChatToolProjection::for_request(&request).unwrap();
+    let projection = ChatToolProjection::for_request(&request, None).unwrap();
     let profile = CandidateProtocolProfile::exact_portable_path(
         IngressProtocol::Responses,
         IngressProtocol::ChatCompletions,
@@ -425,7 +425,7 @@ fn chat_stream_buffers_split_custom_wrapper_and_emits_raw_responses_custom_input
         }),
     )
     .unwrap();
-    let projection = ChatToolProjection::for_request(&request).unwrap();
+    let projection = ChatToolProjection::for_request(&request, None).unwrap();
     let profile = CandidateProtocolProfile::exact_portable_path(
         IngressProtocol::Responses,
         IngressProtocol::ChatCompletions,

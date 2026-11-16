@@ -18,6 +18,14 @@ struct Snapshot {
     registration_pending: Option<bool>,
 }
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(super) fn reporting_process(value: &Value) -> Option<u32> {
+    let snapshot: Snapshot =
+        serde_json::from_value(value.get("hiroute_model_discovery")?.clone()).ok()?;
+    (snapshot.schema == "hiroute.cpa-model-discovery/v1" && snapshot.process_id != 0)
+        .then_some(snapshot.process_id)
+}
+
 /// Dedupe transitions, ignoring the growing elapsed time of an entered phase.
 /// Both retention and emitted records are bounded for this control operation.
 #[derive(Default)]

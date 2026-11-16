@@ -33,9 +33,9 @@ pub struct ModelRequestIRV1 {
     /// flat tools because `(kind, namespace, name)` is the callable identity.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_namespaces: Vec<CanonicalToolNamespaceV1>,
-    /// Native top-level Responses tool order. Every flat tool and
-    /// namespace is referenced exactly once; WebSearch is present iff the
-    /// typed hosted search declaration is present.
+    /// Responses declaration order. Every flat tool and namespace has its own
+    /// index, including repeated names. The first typed WebSearch entry marks
+    /// hosted search; the native body retains all hosted declarations.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub responses_tool_order: Vec<ResponsesToolOrderEntryV1>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
