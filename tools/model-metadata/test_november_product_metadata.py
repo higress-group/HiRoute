@@ -30,7 +30,7 @@ class NovemberProductMetadataTests(unittest.TestCase):
         self.assertIn('without resetting used Credits', personal['quota_facts'][4])
         self.assertIn('do not roll over', personal['quota_facts'][5])
         team = self.products['bailian-token-team-cn-beijing']
-        self.assertEqual(team['quota_facts'], [
+        self.assertEqual([fact for fact in team['quota_facts'] if not fact.startswith('qwen4-max ')], [
             '25000, 100000, or 250000 Credits per seat/month depending on tier'])
         self.assertNotIn('source-211', team['evidence_refs'])
 

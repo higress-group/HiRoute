@@ -481,34 +481,34 @@ mod tests {
             .iter()
             .find(|product| product.product_key == "bailian-token-team-cn-beijing")
             .unwrap();
-        assert_eq!(token_plan_team.documented_upstream_model_ids.len(), 23);
+        assert_eq!(token_plan_team.documented_upstream_model_ids.len(), 22);
         assert!(
             token_plan_team
                 .documented_upstream_model_ids
                 .iter()
                 .any(|id| id == "deepseek-v4.1-flash-1017")
         );
-        for id in ["qwen4-max-preview", "qwen4.0-max-preview"] {
-            assert!(
-                token_plan_team
-                    .documented_upstream_model_ids
-                    .iter()
-                    .any(|model| model == id)
-            );
-            let record = metadata
-                .model_records
+        assert!(
+            token_plan_team
+                .documented_upstream_model_ids
                 .iter()
-                .find(|record| {
-                    record.provider_record_key == "official/bailian-token-team-cn-beijing"
-                        && record.upstream_model_id == id
-                })
-                .unwrap();
-            assert_eq!(record.max_output_tokens.value, Some(393_216));
+                .any(|model| model == "qwen4-max")
+        );
+        let record = metadata
+            .model_records
+            .iter()
+            .find(|record| {
+                record.provider_record_key == "official/bailian-token-team-cn-beijing"
+                    && record.upstream_model_id == "qwen4-max"
+            })
+            .unwrap();
+        assert_eq!(record.lifecycle, "active");
+        for limit in [&record.context_tokens, &record.max_output_tokens] {
             assert_eq!(
-                record.context_tokens.state,
+                limit.state,
                 hiroute_domain::MetadataTokenStateV1::RuntimeRequired
             );
-            assert_eq!(record.lifecycle, "preview");
+            assert_eq!(limit.value, None);
         }
         assert!(
             token_plan_team

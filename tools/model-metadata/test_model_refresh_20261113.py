@@ -56,24 +56,24 @@ class November13MetadataTests(unittest.TestCase):
         product = next(p for p in self.metadata['access_products'] if p['product_key'] == 'gemini-api')
         self.assertNotIn('gemini-4-hydrogen', product['documented_upstream_model_ids'])
 
-    def test_qwen4_messages_adds_only_the_two_main_id_plan_bindings(self):
-        bindings = [b for b in self.metadata['endpoint_bindings'] if b['model_key'] == 'qwen-4-max-preview'
+    def test_qwen4_messages_binds_the_production_id_to_both_plans_and_payg(self):
+        bindings = [b for b in self.metadata['endpoint_bindings'] if b['model_key'] == 'qwen-4-max'
                     and any(i.endswith('/anthropic-messages') for i in b['interface_candidates'])]
-        self.assertEqual(len(bindings), 2)
+        self.assertEqual(len(bindings), 3)
         self.assertEqual({b['product_key'] for b in bindings},
-                         {'bailian-token-personal-cn-beijing', 'bailian-token-team-cn-beijing'})
+                         {'bailian-payg-cn', 'bailian-token-personal-cn-beijing', 'bailian-token-team-cn-beijing'})
         for binding in bindings:
-            self.assertEqual(binding['upstream_model_id'], 'qwen4-max-preview')
+            self.assertEqual(binding['upstream_model_id'], 'qwen4-max')
             self.assertEqual(binding['availability']['state'], 'conditional')
             self.assertEqual(binding['protocol_qualification'], 'runtime-required')
-            self.assertIn('2026-11-25T16:00:00Z', binding['availability']['condition'])
+            self.assertIn('output_config.effort defaults to high', binding['availability']['condition'])
             self.assertNotIn('preserve_thinking', binding['availability']['condition'])
             self.assertNotIn('reasoning_effort', binding['availability']['condition'])
             product = next(p for p in self.metadata['access_products'] if p['product_key'] == binding['product_key'])
             interface = next(i for i in product['interfaces'] if i['interface_key'] == binding['interface_candidates'][0])
-            self.assertEqual(interface['base_url'] + interface['request_path'],
-                             'https://token-plan.cn-beijing.maas.aliyuncs.com/apps/anthropic/v1/messages')
-        self.assertFalse(any(p['model_key'] == 'qwen-4-max-preview' for p in self.data['pricing_facts']))
+            host = ('dashscope.aliyuncs.com' if product['product_key'] == 'bailian-payg-cn'
+                    else 'token-plan.cn-beijing.maas.aliyuncs.com')
+            self.assertEqual(interface['base_url'] + interface['request_path'], f'https://{host}/apps/anthropic/v1/messages')
 
 
 if __name__ == '__main__':
