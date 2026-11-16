@@ -2,6 +2,109 @@
   "schema": "hiroute.website.releases/v3",
   "releases": [
     {
+      "version": "0.6.3",
+      "channel": "stable",
+      "published_at": "2026-11-16",
+      "notes": {
+        "zh": "恢复被修改的 Agent 设置，改进受管 Codex 模型发现和工具路由，修复 Windows 发现问题，并支持为路由计划生命周期操作生成 CLI Apply 文件。",
+        "en": "Restore edited Agent settings, improve managed Codex model discovery and tool routing, fix Windows discovery, and prepare CLI Apply files for Plan lifecycle changes."
+      },
+      "artifacts": [
+        {
+          "kind": "desktop",
+          "platform": "macOS",
+          "architecture": "arm64",
+          "format": "dmg",
+          "minimum_os": "15.0",
+          "distribution": "self-signed",
+          "filename": "HiRoute-0.6.3-1105eaec2fb2-macos-arm64-trial.dmg",
+          "sha256": "2113879e938c409b897c5c0c595a406606794345c3fd972d7509f69a72d81c4e",
+          "size": 102863547
+        },
+        {
+          "kind": "desktop",
+          "platform": "macOS",
+          "architecture": "x86_64",
+          "format": "dmg",
+          "minimum_os": "15.0",
+          "distribution": "self-signed",
+          "filename": "HiRoute-0.6.3-1105eaec2fb2-macos-x86_64-trial.dmg",
+          "sha256": "ef3f6355aff6649d7faab963a9d120250cd622b19746b7b11475ebad7cb9362e",
+          "size": 111918749
+        },
+        {
+          "kind": "standalone",
+          "platform": "Linux",
+          "architecture": "aarch64",
+          "target": "aarch64-unknown-linux-gnu",
+          "format": "tar.gz",
+          "distribution": "unsigned",
+          "filename": "hiroute-0.6.3-1105eaec2fb2-aarch64-unknown-linux-gnu.tar.gz",
+          "sha256": "d4a446f1d742eafde25a7e8e3f4db5961aef13354c59dddd8053df2ac11bae53",
+          "size": 82509320,
+          "manifest_filename": "hiroute-0.6.3-1105eaec2fb2-aarch64-unknown-linux-gnu.tar.gz.json",
+          "manifest_sha256": "e15fe57386c50c32fcc3881d9f2f98fd5af388cdd57e2e22461ce167a167de57",
+          "manifest_size": 3932
+        },
+        {
+          "kind": "standalone",
+          "platform": "Linux",
+          "architecture": "x86_64",
+          "target": "x86_64-unknown-linux-gnu",
+          "format": "tar.gz",
+          "distribution": "unsigned",
+          "filename": "hiroute-0.6.3-1105eaec2fb2-x86_64-unknown-linux-gnu.tar.gz",
+          "sha256": "3e15e824f81562730a6790ea3c73caed554bc10a56cb0bc0856d8c75e2d9f064",
+          "size": 87265433,
+          "manifest_filename": "hiroute-0.6.3-1105eaec2fb2-x86_64-unknown-linux-gnu.tar.gz.json",
+          "manifest_sha256": "e395c417617801450c60d0174d44bfcd36e1bf38c64f18908196067660e886db",
+          "manifest_size": 3930
+        },
+        {
+          "kind": "desktop",
+          "platform": "Windows",
+          "architecture": "x86_64",
+          "format": "nsis",
+          "distribution": "unsigned",
+          "filename": "HiRoute-0.6.3-1105eaec2fb2-windows-x86_64-setup.exe",
+          "sha256": "2281d928d074bdf37632da4f1dad5ca7c8b01592ae599a89d5cecf9db2dd4ba3",
+          "size": 72791871
+        },
+        {
+          "architecture": "aarch64",
+          "sha256": "6f72d0d5067aaa8e19ee32dd978ba14841340eb1c1d17b3d3eec29721170ff12",
+          "kind": "desktop",
+          "platform": "Omarchy",
+          "distribution": "openpgp",
+          "format": "pkg.tar.xz",
+          "filename": "HiRoute-0.6.3-1105eaec2fb2-omarchy-aarch64.pkg.tar.xz",
+          "size": 85072616,
+          "signature_filename": "HiRoute-0.6.3-1105eaec2fb2-omarchy-aarch64.pkg.tar.xz.sig",
+          "signature_sha256": "99d034891d6a09d5335e3314062f63d1a965c2e415c79e29b6015eee270d0106",
+          "signature_size": 119,
+          "checksum_filename": "HiRoute-0.6.3-1105eaec2fb2-omarchy-aarch64.pkg.tar.xz.sha256",
+          "checksum_sha256": "d2c4b4dc21f76516ef0b6047c2478ddba823340486c00fa9f4002372a1d11534",
+          "checksum_size": 120
+        },
+        {
+          "architecture": "x86_64",
+          "sha256": "1f16956ad16eca342eb70893ef84f9b60abf9b069f75136ba77beda585b54dfd",
+          "kind": "desktop",
+          "platform": "Omarchy",
+          "distribution": "openpgp",
+          "format": "pkg.tar.zst",
+          "filename": "HiRoute-0.6.3-1105eaec2fb2-omarchy-x86_64.pkg.tar.zst",
+          "size": 92252201,
+          "signature_filename": "HiRoute-0.6.3-1105eaec2fb2-omarchy-x86_64.pkg.tar.zst.sig",
+          "signature_sha256": "41364d42fe375a92a044403b10fa5699c1bfc41a812549edf5564fa7a0c97370",
+          "signature_size": 119,
+          "checksum_filename": "HiRoute-0.6.3-1105eaec2fb2-omarchy-x86_64.pkg.tar.zst.sha256",
+          "checksum_sha256": "8d6121324ce18063b9460b5080efbc132717e4d99e9fd1eb58745e6152848b11",
+          "checksum_size": 120
+        }
+      ]
+    },
+    {
       "version": "0.6.2",
       "channel": "stable",
       "published_at": "2026-11-13",

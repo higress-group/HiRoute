@@ -154,7 +154,7 @@ to evaluate decision prompts against your own tasks.
 HiRoute provides **macOS, Windows x64, and Omarchy desktop apps**, plus a Linux Web UI and CLI.
 The [download page](https://hiroute.ai/en/download/) lists published packages.
 
-Version 0.6.2 restores the Windows diagnostic log path, adds detail to decision connection failure logs, and reduces decision timeouts on requests with large tool schemas.
+Version 0.6.3 improves Agent restoration, managed Codex model discovery, Codex tool routing, Windows Agent discovery, and CLI Plan lifecycle changes.
 
 1. **Connect your models.** Add a supported subscription or API connection and choose an
    economical model plus a primary model.
