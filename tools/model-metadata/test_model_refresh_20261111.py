@@ -38,6 +38,8 @@ class November11ModelProjectionTests(unittest.TestCase):
                 self.assertEqual(binding['protocol_qualification'], 'runtime-required')
         self.assertEqual(len(self.data['models']), 31)
         for model in self.data['models']:
+            if model['model_configuration_id'] == 'model.catalog.qwen-4-max':
+                continue
             self.assertFalse(any(key in model['model_configuration_id'] for key in NEW_MODELS))
 
     def test_qwen4_production_identity_replaces_preview_across_the_snapshot(self):

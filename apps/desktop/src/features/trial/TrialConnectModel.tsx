@@ -7,18 +7,20 @@ import { checkMatches } from '../model-connections/state';
 import { safeConnectionErrorCode } from '../model-connections/copy';
 import { saveFailureDefinitelyPreAdmission } from '../subscriptions/model';
 import type { ComputeCandidateRef, ComputeConnectionOptions, ComputeSaveResult, ModelConnectionBackend, ModelConnectionCheckView, OperationReference } from '../model-connections/types';
-import type { TrialCatalogSnapshot, TrialManagementSnapshot } from './types';
+import type { TrialSetupSnapshot, TrialManagementSnapshot } from './types';
 import type { AvailableModel } from '../model-feed/types';
 type ResolvedBinding = { bindingId: string; modelId: string; name: string; source: string; linked: boolean };
 export type TrialConnectionState = 'editing' | 'saving' | 'uncertain' | 'saved';
 
-export function TrialConnectModel({ model, language, management, mutable, onResolve, onReceipt, onSaved, onSelectionIntent, onBack, onOperation, onStateChange, onReuseSource }: {
+export function TrialConnectModel({ model, language, management, mutable, onResolve, onReceipt, onSaved, onSelectionIntent, onBack, onOperation, onStateChange, onReuseSource, requestModelIds, backLabel }: {
   model: AvailableModel; language: 'zh' | 'en'; management: TrialManagementSnapshot; mutable: boolean;
-  onResolve(receipt: ComputeSaveResult): Promise<TrialCatalogSnapshot | undefined>;
+  requestModelIds?: ReadonlyMap<string, string>;
+  backLabel?: string;
+  onResolve(receipt: ComputeSaveResult): Promise<Pick<TrialSetupSnapshot, 'options' | 'management'> | undefined>;
   onReceipt(): void;
   onSaved(result: ComputeSaveResult, selection: ResolvedBinding, intent?: number): boolean; onSelectionIntent(): number; onBack(recoverable: boolean): void; onOperation(operation: OperationReference): void;
   onStateChange(state: TrialConnectionState): void;
-  onReuseSource(sourceId: string, options?: ComputeConnectionOptions): Promise<void>;
+  onReuseSource?(sourceId: string, options?: ComputeConnectionOptions): Promise<void>;
 }) {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
   const [draft] = useState(() => newModelConnectionDraft('known'));
@@ -52,13 +54,21 @@ export function TrialConnectModel({ model, language, management, mutable, onReso
       listConnectionOptions: async () => {
         const options = await invoke<ComputeConnectionOptions>('compute_connection_options', { includeRequestModelIds: true });
         connectionOptions.current = options;
-        return { ...options, options: options.options.filter(option => option.model_configuration_ids.includes(model.model_configuration_id)) };
+        return { ...options, options: options.options.filter(option => requestModelIds
+          ? requestModelIds.has(option.connection_option_id)
+          : option.model_configuration_ids.includes(model.model_configuration_id)) };
       },
       checkRegisteredModelConnection: async request => {
         const generation = ++checkGeneration.current; checked.current.clear(); previewed.current = null;
         const result = await owner.checkRegisteredModelConnection(request);
-        if (live.current && generation === checkGeneration.current && checkMatches(result, {candidateRef:request.candidate_ref ?? null, editRevision:request.edit_revision, checkId:request.check_id})) remember(result);
-        return result;
+        const requestId = requestModelIds?.get(request.connection_option_id);
+        const scoped = requestModelIds ? {
+          ...result, candidate: { ...result.candidate, models: result.candidate.models.filter(model => model.upstream_model_id === requestId
+            && result.inference === 'verified' && result.inference_model_id === requestId) },
+        } : result;
+        if (live.current && generation === checkGeneration.current && checkMatches(scoped, {candidateRef:request.candidate_ref ?? null, editRevision:request.edit_revision, checkId:request.check_id})) remember(scoped);
+        if (requestModelIds && !scoped.candidate.models.length && !scoped.failure) throw { code: 'MODEL_CONNECTION_FAILED' };
+        return scoped;
       },
       checkModelConnection: async request => {
         const generation = ++checkGeneration.current; checked.current.clear(); previewed.current = null;
@@ -90,7 +100,7 @@ export function TrialConnectModel({ model, language, management, mutable, onReso
         }
       },
     };
-  }, [model.model_configuration_id, onStateChange]);
+  }, [model.model_configuration_id, onStateChange, requestModelIds]);
 
   function resolutionScope(receipt: ComputeSaveResult): ComputeSaveResult {
     const reference = receipt.candidate;
@@ -146,14 +156,14 @@ export function TrialConnectModel({ model, language, management, mutable, onReso
         if (!source || source.state !== 'ready' || !member || !selectedRefs?.has(binding.model_ref) || member.availability !== 'available' || !candidate) return [];
         const linked = member.catalog_configuration_id === model.model_configuration_id && candidate.model_configuration_id === model.model_configuration_id && member.catalog_admitted && !!observed?.has(binding.model_ref);
         // An unlinked declaration is a distinct identity, never a guessed catalog match.
-        if (!linked && member.catalog_configuration_id) return [];
+        if (requestModelIds ? !observed?.has(binding.model_ref) : !linked && member.catalog_configuration_id) return [];
         return [{ bindingId: binding.binding_id, modelId: candidate.model_configuration_id, name: member.display_name, source: source.display_name, linked }];
       });
       if (!reference || !observed || !selectedRefs || !source || (receipt.saved_revision !== undefined && source.revision < receipt.saved_revision) || !matches.length) {
         setError(text('接入已保存，但当前绑定无法确认可用。请刷新结果或返回检查已保存接入。', 'The connection is saved, but its current binding could not be confirmed. Refresh the result or review the saved connection.'));
         return;
       }
-      if (receipt.bindings.length === 1 && matches.length === 1 && matches[0].linked && onSaved(receipt, matches[0])) return;
+      if (receipt.bindings.length === 1 && matches.length === 1 && (requestModelIds || matches[0].linked) && onSaved(receipt, matches[0])) return;
       setResolved(matches);
     } catch {
       if (live.current) setError(text('暂时无法核实保存结果。已完成的保存会保留，刷新不会重复提交。', 'The save result could not be verified. Completed saves are retained; refresh does not resubmit.'));
@@ -174,16 +184,16 @@ export function TrialConnectModel({ model, language, management, mutable, onReso
       const observation = reference && checked.current.get(`${reference.candidate_ref}:${reference.candidate_revision}`);
       const selected = reference && submitted.current?.candidateKey === `${reference.candidate_ref}:${reference.candidate_revision}` && !!submitted.current.selectedRefs.has(receiptBinding?.model_ref ?? '');
       const linked = !!member && member.catalog_configuration_id === model.model_configuration_id && candidate?.model_configuration_id === model.model_configuration_id && member.catalog_admitted && !!observation?.has(member.model_ref);
-      if (!source || source.state !== 'ready' || !member || member.availability !== 'available' || !candidate || !observation || !selected || (selection.linked ? !linked : !!member.catalog_configuration_id)) {
+      if (!source || source.state !== 'ready' || !member || member.availability !== 'available' || !candidate || !observation || !selected || (requestModelIds ? !observation.has(member.model_ref) : selection.linked ? !linked : !!member.catalog_configuration_id)) {
         setResolved([]); setError(text('接入已保存，但所选模型已变化或不可用。请刷新结果。', 'The connection is saved, but this model changed or is unavailable. Refresh the result.')); return;
       }
       onSaved(saved, { ...selection, name: member.display_name, source: source.display_name }, intent);
     } catch { if (live.current) setError(text('接入已保存，但无法重新读取所选模型。请重试。', 'The connection is saved, but the selected model could not be reread. Retry.')); }
     finally { busyRef.current = false; if (live.current) setBusy(false); }
   }
-  if (saved || uncertain) return <section className="trial-recovery" aria-live="polite"><h3>{saved ? text('接入已保存', 'Connection saved') : text('正在核实接入结果', 'Verifying connection result')}</h3><p>{error || (busy ? saved ? text('接入已保存，正在更新模型可用状态…', 'Connection saved; updating model availability…') : text('正在核实原始保存操作…', 'Checking the original save operation…') : saved ? text('请选择此接入中保存的模型。', 'Choose the model saved in this connection.') : text('保存结果尚未确认，请刷新以核对原始操作。', 'The save result is unconfirmed. Refresh to check the original operation.'))}</p>{resolved.map(selection => <div className="trial-saved-choice" key={selection.bindingId}><span><strong>{selection.name}</strong> · {selection.source}{!selection.linked && <small>{text('使用此接入中的模型，目录版本未核实', 'Using the model from this connection; catalog version unconfirmed')}</small>}</span><button type="button" className="btn" disabled={busy} onClick={() => void useSaved(selection)}>{resolved.length === 1 ? text('使用此已保存模型', 'Use this saved model') : text('选择此模型', 'Choose this model')}</button></div>)}<div className="actions"><button type="button" className="btn" disabled={busy} onClick={() => void confirm()}>{text('刷新结果', 'Refresh result')}</button><button type="button" className="btn" disabled={busy} onClick={() => onBack(true)}>{text('返回试用', 'Back to trial')}</button></div></section>;
+  if (saved || uncertain) return <section className="trial-recovery" aria-live="polite"><h3>{saved ? text('接入已保存', 'Connection saved') : text('正在核实接入结果', 'Verifying connection result')}</h3><p>{error || (busy ? saved ? text('接入已保存，正在更新模型可用状态…', 'Connection saved; updating model availability…') : text('正在核实原始保存操作…', 'Checking the original save operation…') : saved ? text('请选择此接入中保存的模型。', 'Choose the model saved in this connection.') : text('保存结果尚未确认，请刷新以核对原始操作。', 'The save result is unconfirmed. Refresh to check the original operation.'))}</p>{resolved.map(selection => <div className="trial-saved-choice" key={selection.bindingId}><span><strong>{selection.name}</strong> · {selection.source}{!requestModelIds && !selection.linked && <small>{text('使用此接入中的模型，目录版本未核实', 'Using the model from this connection; catalog version unconfirmed')}</small>}</span><button type="button" className="btn" disabled={busy} onClick={() => void useSaved(selection)}>{resolved.length === 1 ? text('使用此已保存模型', 'Use this saved model') : text('选择此模型', 'Choose this model')}</button></div>)}<div className="actions"><button type="button" className="btn" disabled={busy} onClick={() => void confirm()}>{text('刷新结果', 'Refresh result')}</button><button type="button" className="btn" disabled={busy} onClick={() => onBack(true)}>{backLabel ?? text('返回试用', 'Back to trial')}</button></div></section>;
   const reusable = management.sources.filter(source => source.actions.includes('append_models') && ['api', 'subscription'].includes(source.access_kind));
-  return <section className="trial-inline-connection"><h3>{text('接入', 'Connect')} {model.display_name}</h3>{error && <p role="alert">{error}</p>}<ModelConnectionForm language={language} mutable={mutable} allowCustom singleProductShortcut initialDraft={draft} existingNames={management.sources.map(s => s.display_name)} expectedRevisions={management.revisions} backend={backend}
+  return <section className="trial-inline-connection"><h3>{text('接入', 'Connect')} {model.display_name}</h3>{error && <p role="alert">{error}</p>}<ModelConnectionForm language={language} mutable={mutable} allowCustom={!requestModelIds} requestModelIds={requestModelIds} singleProductShortcut initialDraft={draft} existingNames={management.sources.map(s => s.display_name)} expectedRevisions={management.revisions} backend={backend}
     connectionChoice={onReuseSource && <label className="field"><span className="field-label">{text('使用的接入点', 'Connection to use')}</span><select className="input" data-trial-source-choice value="" disabled={reusing} onChange={event => {
       const sourceId = event.currentTarget.value;
       if (!sourceId || reusing) return;

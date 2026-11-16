@@ -118,24 +118,15 @@ function target(baseUrl: string, requestPath: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/${requestPath.replace(/^\/+/, '')}`;
 }
 
-/** Product evidence stays separate from the registered executable capability table. */
-export function registeredModelCandidates(
-  option: ComputeConnectionOption,
-  catalog: ModelMetadataCatalog | null | undefined,
-): RegisteredModelCandidate[] {
-  const candidates = new Map<string, RegisteredModelCandidate>();
-  for (const [upstream_model_id, display_name] of Object.entries(option.known_models ?? {})) {
-    candidates.set(upstream_model_id, { upstream_model_id, display_name, source: 'built_in' });
-  }
-
+function registeredProductScope(option: ComputeConnectionOption, catalog: ModelMetadataCatalog) {
   const primary = [...(option.endpoints ?? [])].sort((a, b) => a.stable_preference - b.stable_preference)[0];
-  if (!primary || !catalog) return [...candidates.values()].sort(compareCandidates);
+  const interfaceKeys = new Set<string>();
+  const productKeys = new Set<string>();
+  if (!primary) return { interfaceKeys, productKeys };
 
   // The preferred registered endpoint identifies the product, including when two products
   // share a secondary Messages URL (for example Zhipu Coding Plan and General API).
   const primaryTarget = target(primary.base_url, primary.request_path);
-  const interfaceKeys = new Set<string>();
-  const productKeys = new Set<string>();
   for (const product of catalog.access_products) {
     for (const item of product.interfaces) {
       if (item.base_url && item.request_path
@@ -146,6 +137,33 @@ export function registeredModelCandidates(
       }
     }
   }
+  return { interfaceKeys, productKeys };
+}
+
+export function registeredCatalogModelId(option: ComputeConnectionOption, catalog: ModelMetadataCatalog, modelKey: string): string | undefined {
+  if (!option.registered_check_available || option.origin !== 'native_api') return;
+  const { productKeys, interfaceKeys } = registeredProductScope(option, catalog);
+  const ids = new Set(catalog.endpoint_bindings.filter(binding => binding.model_key === modelKey
+    && productKeys.has(binding.product_key) && binding.lifecycle !== 'deprecated'
+    && ['available', 'conditional'].includes(binding.availability.state)
+    && binding.interface_candidates.some(key => interfaceKeys.has(key)))
+    .map(binding => binding.upstream_model_id));
+  return ids.size === 1 ? [...ids][0] : undefined;
+}
+
+/** Product evidence stays separate from the registered executable capability table. */
+export function registeredModelCandidates(
+  option: ComputeConnectionOption,
+  catalog: ModelMetadataCatalog | null | undefined,
+): RegisteredModelCandidate[] {
+  const candidates = new Map<string, RegisteredModelCandidate>();
+  for (const [upstream_model_id, display_name] of Object.entries(option.known_models ?? {})) {
+    candidates.set(upstream_model_id, { upstream_model_id, display_name, source: 'built_in' });
+  }
+
+  if (!catalog || !option.endpoints?.length) return [...candidates.values()].sort(compareCandidates);
+  const { interfaceKeys, productKeys } = registeredProductScope(option, catalog);
+
   const models = new Map(catalog.canonical_models.map(model => [model.model_key, model]));
   const names = new Map(catalog.canonical_models.map(model => [model.model_key, model.display_name]));
   const retiredIds = new Set(catalog.endpoint_bindings

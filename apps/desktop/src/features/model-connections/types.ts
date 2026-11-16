@@ -204,6 +204,7 @@ export type ModelMetadataCatalog = {
     model_key: string;
     upstream_model_id: string;
     interface_candidates: string[];
+    availability: { state: string };
     lifecycle: string | null;
     capability_overrides: {
       context_tokens?: number;
@@ -394,6 +395,8 @@ export type ModelConnectionFormProps = {
   allowCustom?: boolean;
   /** The caller has already scoped the options to an explicitly selected trial model. */
   singleProductShortcut?: boolean;
+  /** Check this exact request model when starting from a catalog recommendation. */
+  requestModelIds?: ReadonlyMap<string, string>;
   existingNames?: string[];
   appendTo?: import('../models/types').ManagedSource;
   savedSource?: import('../models/types').ManagedSource;

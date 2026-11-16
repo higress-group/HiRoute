@@ -129,9 +129,12 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
   const registeredExecutable = Boolean(optionsReady && registeredOption?.registered_check_available);
   const namedOption = registeredOption ?? selectedOptionRef.current;
   const productName = namedOption ? connectionName(namedOption.connection_option_id, language, namedOption.display_name) : '';
-  const registeredCandidates = useMemo(() => registeredOption
-    ? registeredModelCandidates(registeredOption, connectionOptions?.metadata_catalog)
-    : [], [registeredOption, connectionOptions]);
+  const requestedModel = props.requestModelIds?.get(registeredOptionId);
+  const registeredCandidates = useMemo(() => {
+    if (!registeredOption) return [];
+    const candidates = registeredModelCandidates(registeredOption, connectionOptions?.metadata_catalog);
+    return requestedModel ? candidates.filter(model => model.upstream_model_id === requestedModel) : candidates;
+  }, [registeredOption, connectionOptions, requestedModel]);
   const metadataProviders: ProviderMetadataRecord[] = []; // Broad metadata remains internal; only native templates are selectable.
   const metadataPrefills = useMemo(() => customApiPrefillOptions(registeredOptions, metadataProviders), [registeredOptions, metadataProviders]);
   const selectedPrefill = metadataPrefills.find(prefill => prefill.key === metadataPrefillKey) ?? null;
@@ -601,6 +604,7 @@ export function ModelConnectionForm(props: ModelConnectionFormProps) {
     const base = !custom && !saveAfterCheck
       ? { ...draftRef.current, models: withRegisteredModels(draftRef.current.models, registeredCandidates) }
       : draftRef.current;
+    inferenceModelId = props.requestModelIds?.get(registeredOption?.connection_option_id ?? '') ?? inferenceModelId;
     const automaticInferenceModel = inferenceModelId && !base.models.some(model => model.upstream_model_id === inferenceModelId)
       ? inferenceModelId : null;
     const selectedModels = automaticInferenceModel

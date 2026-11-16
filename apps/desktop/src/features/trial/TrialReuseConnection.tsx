@@ -19,9 +19,11 @@ type Checked = { candidate: { candidate_ref: string; candidate_revision: number 
 type Submission = { key: string; digest: string; candidate: Checked['candidate']; modelRef: string; operation?: OperationReference };
 
 /** A selected trial model is an intent, not another general model-management entry. */
-export function TrialReuseConnection({ model, sourceId, options, visible, language, mutable, onUse, onOperation, onClose }: {
+export function TrialReuseConnection({ model, sourceId, options, visible, language, mutable, onUse, onOperation, onClose, requestModelId, backLabel }: {
   model: AvailableModel; sourceId: string; language: 'zh' | 'en'; mutable: boolean;
   options?: ComputeConnectionOptions;
+  requestModelId?: string;
+  backLabel?: string;
   visible: boolean;
   onUse(binding: ReusedTrialBinding): Promise<boolean>;
   onOperation(operation: OperationReference): void; onClose(recoverable: boolean): void;
@@ -46,7 +48,7 @@ export function TrialReuseConnection({ model, sourceId, options, visible, langua
       if (!live.current) return;
       const current = management.sources.find(source => source.source_id === sourceId);
       if (!current) throw Error('SOURCE_CHANGED');
-      let id = requestModelDefault(current, model.model_configuration_id);
+      let id = requestModelId ?? requestModelDefault(current, model.model_configuration_id);
       if (!id) {
         const defaults = options ?? await invoke<ComputeConnectionOptions>('compute_connection_options', { includeRequestModelIds: true }).catch(() => undefined);
         if (!live.current) return;
@@ -210,13 +212,13 @@ export function TrialReuseConnection({ model, sourceId, options, visible, langua
   }
 
   const close = () => void requestEditorReplacement('models').then(allowed => { if (allowed) onClose(!!submitted.current); });
-  return <Dialog open={visible} title={text('复用已有接入', 'Reuse an existing connection')} closeLabel={text('返回试用', 'Back to trial')} className="trial-dialog" closeDisabled={busy || networkDirty} onClose={close}><section className="trial-reuse-connection" aria-busy={loading || busy}>
+  return <Dialog open={visible} title={text('复用已有接入', 'Reuse an existing connection')} closeLabel={backLabel ?? text('返回试用', 'Back to trial')} className="trial-dialog" closeDisabled={busy || networkDirty} onClose={close}><section className="trial-reuse-connection" aria-busy={loading || busy}>
     <h3>{model.display_name}</h3>
-    <p className="field-help">{text('保留已选的试用模型，复用这个接入的端点和凭据。', 'Keep your trial model and reuse this connection’s endpoints and credentials.')}</p>
+    <p className="field-help">{text('复用这个接入的端点和凭据。', 'Reuse the endpoints and credentials from this connection.')}</p>
     {loading ? <p role="status">{text('正在读取接入…', 'Reading connection…')}</p> : <>
       {source && <><p><strong>{text('接入点', 'Connection')}: </strong>{source.display_name}</p>
-        <label className="field"><span className="field-label">{text('请求模型 ID', 'Request model ID')} <span aria-label={text('必填', 'Required')}>*</span></span><input className="input" data-trial-request-model value={requestId} disabled={busy || !!submitted.current || !mutable} onChange={event => { setRequestId(event.target.value); setError(''); }} aria-invalid={!!error} aria-describedby="trial-reuse-help trial-reuse-error" /></label>
-        <p className="field-help" id="trial-reuse-help">{initialId.current ? text('已按这个接入预填，可修改为服务使用的模型 ID。修改 ID 不会自动确认目录版本。', 'Prefilled for this connection. You can edit the service’s model ID; an edit does not verify its catalog version.') : text('无法确认此接入的默认 ID，请填写服务实际使用的模型 ID。', 'No default ID could be confirmed for this connection. Enter the model ID used by the service.')}</p>
+        <label className="field"><span className="field-label">{text('请求模型 ID', 'Request model ID')} <span aria-label={text('必填', 'Required')}>*</span></span><input className="input" data-trial-request-model value={requestId} readOnly={!!requestModelId} disabled={busy || !!submitted.current || !mutable} onChange={event => { setRequestId(event.target.value); setError(''); }} aria-invalid={!!error} aria-describedby="trial-reuse-help trial-reuse-error" /></label>
+        <p className="field-help" id="trial-reuse-help">{requestModelId ? text('此模型 ID 对应该接入。', 'This is the model ID for this connection.') : initialId.current ? text('已按这个接入预填，可修改为服务使用的模型 ID。修改 ID 不会自动确认目录版本。', 'Prefilled for this connection. You can edit the service’s model ID; an edit does not verify its catalog version.') : text('无法确认此接入的默认 ID，请填写服务实际使用的模型 ID。', 'No default ID could be confirmed for this connection. Enter the model ID used by the service.')}</p>
         {source.state !== 'ready' && <p role="status">{text('此接入尚未就绪，请先到模型页处理。', 'This connection is not ready. Review it in Models first.')}</p>}
       </>}
       {error && <p className="oc-inline-error" id="trial-reuse-error" role="alert">{error}</p>}
@@ -231,7 +233,7 @@ export function TrialReuseConnection({ model, sourceId, options, visible, langua
       {(receipt || uncertain) && <p role="status">{receipt ? text('接入已保存，正在核实所选绑定。', 'Connection saved; confirming the selected binding.') : text('保存结果尚未确认，不会重复提交。', 'The save is unconfirmed; it will not be submitted again.')}</p>}
       {networkDirty && <p className="field-help" role="status">{text('请先保存或放弃网络修改，再继续试用；保存结果未确认时，请刷新原操作。', 'Save or discard the network changes before continuing the trial. If a save is unconfirmed, refresh its original operation.')}</p>}
       <div className="actions">
-        <button type="button" className="btn" disabled={busy || networkDirty} onClick={close}>{text('返回试用', 'Back to trial')}</button>
+        <button type="button" className="btn" disabled={busy || networkDirty} onClick={close}>{backLabel ?? text('返回试用', 'Back to trial')}</button>
         {!source && <button type="button" className="btn" onClick={() => void load()}>{text('重试', 'Retry')}</button>}
         {submitted.current ? <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void refreshResult()}>{text('刷新结果', 'Refresh result')}</button> : source && <button type="button" className="btn btn-primary" disabled={!mutable || busy || networkDirty || source.state !== 'ready'} onClick={() => void useConnection()}>{busy ? text('正在确认…', 'Checking…') : savedRequestModel(source, requestId) ? text('使用此接入', 'Use this connection') : text('检查并添加', 'Check and add')}</button>}
       </div>

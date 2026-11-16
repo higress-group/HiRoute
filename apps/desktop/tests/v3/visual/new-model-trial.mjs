@@ -75,6 +75,7 @@ try {
     ['--model-route', 'model-route-active.mjs'],
     ['--subscription-api', 'subscription-api-setup-active.mjs'],
     ['--trial-reuse', 'trial-reuse-connection-active.mjs'],
+    ['--recommendation-setup', 'recommendation-setup-active.mjs'],
     ['--setup-followup', 'trial-setup-followup-active.mjs'],
 
     ['--trial-setup-polish', 'trial-setup-polish-active.mjs'],

@@ -16,7 +16,7 @@ import { agentModelPlanIds } from '../features/agents/status';
 import { agentBrand, agentDisplayName } from '../features/agents/ecosystems';
 import { routingEditorEntries } from '../routing-editor-entries';
 
-export type RoutingEditorIntent = { key: string; plan?: Plan; draft?: Draft; staleDraft?: boolean; initialBindingId?: string; initialModelRoute?: ModelRouteRequest; initialContent?: Editor; editingMemory?: PlanEditorMemory; initialView?: 'configuration' | 'performance'; initialDivisionBranch?: string };
+export type RoutingEditorIntent = { key: string; plan?: Plan; draft?: Draft; staleDraft?: boolean; initialBindingId?: string; initialModelRoute?: ModelRouteRequest; initialContent?: Editor; saveInitialDraft?: boolean; editingMemory?: PlanEditorMemory; initialView?: 'configuration' | 'performance'; initialDivisionBranch?: string };
 
 export function RoutingPage({ language, active = true, refreshVersion = 0, snapshot, operation, loading, busy, mutationAllowed, suggestionPlanIds = [], initialEditor = null, notice, onRefresh, onOperation, onOpenAgent, onOpenSession, onOpenSessions, onOpenServices }: {
   language: 'zh' | 'en'; snapshot: DesktopSnapshot | null; loading: boolean; busy: boolean;
@@ -168,7 +168,7 @@ export function RoutingPage({ language, active = true, refreshVersion = 0, snaps
   };
   const editorView = editor ? <div className="detail-fieldset">
     {editor.staleDraft && <div className="callout warn" role="status"><UiIcon name="warning" /><div><strong>{text('这是基于旧版本的草稿', 'This draft is based on an older version')}</strong><p>{text('当前生效路由已单独显示在列表中。保留此草稿供查看；如需继续，请先读取当前配置再重新编辑。', 'The active route is listed separately. This draft is retained for inspection; reload the current route before editing further.')}</p></div></div>}
-    <PlanEditor ref={planEditor} mutable={mutable && !busy && !localBusy} key={`${editor.key}:${editor.draft?.revision ?? editor.plan?.head.head_revision ?? 'new'}`} creating={creating} plan={editor.plan} draft={editor.draft} initialBindingId={editor.initialBindingId} initialModelRoute={editor.initialModelRoute} initialView={editor.initialView} initialDivisionBranch={editor.initialDivisionBranch} initialContent={editor.initialContent} onCreateDraft={async initialContent => {
+    <PlanEditor ref={planEditor} mutable={mutable && !busy && !localBusy} key={`${editor.key}:${editor.draft?.revision ?? editor.plan?.head.head_revision ?? 'new'}`} creating={creating} plan={editor.plan} draft={editor.draft} initialBindingId={editor.initialBindingId} initialModelRoute={editor.initialModelRoute} initialView={editor.initialView} initialDivisionBranch={editor.initialDivisionBranch} initialContent={editor.initialContent} saveInitialDraft={editor.saveInitialDraft} onCreateDraft={async initialContent => {
       if (busy || localBusy || editorBusy || !mutable) return false;
       if (dirty && !(await requestEditorReplacement('routing'))) return false;
       returnEditor.current = editor; setPendingPersistence(null); setPersistedNotice(''); setDirty(false); setShowList(false);
