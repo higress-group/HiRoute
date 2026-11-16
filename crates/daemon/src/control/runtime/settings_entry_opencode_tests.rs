@@ -323,12 +323,16 @@ fn opencode_selected_native_default_blocks_restore_with_an_actionable_preview() 
         .keys()
         .next()
         .unwrap();
+    let provider = provider.clone();
     value["model"] = json!(format!("{provider}/{model}"));
+    value["provider"].as_object_mut().unwrap().remove(&provider);
     private_file(&fixture.native_config, &serde_json::to_vec(&value).unwrap());
     let before = fs::read(&fixture.native_config).unwrap();
+    let mut restore = restore_spec(&fixture, &status);
+    restore["restore_managed_changes"] = json!(true);
     let preview = fixture.service.dispatch_wire(request(
         "PreviewAgentConnectionRestore",
-        json!({"spec":restore_spec(&fixture, &status)}),
+        json!({"spec":restore}),
         None,
     ));
     assert!(preview.error.is_none(), "{preview:?}");

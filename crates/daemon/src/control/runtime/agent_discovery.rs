@@ -115,8 +115,9 @@ impl AgentDiscoveryPort for LocalControlAdapter {
 impl LocalControlAdapter {
     pub(super) fn refresh_codex_desktop_location(&self) {
         #[cfg(not(target_os = "macos"))]
-        self.scanner
-            .refresh_codex_desktop_location(hiroute_desktop_host_effects::codex_desktop_engine);
+        self.scanner.refresh_codex_desktop_location(
+            hiroute_desktop_host_effects::codex_desktop_engine_location,
+        );
     }
 
     fn discover_entries(
@@ -125,7 +126,7 @@ impl LocalControlAdapter {
     ) -> Result<Vec<DiscoveredAgentV1>, ControlReadError> {
         let wants_codex = selected.is_none_or(|agent| agent == "agent_codex_default");
         let wants_desktop = selected.is_none_or(|agent| agent == "agent_codex_desktop");
-        if wants_desktop {
+        if wants_desktop || wants_codex {
             self.refresh_codex_desktop_location();
         }
         let desktop_catalog_source = if wants_desktop {

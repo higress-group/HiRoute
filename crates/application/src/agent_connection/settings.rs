@@ -84,9 +84,12 @@ pub fn preview_agent_settings(
     {
         return Err(SettingsPlanningError::InvalidSelection);
     }
-    if spec.restore_native_model.is_some()
+    if (spec.restore_native_model.is_some() || spec.restore_managed_changes)
         && !matches!(&spec.model, AgentFacetIntent::Restore { .. })
     {
+        return Err(SettingsPlanningError::InvalidSelection);
+    }
+    if spec.restore_managed_changes && !spec.is_restore_only() {
         return Err(SettingsPlanningError::InvalidSelection);
     }
     if !matches!(spec.access_token, AgentAccessTokenIntentV1::Keep)
@@ -351,13 +354,24 @@ pub fn preview_agent_settings(
                 restore_point_ref,
                 &mut blockers,
             );
+            if model.common.restore_file_conflict {
+                blockers.push(AgentSettingsBlock {
+                    facet: AgentSettingsFacet::Model,
+                    reason: SettingsBlockReason::NativeModelRestoreConflict,
+                    capabilities: Vec::new(),
+                    model_ids: Vec::new(),
+                });
+            }
             if let Some(model) = model.codex()
                 && !model.restore_inherits_root
             {
-                let chosen = spec
-                    .restore_native_model
-                    .as_ref()
-                    .or(model.restored_native_model.as_ref());
+                let chosen = if spec.restore_managed_changes {
+                    spec.restore_native_model.as_ref()
+                } else {
+                    spec.restore_native_model
+                        .as_ref()
+                        .or(model.restored_native_model.as_ref())
+                };
                 // Restoring the absence of a model returns selection to Codex. It
                 // requires neither account access nor a locally cached catalog.
                 let valid = chosen.is_none_or(|chosen| {

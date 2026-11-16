@@ -8,7 +8,7 @@ use std::io;
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
 use std::os::windows::io::{AsRawHandle, FromRawHandle};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component, Path, PathBuf, Prefix};
 use std::ptr::{null, null_mut};
 use windows_sys::Wdk::Foundation::OBJECT_ATTRIBUTES;
 use windows_sys::Wdk::Storage::FileSystem::{
@@ -80,6 +80,32 @@ pub(super) fn retained_read(path: &Path) -> io::Result<(File, Vec<File>, OsStrin
         None,
     )?;
     Ok((file, parents, leaf.to_owned()))
+}
+
+/// Windows can traverse an installed package's store even when the current
+/// user cannot open its parent directories. Resolve the entire suffix with
+/// OBJ_DONT_REPARSE in one kernel open relative to the held local drive root.
+pub(super) fn open_package_file(path: &Path) -> io::Result<File> {
+    let (root, names) = split(path)?;
+    if !matches!(
+        root.components().next(),
+        Some(Component::Prefix(prefix)) if matches!(prefix.kind(), Prefix::Disk(_) | Prefix::VerbatimDisk(_))
+    ) || names.is_empty()
+    {
+        return Err(invalid_path());
+    }
+    let root = open_root(&root, SHARE_ALL)?;
+    let name = names.into_iter().collect::<PathBuf>();
+    open_from(
+        &root,
+        name.as_os_str(),
+        false,
+        GENERIC_READ,
+        FILE_SHARE_READ,
+        false,
+        None,
+        false,
+    )
 }
 
 fn split(path: &Path) -> io::Result<(PathBuf, Vec<&OsStr>)> {
@@ -172,7 +198,30 @@ fn relative_with_write_policy(
     {
         return Err(invalid_path());
     }
-    let mut name: Vec<u16> = leaf.encode_wide().collect();
+    open_from(
+        parent,
+        leaf,
+        directory,
+        access,
+        share,
+        create,
+        descriptor,
+        write_through,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn open_from(
+    parent: &File,
+    name: &OsStr,
+    directory: bool,
+    access: u32,
+    share: u32,
+    create: bool,
+    descriptor: Option<&SECURITY_DESCRIPTOR>,
+    write_through: bool,
+) -> io::Result<File> {
+    let mut name: Vec<u16> = name.encode_wide().collect();
     let bytes = name
         .len()
         .checked_mul(2)
@@ -194,8 +243,8 @@ fn relative_with_write_policy(
     let mut status = IO_STATUS_BLOCK::default();
     let mut handle = null_mut();
     // SAFETY: all attribute buffers and the held parent remain live through this
-    // synchronous call. One component is resolved relative to the inspected
-    // object; reparses are rejected both during parsing and on the returned handle.
+    // synchronous call. The name is relative to the inspected object; reparses
+    // are rejected both during parsing and on the returned handle.
     let result = unsafe {
         NtCreateFile(
             &mut handle,

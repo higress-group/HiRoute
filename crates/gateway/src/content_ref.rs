@@ -194,6 +194,14 @@ pub(crate) fn preserve_unbacked_wire_envelopes(value: &mut Value) {
     }
 }
 
+/// Tool schema and format values keep their raw JSON references until the
+/// template collector distinguishes them from string references.
+pub(crate) fn tool_json_for_wire(value: &Value) -> Value {
+    let mut value = value.clone();
+    preserve_unbacked_wire_envelopes(&mut value);
+    value
+}
+
 fn literal_needs_escape(value: &Value) -> bool {
     match value {
         Value::String(value) => value.contains(MARKER_PREFIX),

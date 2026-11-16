@@ -198,6 +198,7 @@ impl LocalControlAdapter {
                         &target,
                         &original.operation_id,
                         intent,
+                        spec.restore_managed_changes,
                     ),
                 )
             }
@@ -257,6 +258,7 @@ impl LocalControlAdapter {
                         &file_target,
                         op,
                         intent,
+                        spec.restore_managed_changes,
                     )
                 }
                 _ => unreachable!(),
@@ -305,6 +307,7 @@ impl LocalControlAdapter {
                 model_publication: Some(active),
                 login_item_required: false,
                 login_item_removal_required: false,
+                restore_file_conflict: false,
                 fixed_candidate_facts: Vec::new(),
             },
             native: SettingsModelNativeFacts::Hermes(SettingsAdditionalModelFacts {
@@ -335,6 +338,9 @@ fn native_conflict(
 ) -> Result<Option<SettingsBlockReason>, ControlReadError> {
     match result {
         Ok(()) => Ok(None),
+        Err(error) if error.context == "hermes.native.reference" => {
+            Ok(Some(SettingsBlockReason::AdditionalDefaultInUse))
+        }
         Err(error) if error.code == hiroute_domain::PortErrorCode::Conflict => {
             Ok(Some(SettingsBlockReason::HermesModelFileConflict))
         }

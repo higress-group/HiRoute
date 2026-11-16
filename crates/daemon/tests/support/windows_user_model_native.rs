@@ -234,7 +234,7 @@ fn selected(name: &str) -> PathBuf {
     security::open_identity(&path, false).expect("selected native artifact must be reparse-free");
     path
 }
-fn declared_shim_directory(entry: &Path, package: &str, name: &str) -> PathBuf {
+pub(crate) fn declared_shim_directory(entry: &Path, package: &str, name: &str) -> PathBuf {
     let package_root = entry
         .ancestors()
         .take(6)

@@ -110,6 +110,99 @@ impl Backing {
     }
 }
 
+#[test]
+fn codex_lite_tool_schema_keeps_raw_json_leaf_types_on_the_subscription_wire() {
+    let description = "Retain this quoted \"tool argument\" 中文. ".repeat(1600);
+    let declaration = json!({"type":"namespace","name":"functions","description":"","tools":[
+        {"type":"function","name":"lookup","strict":false,"parameters":{
+            "type":"object","properties":{"query":{
+                "type":"string","enum":["existing","archived"],
+                "examples":["archived"],"default":"existing","description":description
+            }},"required":["query"],"additionalProperties":false
+        }},
+        {"type":"custom","name":"plain_input","format":{"type":"text"}}
+    ]});
+    let body = json!({"model":"route","input":[
+        {"type":"additional_tools","id":"at_tools","role":"developer","tools":[declaration.clone()]},
+        {"role":"user","content":"Find the record."}
+    ]});
+    let mut p = profile(false);
+    p.connector.connector_id = "connector.cpa.codex".into();
+    p.connector.endpoint_id = "endpoint.cpa.codex".into();
+    let inline = decode_ingress_request(IngressProtocol::Responses, &body).unwrap();
+    let expected = project_candidate_request(&inline, &p).unwrap();
+    let backing = Backing::new();
+    let request = backing.request(&body);
+    let (actual, _) = backing.project(&request, &p);
+    assert_eq!(actual, expected.bytes);
+    let wire: Value = serde_json::from_slice(&actual).unwrap();
+    assert_eq!(wire["tools"], json!([declaration]));
+    assert_eq!(wire["input"], json!([body["input"][1]]));
+    drop(request);
+    backing.release();
+}
+
+#[test]
+fn messages_resolves_repeated_responses_tool_definitions_with_replay() {
+    let tool = json!({"type":"function","name":"lookup","parameters":{
+        "type":"object","properties":{"query":{"type":"string","enum":["existing","archived"]}},
+        "required":["query"],"description":"Lookup fixture. ".repeat(512)
+    }});
+    let mut body = json!({"model":"route","max_output_tokens":128,"tools":[tool.clone()],
+        "tool_choice":{"type":"function","name":"lookup"},
+        "input":[{"type":"additional_tools","id":"at_tools","role":"developer","tools":[tool.clone()]},
+            {"role":"user","content":"Find the record."}]
+    });
+    let profile = CandidateProtocolProfile::exact_portable_path(
+        IngressProtocol::Responses,
+        IngressProtocol::Messages,
+        "physical",
+        fixed_reasoning("fixed"),
+    );
+    let backing = Backing::new();
+    let request = backing.request(&body);
+    let template = super::super::project_candidate_request_template_with_history(
+        &request,
+        &profile,
+        None,
+        Default::default(),
+        Some(&backing.store),
+    )
+    .unwrap();
+    let mut reader =
+        sequential_attempt_body(template, backing.store.clone(), &backing.budget, 37).unwrap();
+    let mut bytes = Vec::new();
+    while let Some(chunk) = reader.next_chunk().unwrap() {
+        bytes.extend_from_slice(chunk.bytes());
+    }
+    reader.release();
+    let wire: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(
+        wire["tools"],
+        json!([{"name":"lookup","input_schema":tool["parameters"]}])
+    );
+    assert_eq!(wire["tool_choice"]["name"], "lookup");
+
+    drop(request);
+    backing.release();
+
+    body["input"][0]["tools"][0]["parameters"]["required"] = json!(["different"]);
+    let backing = Backing::new();
+    let conflict = backing.request(&body);
+    assert!(matches!(
+        super::super::project_candidate_request_template_with_history(
+            &conflict,
+            &profile,
+            None,
+            Default::default(),
+            Some(&backing.store),
+        ),
+        Err(ProtocolAdapterError::ToolInterfaceUnrepresentable(_))
+    ));
+    drop(conflict);
+    backing.release();
+}
+
 #[path = "responses_dialect_reasoning_replay_tests.rs"]
 mod reasoning;
 

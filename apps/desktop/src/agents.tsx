@@ -675,7 +675,9 @@ export function Agents({
                   onLaunch={() => void launchDesktop(selected)} onConfigure={source => void open(selected, 'model', source)} />}
                 <AgentDiscoveryFeedback agent={selected} language={language} scanning={scanning} onScan={() => void refresh()} />
                 {executableStatus}
-                {selectedHasDrift && <div className="callout warn"><UiIcon name="warning" /><div><strong>{text('接入配置已变化', 'Connection settings changed')}</strong><p>{text('HiRoute 不会覆盖已变化的设置。请在“连接详情与恢复”中恢复需要的路由配置。', 'HiRoute will not overwrite changed settings. Restore the required routing configuration under Connection details and recovery.')}</p></div></div>}
+                {selectedHasDrift && <div className="callout warn"><UiIcon name="warning" /><div><strong>{text('接入配置已变化', 'Connection settings changed')}</strong><p>{needsRecovery(selectedModel?.state) && selectedModel?.restore_point_ref && !selectedPending
+                  ? text('点击“停用”可检查当前配置并确认还原。', 'Click Disable to review and confirm restoration.')
+                  : text('打开“连接详情与恢复”查看可用操作。', 'Open Connection details and recovery to see available actions.')}</p></div></div>}
                 {settingsRecoveryOperation && <div className="callout warn" role="alert" data-qoder-model-recovery={qoderRecoveryOperation ? true : undefined} data-hermes-settings-recovery={hermesRecoveryOperation ? true : undefined}>
                   <UiIcon name="warning" /><div>
                     <strong>{hermesRecoveryOperation ? text('Hermes 配置尚未完成', 'Hermes configuration is incomplete') : text('模型路由配置尚未完成', 'Model routing configuration is incomplete')}</strong>

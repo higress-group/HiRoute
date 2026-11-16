@@ -1,4 +1,3 @@
-use std::fs;
 use std::io::Read;
 use std::path::Path;
 
@@ -7,7 +6,6 @@ use serde_json::Value;
 use zeroize::Zeroizing;
 
 use crate::accounts::AccountDiscoveryError;
-use crate::config::validate_private_file;
 
 const MAX_AUTH_CONTROL_FILE_BYTES: u64 = 256 * 1024;
 
@@ -29,10 +27,16 @@ pub(super) fn observe_persisted_controls(
         return Err(AccountDiscoveryError::InvalidAccount);
     }
     let path = auth_dir.join(name);
-    validate_private_file(&path).map_err(|error| {
-        AccountDiscoveryError::AuthDirectory(std::io::Error::other(error.to_string()))
-    })?;
-    let file = fs::File::open(&path).map_err(AccountDiscoveryError::AuthDirectory)?;
+    #[cfg(windows)]
+    let file =
+        crate::windows_private::auth_file(&path).map_err(AccountDiscoveryError::AuthDirectory)?;
+    #[cfg(not(windows))]
+    let file = {
+        crate::config::validate_private_file(&path).map_err(|error| {
+            AccountDiscoveryError::AuthDirectory(std::io::Error::other(error.to_string()))
+        })?;
+        std::fs::File::open(&path).map_err(AccountDiscoveryError::AuthDirectory)?
+    };
     let mut bytes = Zeroizing::new(Vec::new());
     file.take(MAX_AUTH_CONTROL_FILE_BYTES + 1)
         .read_to_end(bytes.as_mut())
@@ -53,7 +57,7 @@ pub(super) fn observe_persisted_controls(
 pub(super) fn validate_management_response(
     response: &crate::http::LoopbackResponse,
     expected_version: &str,
-) -> Result<(), AccountDiscoveryError> {
+) -> Result<Value, AccountDiscoveryError> {
     if response.status != 200 {
         return Err(AccountDiscoveryError::ManagementAuthentication);
     }
@@ -73,7 +77,8 @@ pub(super) fn validate_management_response(
     }
     let value: Value =
         serde_json::from_slice(&response.body).map_err(AccountDiscoveryError::Json)?;
-    reject_secret_material(&value)
+    reject_secret_material(&value)?;
+    Ok(value)
 }
 
 pub(super) fn reject_secret_material(value: &Value) -> Result<(), AccountDiscoveryError> {

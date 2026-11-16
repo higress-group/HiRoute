@@ -128,6 +128,8 @@ fn trusted_preview_spec(requested: &AgentSettingsSpecV2, returned: &AgentSetting
         || requested.native_target != returned.native_target
         || requested.management_skill != returned.management_skill
         || requested.collaboration != returned.collaboration
+        || requested.restore_native_model != returned.restore_native_model
+        || requested.restore_managed_changes != returned.restore_managed_changes
         || requested.access_token != returned.access_token
     {
         return false;
@@ -207,7 +209,11 @@ impl AgentConfirmation {
         let action = if self.input.spec.is_restore_only()
             && matches!(&self.input.spec.model, AgentFacetIntent::Restore { .. })
         {
-            if qoder_routes && self.english() {
+            if self.input.spec.restore_managed_changes && self.english() {
+                "Disable HiRoute model routing"
+            } else if self.input.spec.restore_managed_changes {
+                "停用 HiRoute 模型路由"
+            } else if qoder_routes && self.english() {
                 "Remove additional HiRoute model routes"
             } else if qoder_routes {
                 "移除附加 HiRoute 模型路由"
@@ -319,6 +325,22 @@ impl AgentConfirmation {
                     "认证将替换为仅此连接使用的本机凭据。"
                 }
             ),
+            AgentFacetIntent::Restore { .. } if self.input.spec.restore_managed_changes && effect["archive_codex_profile"] == true => {
+                if self.english() {
+                    "HiRoute will remove the dedicated CLI profile and keep a private backup of the file, including your edits. Start Codex with its usual command after disabling."
+                } else {
+                    "HiRoute 会移除专用 CLI profile，并在私有备份中保留完整文件及你的修改。停用后请用原来的命令启动 Codex。"
+                }
+                .into()
+            }
+            AgentFacetIntent::Restore { .. } if self.input.spec.restore_managed_changes => {
+                if self.english() {
+                    "HiRoute will restore the model settings it recorded and remove its added routes. Edits to those settings or routes will be discarded."
+                } else {
+                    "HiRoute 会还原已记录的模型设置并移除自己添加的路由。这些设置或路由上的手动修改会被覆盖。"
+                }
+                .into()
+            }
             AgentFacetIntent::Restore { .. } if qoder_routes => {
                 let mut details = if self.english() {
                     "Remove only HiRoute-owned additional model routes. Your native models, current default model and login configuration stay unchanged."
@@ -869,6 +891,35 @@ mod tests {
             changed[field] = value;
             let changed = serde_json::from_value(changed).unwrap();
             assert!(!trusted_preview_spec(&requested, &changed), "{field}");
+        }
+    }
+
+    #[test]
+    fn disable_confirmation_binds_replacement_consent_and_describes_profile_backup() {
+        let mut spec = qoder_spec();
+        spec.model = AgentFacetIntent::Restore {
+            restore_point_ref: "model-restore/fixture".into(),
+        };
+        let mut requested = spec.clone();
+        requested.restore_managed_changes = true;
+        assert!(!trusted_preview_spec(&requested, &spec));
+        for (language, replacement, archive) in [
+            (
+                "en",
+                "Edits to those settings or routes will be discarded",
+                "keep a private backup",
+            ),
+            (
+                "zh",
+                "这些设置或路由上的手动修改会被覆盖",
+                "私有备份中保留完整文件",
+            ),
+        ] {
+            let mut confirmation = qoder_confirmation(requested.clone(), language);
+            assert!(confirmation.requires_confirmation());
+            assert!(confirmation.message().contains(replacement));
+            confirmation.preview.model_effect["archive_codex_profile"] = json!(true);
+            assert!(confirmation.message().contains(archive));
         }
     }
 

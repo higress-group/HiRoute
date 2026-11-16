@@ -988,7 +988,13 @@ impl ProductionGatewayRuntime {
             let prepared_planner_input =
                 match with_active_request(request_observation.clone(), async {
                     self.planner_inputs
-                        .build_prepared_input(*canonical_request, &authorized, &budget, reasoning)
+                        .build_prepared_input(
+                            *canonical_request,
+                            &authorized,
+                            &budget,
+                            reasoning,
+                            &replay,
+                        )
                         .map(Box::new)
                 })
                 .await
@@ -1370,6 +1376,7 @@ impl ProductionGatewayRuntime {
                         profile,
                         None,
                         reasoning_replay,
+                        Some(&replay),
                     )
                     .ok()?;
                     let cleaned = adapters::project_candidate_request_template_with_history(
@@ -1377,6 +1384,7 @@ impl ProductionGatewayRuntime {
                         profile,
                         Some(canonical_request.messages.len()),
                         reasoning_replay,
+                        Some(&replay),
                     )
                     .ok()?;
                     (normal.bytes != cleaned.bytes)

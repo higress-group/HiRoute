@@ -98,6 +98,7 @@ impl Planner {
                     candidate,
                     input.policy.cost_policy,
                     &input.policy.limits,
+                    published.is_some(),
                 ) {
                     Ok(projection) => eligible.push(EligibleForRanking {
                         candidate,
@@ -179,9 +180,9 @@ impl Planner {
 
         apply_context_hold(
             input,
-            &group_ids,
+            published.is_some(),
+            group_ids.first(),
             &candidate_by_id,
-            &group_by_id,
             &mut evaluations,
             &mut frozen,
             &mut reason_ledger,
@@ -270,9 +271,9 @@ fn guard_anchor_score(
 
 fn apply_context_hold(
     input: &PlannerInputV1,
-    selected_group_ids: &[String],
+    projection_preflighted: bool,
+    first_group_id: Option<&String>,
     candidate_by_id: &BTreeMap<&str, &PlannerCandidateFactsV1>,
-    group_by_id: &BTreeMap<&str, &MaterializedModelGroupV1>,
     evaluations: &mut Vec<CandidateEvaluationV1>,
     frozen: &mut Vec<FrozenCandidateV1>,
     reason_ledger: &mut Vec<ReasonLedgerEntryV1>,
@@ -284,11 +285,16 @@ fn apply_context_hold(
         reason_ledger.push(reason(LedgerReasonCodeV1::ContextHoldInvalidated, None));
         return Ok(());
     };
-    let Some(group) = group_by_id.get(hold.origin_group_id.as_str()).copied() else {
+    let Some(group) = input
+        .policy
+        .groups
+        .iter()
+        .find(|group| group.group_id == hold.origin_group_id)
+    else {
         reason_ledger.push(reason(LedgerReasonCodeV1::ContextHoldInvalidated, None));
         return Ok(());
     };
-    if selected_group_ids.first() != Some(&hold.origin_group_id) {
+    if first_group_id != Some(&hold.origin_group_id) {
         reason_ledger.push(reason(
             LedgerReasonCodeV1::ContextHoldInvalidated,
             Some(group.group_id.clone()),
@@ -317,6 +323,7 @@ fn apply_context_hold(
         candidate,
         input.policy.cost_policy,
         &input.policy.limits,
+        projection_preflighted,
     ) else {
         reason_ledger.push(reason(
             LedgerReasonCodeV1::ContextHoldInvalidated,

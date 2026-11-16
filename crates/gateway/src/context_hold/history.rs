@@ -402,6 +402,9 @@ pub(crate) fn observed_history_with_replay<'a>(
         }
         None => instructions.tag(b"no-web-search-tool"),
     }
+    if request.native_only {
+        encode_native_responses_tool_setup(request, &mut instructions)?;
+    }
     let instruction_digest = instructions.finish()?;
     Some(HistoryEvidence {
         instruction_digest,
@@ -410,6 +413,61 @@ pub(crate) fn observed_history_with_replay<'a>(
         key: *key,
         replay,
     })
+}
+
+fn encode_native_responses_tool_setup(
+    request: &ModelRequestIRV1,
+    setup: &mut Encoder<'_>,
+) -> Option<()> {
+    let Some(body) = &request.native_body else {
+        return Some(());
+    };
+    if request.ingress_protocol != crate::server::request_plan::IngressProtocol::Responses {
+        return Some(());
+    }
+    // The canonical tool order omits declaration positions and retains only
+    // the first hosted declaration. Include those wire semantics in retry proof
+    // without hashing the function schemas already accounted for above.
+    if request.web_search.is_some()
+        && let Some(tools) = body.get("tools").and_then(Value::as_array)
+    {
+        encode_native_search(tools, setup)?;
+    }
+    if let Some(input) = body.get("input").and_then(Value::as_array) {
+        if request
+            .native_history
+            .as_ref()
+            .is_some_and(|history| history.len() == input.len())
+        {
+            return Some(());
+        }
+        for (index, item) in input.iter().enumerate() {
+            setup.items(1)?;
+            if item.get("type").and_then(Value::as_str) != Some("additional_tools") {
+                continue;
+            }
+            setup.tag(b"native-additional-tools");
+            setup.usize(index);
+            let tools = item.get("tools")?.as_array()?;
+            setup.usize(tools.len());
+            if request.web_search.is_some() {
+                encode_native_search(tools, setup)?;
+            }
+        }
+    }
+    Some(())
+}
+
+fn encode_native_search(tools: &[Value], setup: &mut Encoder<'_>) -> Option<()> {
+    for (index, tool) in tools.iter().enumerate() {
+        setup.items(1)?;
+        if tool.get("type").and_then(Value::as_str) == Some("web_search") {
+            setup.tag(b"native-web-search");
+            setup.usize(index);
+            setup.json(tool)?;
+        }
+    }
+    Some(())
 }
 
 struct Encoder<'a> {

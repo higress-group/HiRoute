@@ -1,4 +1,5 @@
 //! Windows kernel boundaries. No borrowed numeric handle escapes this module.
+pub mod app_package;
 pub mod background;
 pub mod console;
 pub mod diagnostic_files;

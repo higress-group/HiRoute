@@ -189,6 +189,10 @@ exercise accepted-event delivery, repeated tool requests, complete assessment me
 and retained-content policy through the production Gateway listener. Protocol-owned
 [projection tests](../../crates/gateway/src/adapters/response/client_projection_tests.rs)
 distinguish intentionally omitted content from deferred client output.
+The [Codex additional-tools listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/codex_additional_tools.rs)
+cover repeated declarations, ordered native forwarding, and tool-call/result
+replay with Replay-backed schemas. The [Responses-to-Chat listener cases](../../tools/e2e-harness/tests/p0_gateway_protocol/responses_chat_tools.rs)
+cover candidate-local rejection when colliding definitions would map to one name.
 
 Start with the representative cases in the [capability map](README.md). A file
 named `product`, a golden containing `green`, or a zero process exit does not prove

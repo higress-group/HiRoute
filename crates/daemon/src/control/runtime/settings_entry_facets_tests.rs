@@ -733,8 +733,14 @@ fn v2_settings_dispatch_claude_configures_and_formally_restores_owned_user_file(
     );
     assert_eq!(fs::read(&settings).unwrap(), before_history_read);
 
+    let mut edited: serde_json::Value = serde_json::from_slice(&before_history_read).unwrap();
+    edited["apiKeyHelper"] = json!("manually-changed-helper");
+    edited["env"]["ANTHROPIC_BASE_URL"] = json!("https://changed.invalid/v1");
+    edited["env"]["USER_ADDED_BEFORE_DISABLE"] = json!("retained");
+    fs::write(&settings, serde_json::to_vec(&edited).unwrap()).unwrap();
     let restore_spec = json!({
         "schema_version":{"major":2,"minor":0}, "context_id":context,
+        "restore_managed_changes":true,
         "model":{"intent":"restore","restore_point_ref":codex_model_restore_point_ref(&operation)}
     });
     // A new connection did not create a login item, so restoring it needs no host action.
@@ -770,8 +776,10 @@ fn v2_settings_dispatch_claude_configures_and_formally_restores_owned_user_file(
     );
     let restored: serde_json::Value =
         serde_json::from_slice(&fs::read(&settings).unwrap()).unwrap();
+    let mut expected = original.clone();
+    expected["env"]["USER_ADDED_BEFORE_DISABLE"] = json!("retained");
     assert_eq!(
-        restored, original,
+        restored, expected,
         "a formal restore recovers the original auth and native mapping"
     );
     assert!(

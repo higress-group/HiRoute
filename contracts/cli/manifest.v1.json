@@ -5,7 +5,7 @@
   },
   "product_contract_revision": "487a807c8dc25cfb24e8b097882cd3bb9716a009",
   "proposal_map_revision": "ab4da93cc49c6ec56a01e046230411ff1ca82300",
-  "descriptor_digest": "sha256:d9394ded9360545b03ea8fe2fde58ca465d063f95ae7e898157c9cf3bda14ea4",
+  "descriptor_digest": "sha256:e9ae6c811379476e209f692dc306c2dfad9a4cc4eee1d1b28fee0c3e096f896d",
   "visibility": "release",
   "commands": [
     {
@@ -705,7 +705,7 @@
       "idempotency": "not_applicable",
       "help": {
         "purpose": "Preview field-owned Agent configuration restoration without overwriting concurrent edits.",
-        "usage": "hiroute agents restore preview (--context ID --facet model|management_skill|collaboration [--hermes-root PATH] [--restore-native-model ID] | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]",
+        "usage": "hiroute agents restore preview (--context ID --facet model|management_skill|collaboration [--hermes-root PATH] [--restore-native-model ID] [--restore-managed-changes] | --request-file PATH | --request-stdin) [--apply-file PATH] [--idempotency-key KEY]",
         "arguments_and_options": "JSON input: choose exactly one of --request-stdin or --request-file <PATH>. Both read one bounded UTF-8 JSON request with the same strict typed parser; unknown fields, duplicate members, trailing JSON, repeated/mixed sources and human-option mixtures are rejected before Local Control. A file must be regular; relative paths resolve from the current directory (prefix option-shaped filenames with ./). Existing command byte limits and separate protected-input/capability channels remain unchanged. --request-stdin accepts only the strict v1 connection or v2 managed-settings request. Model, management_skill and collaboration each support independent keep/configure/restore, including both Skills in one request. Omitted facets keep their state. Apply uses local OS socket access and is revision-checked and idempotent; it and writes only owned Agent fields; restore refuses concurrent ownership drift.",
         "effects": "Stateless Preview: no ID, TTL, Operation, Secret, file, database, publication, or network write.",
         "network_and_model_use": "No model use and no non-fixture network access.",

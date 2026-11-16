@@ -1,5 +1,68 @@
 use super::*;
 
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn runtime_start_retires_only_an_authenticated_predecessor() {
+    if isolated_owner_recovery_case(
+        "runtime::tests::proxy_recovery::runtime_start_retires_only_an_authenticated_predecessor",
+    ) {
+        return;
+    }
+    let root = crate::private_test_support::tempdir().unwrap();
+    let backend = Arc::new(FakeBackend::default());
+    let control = Arc::new(FakeControl::default());
+    let first = fixture_runtime(&root, backend.clone(), control.clone(), 2);
+    let CpaHealth::Ready { pid, .. } = first.start().unwrap() else {
+        panic!("not ready");
+    };
+    let instance = root.path().join("state/fixture-cpa");
+    let owner_path = instance.join("owner.lock/owner.json");
+    let capability = instance.join("capability.private");
+    let previous_capability = std::fs::read(&capability).unwrap();
+    let mut previous: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&owner_path).unwrap()).unwrap();
+    previous["owner_pid"] = json!(u32::MAX - 1);
+    previous["binary_version"] = json!(recovery::PREVIOUS_CPA_VERSION);
+    previous["binary_sha256_hex"] = json!("1".repeat(64));
+    let previous_owner = serde_json::to_vec(&previous).unwrap();
+    private_atomic_write(&owner_path, &previous_owner).unwrap();
+    drop(first.inner.lock().live.take());
+
+    let current = fixture_runtime(&root, backend.clone(), control.clone(), 2);
+    control.set_fail_probes(true);
+    assert!(matches!(
+        current.start(),
+        Err(CpaLifecycleError::ControlUnavailable)
+    ));
+    assert!(backend.pid_is_running(pid).unwrap());
+    assert_eq!(std::fs::read(&capability).unwrap(), previous_capability);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&std::fs::read(&owner_path).unwrap()).unwrap(),
+        previous
+    );
+    assert_eq!(backend.attach_count(), 1);
+    assert_eq!(backend.spawn_count(), 1);
+
+    control.set_fail_probes(false);
+    let CpaHealth::Ready {
+        pid: replacement,
+        adopted: false,
+        ..
+    } = current.start().unwrap()
+    else {
+        panic!("replacement not ready");
+    };
+    assert_ne!(pid, replacement);
+    assert!(!backend.pid_is_running(pid).unwrap());
+    assert_eq!(backend.attach_count(), 2);
+    assert_eq!(backend.spawn_count(), 2);
+    let running: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(owner_path).unwrap()).unwrap();
+    assert_eq!(running["binary_version"], VERSION);
+    assert_eq!(running["cpa_pid"], replacement);
+    current.shutdown().unwrap();
+}
+
 #[test]
 fn stale_cloaking_policy_replaces_only_an_authenticated_orphan() {
     if isolated_owner_recovery_case(

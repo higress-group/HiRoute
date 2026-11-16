@@ -44,6 +44,7 @@ fn facts() -> AgentSettingsFacts {
                 model_publication: None,
                 login_item_required: false,
                 login_item_removal_required: false,
+                restore_file_conflict: false,
                 fixed_candidate_facts: Vec::new(),
             },
             native: SettingsModelNativeFacts::Claude(SettingsClaudeNativeFacts {
@@ -205,6 +206,7 @@ fn legacy_collaboration_fields_are_rejected_and_capability_drift_still_blocks() 
             },
         },
         restore_native_model: None,
+        restore_managed_changes: false,
         protected_native_model_ids: Vec::new(),
         access_token: hiroute_domain::AgentAccessTokenIntentV1::Keep,
     };
@@ -242,6 +244,7 @@ fn agent_settings_restore_reference_cannot_cross_context_or_facet() {
         },
         collaboration: AgentFacetIntent::Keep,
         restore_native_model: None,
+        restore_managed_changes: false,
         protected_native_model_ids: Vec::new(),
         access_token: hiroute_domain::AgentAccessTokenIntentV1::Keep,
     };
@@ -280,6 +283,15 @@ fn codex_restore_requires_an_original_catalog_model_for_a_stale_alias() {
         block.reason == SettingsBlockReason::RestoreNativeModelInvalid
             && block.model_ids == ["hiroute-fanyi"]
     }));
+    let mut disable = spec.clone();
+    disable.restore_managed_changes = true;
+    assert!(
+        !preview_agent_settings(disable, &facts)
+            .unwrap()
+            .blockers
+            .iter()
+            .any(|block| block.reason == SettingsBlockReason::RestoreNativeModelInvalid)
+    );
     spec.restore_native_model = Some("gpt-5.6-sol".into());
     let repaired = preview_agent_settings(spec.clone(), &facts).unwrap();
     assert!(
@@ -508,6 +520,7 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
                     model_publication: Some(publication.clone()),
                     login_item_required: false,
                     login_item_removal_required: false,
+                    restore_file_conflict: false,
                     fixed_candidate_facts: Vec::new(),
                 },
                 native: SettingsModelNativeFacts::Codex(Box::new(SettingsCodexModelFacts {
@@ -523,6 +536,7 @@ fn codex_plan_selections_preview_only_with_catalog_facts() {
                     restore_native_model_ids: None,
                     restore_inherits_root: false,
                     restored_native_model: None,
+                    archive_codex_profile: false,
                 })),
             }),
         }

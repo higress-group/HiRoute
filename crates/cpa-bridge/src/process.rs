@@ -1,5 +1,5 @@
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 #[cfg(not(windows))]
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
@@ -9,6 +9,9 @@ use std::time::{Duration, Instant};
 use thiserror::Error;
 
 use crate::artifact::VerifiedCpaBinary;
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+mod attached;
 
 #[derive(Clone, Debug)]
 pub struct CpaLaunch {
@@ -28,13 +31,18 @@ pub trait CpaProcessHandle: Send {
     fn pid(&self) -> u32;
     fn try_exit(&mut self) -> Result<Option<CpaExit>, CpaProcessError>;
     fn shutdown(&mut self, timeout: Duration) -> Result<CpaExit, CpaProcessError>;
+
+    /// Checks whether an attached process still owns the private launch directory.
+    fn has_work_dir(&self, _expected: &Path) -> Result<bool, CpaProcessError> {
+        Ok(false)
+    }
 }
 
 pub trait CpaProcessBackend: Send + Sync {
     fn spawn(&self, launch: &CpaLaunch) -> Result<Box<dyn CpaProcessHandle>, CpaProcessError>;
 
-    /// Attaches to a previously authenticated orphaned CPA child after the former HiRoute owner
-    /// has died. Callers must authenticate the recorded loopback endpoint before invoking this.
+    /// Holds the OS identity of a recorded child after the former HiRoute owner has died.
+    /// Callers authenticate the recorded child before any signal or routing.
     fn attach_authenticated(&self, pid: u32) -> Result<Box<dyn CpaProcessHandle>, CpaProcessError>;
 
     fn pid_is_running(&self, pid: u32) -> Result<bool, CpaProcessError>;
@@ -93,18 +101,25 @@ impl CpaProcessBackend for StdCpaProcessBackend {
     }
 
     fn attach_authenticated(&self, pid: u32) -> Result<Box<dyn CpaProcessHandle>, CpaProcessError> {
-        if pid == 0 || !self.pid_is_running(pid)? {
-            return Err(CpaProcessError::NotRunning);
-        }
         #[cfg(windows)]
         {
+            if !self.pid_is_running(pid)? {
+                return Err(CpaProcessError::NotRunning);
+            }
             // The first supported Windows daemon owns a no-breakaway resident job. Its
             // death kills every CPA descendant. A live numeric PID from an old probe
             // record supplies neither process nor tree termination authority.
             Err(CpaProcessError::UntrustedOrphan)
         }
-        #[cfg(not(windows))]
-        Ok(Box::new(AttachedHandle { pid }))
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        {
+            Ok(Box::new(attached::AttachedHandle::open(pid)?))
+        }
+        #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+        {
+            let _ = pid;
+            Err(CpaProcessError::UnsupportedPlatform)
+        }
     }
 
     fn pid_is_running(&self, pid: u32) -> Result<bool, CpaProcessError> {
@@ -227,79 +242,24 @@ fn spawn_windows(
     .map_err(CpaProcessError::Spawn)
 }
 
-#[cfg(not(windows))]
-struct AttachedHandle {
-    pid: u32,
-}
-
-#[cfg(not(windows))]
-impl CpaProcessHandle for AttachedHandle {
-    fn pid(&self) -> u32 {
-        self.pid
-    }
-
-    fn try_exit(&mut self) -> Result<Option<CpaExit>, CpaProcessError> {
-        if platform_pid_is_running(self.pid)? {
-            Ok(None)
-        } else {
-            Ok(Some(CpaExit { code: None }))
-        }
-    }
-
-    fn shutdown(&mut self, timeout: Duration) -> Result<CpaExit, CpaProcessError> {
-        platform_terminate_pid(self.pid, timeout)?;
-        Ok(CpaExit { code: None })
-    }
-}
-
-#[cfg(unix)]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn platform_pid_is_running(pid: u32) -> Result<bool, CpaProcessError> {
-    if pid == 0 {
-        return Ok(false);
-    }
-    let status = Command::new("/bin/kill")
-        .arg("-0")
-        .arg(pid.to_string())
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(CpaProcessError::Platform)?;
-    Ok(status.success())
+    attached::pid_is_running(pid)
 }
 
-#[cfg(unix)]
-fn platform_terminate_pid(pid: u32, timeout: Duration) -> Result<(), CpaProcessError> {
-    let status = Command::new("/bin/kill")
-        .arg("-TERM")
-        .arg(pid.to_string())
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map_err(CpaProcessError::Platform)?;
-    if !status.success() && platform_pid_is_running(pid)? {
-        return Err(CpaProcessError::TerminateExternal);
+#[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
+fn platform_pid_is_running(pid: u32) -> Result<bool, CpaProcessError> {
+    let Some(pid) = i32::try_from(pid)
+        .ok()
+        .and_then(rustix::process::Pid::from_raw)
+    else {
+        return Ok(false);
+    };
+    match rustix::process::test_kill_process(pid) {
+        Ok(()) | Err(rustix::io::Errno::PERM) => Ok(true),
+        Err(rustix::io::Errno::SRCH) => Ok(false),
+        Err(error) => Err(CpaProcessError::Platform(error.into())),
     }
-    let deadline = Instant::now() + timeout;
-    while platform_pid_is_running(pid)? {
-        if Instant::now() >= deadline {
-            let forced = Command::new("/bin/kill")
-                .arg("-KILL")
-                .arg(pid.to_string())
-                .stdin(Stdio::null())
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .map_err(CpaProcessError::Platform)?;
-            if !forced.success() && platform_pid_is_running(pid)? {
-                return Err(CpaProcessError::ShutdownTimeout);
-            }
-            break;
-        }
-        thread::sleep(Duration::from_millis(10));
-    }
-    Ok(())
 }
 
 #[cfg(windows)]
@@ -312,11 +272,6 @@ fn platform_pid_is_running(pid: u32) -> Result<bool, CpaProcessError> {
 
 #[cfg(not(any(unix, windows)))]
 fn platform_pid_is_running(_pid: u32) -> Result<bool, CpaProcessError> {
-    Err(CpaProcessError::UnsupportedPlatform)
-}
-
-#[cfg(not(any(unix, windows)))]
-fn platform_terminate_pid(_pid: u32, _timeout: Duration) -> Result<(), CpaProcessError> {
     Err(CpaProcessError::UnsupportedPlatform)
 }
 

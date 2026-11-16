@@ -2,6 +2,7 @@
 //! File preparation is not proof of live Skill loading or trusted CLI execution.
 use super::*;
 use hiroute_domain::{AgentCapability, CapabilityState, SupportedAgentInstallationV1};
+use hiroute_platform::desktop_engine::DesktopEngineLocation;
 
 impl FilesystemAgentScannerV1 {
     #[cfg(any(unix, windows))]
@@ -13,16 +14,16 @@ impl FilesystemAgentScannerV1 {
     ) -> Option<SupportedAgentInstallationV1> {
         let (kind, executable, proof) = match agent_id {
             "agent_codex_default" => {
-                let engine = self
-                    .codex_desktop_engine_path()
-                    .and_then(|path| super::super::executable::resolve(&path).ok().flatten());
+                let engine = self.located_codex_desktop_engine().ok().flatten();
                 if configure && engine.is_none() {
                     return None;
                 }
                 (AgentKindV1::Codex, engine, None)
             }
             "agent_dsh_default" => {
-                let engine = self.dsh_desktop_executable_target();
+                let engine = self
+                    .dsh_desktop_executable_target()
+                    .map(DesktopEngineLocation::File);
                 if configure && engine.is_none() {
                     return None;
                 }
@@ -40,11 +41,22 @@ impl FilesystemAgentScannerV1 {
         else {
             return None;
         };
-        super::super::observed_capabilities::attach_optional_file_capabilities(
-            &mut installation,
-            executable.as_deref(),
-            target,
-        );
+        use super::super::observed_capabilities;
+        match executable {
+            #[cfg(windows)]
+            Some(DesktopEngineLocation::Package(package)) => {
+                observed_capabilities::attach_package_file_capabilities(
+                    &mut installation,
+                    &package,
+                    target,
+                );
+            }
+            other => observed_capabilities::attach_optional_file_capabilities(
+                &mut installation,
+                other.as_ref().map(DesktopEngineLocation::path),
+                target,
+            ),
+        }
         let digest = CanonicalDigest::of(&(&installation.observation_digest, proof)).ok()?;
         installation.observation_digest = digest.clone();
         for evidence in &mut installation.capability_evidence {

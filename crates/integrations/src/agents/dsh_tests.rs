@@ -38,6 +38,18 @@ fn dsh_desktop_restore_preserves_comments_after_removing_the_only_patch_row() {
         restored.as_slice(),
         b"# note before the route\n[]\n  # note after the route\n"
     );
+    let edited = String::from_utf8(changed)
+        .unwrap()
+        .replace("hiroute-routing.mjs", "edited-adapter.mjs");
+    assert!(restore.restore(Some(edited.as_bytes())).is_err());
+    let restored = restore
+        .render_restoration(Some(edited.as_bytes()), true)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        restored.as_slice(),
+        b"# note before the route\n[]\n  # note after the route\n"
+    );
 }
 
 #[test]

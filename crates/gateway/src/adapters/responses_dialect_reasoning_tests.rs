@@ -216,6 +216,7 @@ fn standard_reasoning_gate_uses_retained_canonical_positions_before_prefix_clean
                     expected.remove(3);
                 }
                 expected.remove(2);
+                expected.remove(0);
                 assert_eq!(value["input"], json!(expected));
             }
             assert_eq!(request, original);

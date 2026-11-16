@@ -46,6 +46,45 @@ fn opaque_observed_capture_does_not_establish_strict_provider_prefix_affinity() 
 }
 
 #[test]
+fn retry_setup_depends_on_declaration_position_and_every_hosted_search_control() {
+    let declaration = json!({"type":"additional_tools","id":"at_lookup","role":"developer",
+        "tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]});
+    let user = json!({"role":"user","content":"Use the available tools."});
+    let mut body = json!({"model":"route","input":[user,declaration],"tools":[
+        {"type":"web_search","external_web_access":false},
+        {"type":"web_search","external_web_access":false}
+    ]});
+    let decode = |body: &Value| decode_ingress_request(IngressProtocol::Responses, body).unwrap();
+    let setup = |request: &ModelRequestIRV1| {
+        observed_history_with_replay(request, &[37; 32], None)
+            .unwrap()
+            .instruction_digest
+    };
+    let original = decode(&body);
+    assert_eq!(setup(&original), setup(&decode(&body)));
+
+    body["input"].as_array_mut().unwrap().swap(0, 1);
+    let moved = decode(&body);
+    assert_eq!(moved.messages, original.messages);
+    assert_eq!(moved.tools, original.tools);
+    assert_ne!(setup(&original), setup(&moved));
+    body.as_object_mut().unwrap().remove("tools");
+    let leading = decode(&body);
+    assert!(!leading.native_only);
+    body["input"].as_array_mut().unwrap().swap(0, 1);
+    assert_ne!(setup(&leading), setup(&decode(&body)));
+
+    body["tools"] = json!([
+        {"type":"web_search","external_web_access":false},
+        {"type":"web_search","external_web_access":false}
+    ]);
+    body["tools"][1]["external_web_access"] = json!(true);
+    let changed = decode(&body);
+    assert_eq!(changed.web_search, original.web_search);
+    assert_ne!(setup(&original), setup(&changed));
+}
+
+#[test]
 fn only_same_position_system_or_developer_text_is_omitted_from_semantic_digest() {
     for role in ["system", "developer"] {
         let original = request(role);

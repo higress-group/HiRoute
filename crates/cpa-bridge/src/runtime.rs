@@ -37,7 +37,7 @@ use crate::state::{load_account_state, merge_accounts, save_account_state};
 mod admission;
 mod catalog_recovery;
 mod oauth;
-mod recovery;
+pub(crate) mod recovery;
 mod routing_batch;
 mod spec;
 mod subscriptions;
@@ -411,16 +411,20 @@ impl ManagedCpaRuntime {
                     let lease =
                         OwnerLease::reclaim_stale(&layout.lock_dir, &record, &transferred, nonce)
                             .map_err(|_| CpaLifecycleError::OwnerState)?;
-                    // Authenticate the orphan before adopting or replacing its launch policy.
-                    self.adopt_orphan(
-                        inner,
-                        lease,
-                        record,
-                        transferred,
-                        artifact,
-                        &layout,
-                        expected,
-                    )?
+                    if recovery::is_previous_artifact(&record) {
+                        self.retire_previous_before_start(&layout, &record, &lease, &fresh_record)?;
+                        self.start_fresh(inner, lease, fresh_record, artifact, &layout, expected)?
+                    } else {
+                        self.adopt_orphan(
+                            inner,
+                            lease,
+                            record,
+                            transferred,
+                            artifact,
+                            &layout,
+                            expected,
+                        )?
+                    }
                 } else {
                     let replacement = fresh_record;
                     let lease =
@@ -732,7 +736,6 @@ impl ManagedCpaRuntime {
         let attempt = (|| {
             if transferred.binary_version != artifact.version().to_string()
                 || transferred.binary_sha256_hex != artifact.sha256_hex()
-                || !transferred.address.ip().is_loopback()
             {
                 return Err(CpaLifecycleError::UntrustedOrphan);
             }
@@ -743,29 +746,8 @@ impl ManagedCpaRuntime {
                 self.spec.managed_oauth,
                 expected,
             )?;
-            let secrets = InstanceSecrets::read(&layout.capability_path)?;
-            validate_runtime_files(layout)?;
-            self.control
-                .probe_ready(
-                    transferred.address,
-                    &secrets,
-                    &transferred.binary_version,
-                    self.spec.control_timeout,
-                )
-                .map_err(|error| self.map_control_error(error))?;
-            let mut process = crate::process::attach_recovered_process(
-                self.backend.as_ref(),
-                transferred.cpa_pid,
-            )?;
-            self.control
-                .probe_ready(
-                    transferred.address,
-                    &secrets,
-                    &transferred.binary_version,
-                    self.spec.control_timeout,
-                )
-                .map_err(|error| self.map_control_error(error))?;
-            if process.pid() != transferred.cpa_pid || process.try_exit()?.is_some() {
+            let (secrets, mut process) = self.authenticate_orphan(layout, &transferred)?;
+            if process.try_exit()?.is_some() {
                 return Err(CpaLifecycleError::UntrustedOrphan);
             }
             let accounts = load_account_state(&layout.accounts_path)?;
@@ -1358,6 +1340,8 @@ impl ManagedCpaRuntime {
             | AccountDiscoveryError::RunningVersionMismatch => {
                 CpaLifecycleError::UnsafeControlResponse
             }
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
+            AccountDiscoveryError::RunningProcessMismatch => CpaLifecycleError::UntrustedOrphan,
             _ => CpaLifecycleError::ControlUnavailable,
         }
     }

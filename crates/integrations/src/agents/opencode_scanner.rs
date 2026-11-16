@@ -119,6 +119,7 @@ impl FilesystemAgentScannerV1 {
         &self,
         namespace: &str,
         models: &[hiroute_domain::AdditionalAgentModelV1],
+        restoring_providers: &[String],
     ) -> Result<(CanonicalDigest, bool), AgentFilesystemScanError> {
         let native = self.opencode_native_context()?;
         if native.has_remote_configuration()? {
@@ -166,20 +167,24 @@ impl FilesystemAgentScannerV1 {
             }
         }
         let mut default_in_use = false;
-        if let Some(providers) = config.value["provider"].as_object() {
-            for id in providers.keys().filter(|id| owned(id)) {
-                if let Err(error) = super::super::opencode::validate_references(
-                    &config.value,
-                    id,
-                    &config.value["provider"][id],
-                    &retain,
-                    resources.as_ref().ok().map(|r| r.models.as_slice()),
-                ) {
-                    if error.stage != "default in use" {
-                        return Err(AgentFilesystemScanError::InvalidConfig);
-                    }
-                    default_in_use = true;
+        let provider_ids = config.value["provider"]
+            .as_object()
+            .into_iter()
+            .flat_map(|providers| providers.keys().filter(|id| owned(id)))
+            .chain(restoring_providers)
+            .collect::<BTreeSet<_>>();
+        for id in provider_ids {
+            if let Err(error) = super::super::opencode::validate_references(
+                &config.value,
+                id,
+                &config.value["provider"][id],
+                &retain,
+                resources.as_ref().ok().map(|r| r.models.as_slice()),
+            ) {
+                if error.stage != "default in use" {
+                    return Err(AgentFilesystemScanError::InvalidConfig);
                 }
+                default_in_use = true;
             }
         }
         for model in models {
@@ -212,8 +217,9 @@ impl FilesystemAgentScannerV1 {
         &self,
         namespace: &str,
         models: &[hiroute_domain::AdditionalAgentModelV1],
+        restoring_providers: &[String],
     ) -> Result<CanonicalDigest, AgentFilesystemScanError> {
-        let (digest, in_use) = self.opencode_model_facts(namespace, models)?;
+        let (digest, in_use) = self.opencode_model_facts(namespace, models, restoring_providers)?;
         if in_use {
             return Err(AgentFilesystemScanError::SourceChanged);
         }

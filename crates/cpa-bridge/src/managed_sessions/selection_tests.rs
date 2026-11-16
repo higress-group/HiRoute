@@ -11,6 +11,9 @@ use std::sync::mpsc;
 
 #[path = "catalog_readiness_tests.rs"]
 mod catalog_readiness_tests;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[path = "upgrade_recovery_tests.rs"]
+mod upgrade_recovery_tests;
 
 const SOURCE: &str = "source/cpa/fixture-codex";
 const MODEL: &str = "gpt-5.3-codex-spark";

@@ -1,6 +1,8 @@
 //! One separately owned Desktop context; the ordinary Codex home remains borrowed.
+use hiroute_platform::desktop_engine::DesktopEngineLocation;
 use std::path::{Path, PathBuf};
 
+use super::executable::{self, ProbeFailure};
 use super::{AgentFilesystemScanError, FilesystemAgentDiscoveryV1, FilesystemAgentScannerV1};
 
 pub const CODEX_DESKTOP_AGENT_ID: &str = "agent_codex_desktop";
@@ -42,11 +44,14 @@ impl FilesystemAgentScannerV1 {
         self
     }
 
-    pub fn refresh_codex_desktop_location(&self, resolve: impl FnOnce() -> Option<PathBuf>) {
+    pub fn refresh_codex_desktop_location(
+        &self,
+        resolve: impl FnOnce() -> std::io::Result<Option<DesktopEngineLocation>>,
+    ) {
         if !self.dynamic_codex_desktop_location {
             return;
         }
-        let current = resolve();
+        let current = resolve().map_err(|_| ProbeFailure::Unavailable);
         let changed = if let Ok(mut location) = self.codex_desktop_location.lock()
             && *location != current
         {
@@ -61,7 +66,34 @@ impl FilesystemAgentScannerV1 {
     }
 
     pub(super) fn codex_desktop_engine_path(&self) -> Option<PathBuf> {
-        self.codex_desktop_location.lock().ok()?.clone()
+        self.codex_desktop_location
+            .lock()
+            .ok()?
+            .as_ref()
+            .ok()?
+            .as_ref()
+            .map(|location| location.path().to_owned())
+    }
+
+    pub(super) fn located_codex_desktop_engine(
+        &self,
+    ) -> Result<Option<DesktopEngineLocation>, ProbeFailure> {
+        let location = self
+            .codex_desktop_location
+            .lock()
+            .map_err(|_| ProbeFailure::Unavailable)?
+            .clone()?;
+        match location {
+            Some(DesktopEngineLocation::File(path)) => {
+                executable::resolve(&path).map(|path| path.map(DesktopEngineLocation::File))
+            }
+            #[cfg(windows)]
+            Some(DesktopEngineLocation::Package(package)) => match package.reopen() {
+                Ok(_) => Ok(Some(DesktopEngineLocation::Package(package))),
+                Err(_) => Err(ProbeFailure::Unavailable),
+            },
+            None => Ok(None),
+        }
     }
 
     pub fn with_codex_desktop_instance(mut self, paths: CodexDesktopInstancePaths) -> Self {

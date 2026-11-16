@@ -465,7 +465,6 @@ mod tests {
         for tools in [
             json!([{"type":"web_search","external_web_access":"true"}]),
             json!([{"type":"web_search","unknown":true}]),
-            json!([{"type":"web_search","external_web_access":true},{"type":"web_search","external_web_access":false}]),
         ] {
             assert!(
                 decode_ingress_request(
@@ -486,6 +485,22 @@ mod tests {
         .unwrap();
         assert!(duplicate.web_search.is_some());
         assert_eq!(duplicate.responses_tool_order.len(), 1);
+        let different_controls = json!({"model":"alias","input":"search","tools":[
+            {"type":"web_search","external_web_access":true},
+            {"type":"web_search","external_web_access":false}
+        ]});
+        let request =
+            decode_ingress_request(IngressProtocol::Responses, &different_controls).unwrap();
+        let native = CandidateProtocolProfile::exact_portable_path(
+            IngressProtocol::Responses,
+            IngressProtocol::Responses,
+            "physical",
+            fixed_reasoning("fixed"),
+        );
+        assert_eq!(
+            project_candidate_request(&request, &native).unwrap().body["tools"],
+            different_controls["tools"]
+        );
     }
     #[test]
     fn acp_tool_item_ids_remain_distinct_from_call_ids() {
@@ -822,7 +837,7 @@ mod tests {
     }
 
     #[test]
-    fn additional_tools_merge_deterministically_and_conflicting_identities_fail_ingress() {
+    fn chat_maps_repeated_legacy_declarations_and_rejects_conflicting_identities() {
         use super::super::super::project_candidate_request;
         use super::super::decode_ingress_request;
         use crate::server::core_runtime::model_ir::ResponsesToolOrderEntryV1;
@@ -854,16 +869,19 @@ mod tests {
             "parallel_tool_calls":true
         });
         let request = decode_ingress_request(IngressProtocol::Responses, &document).unwrap();
-        assert_eq!(request.tools.len(), 2);
+        assert_eq!(request.tools.len(), 3);
         assert_eq!(request.tools[0].name, "lookup");
-        assert_eq!(request.tools[1].name, "scratch");
-        assert_eq!(request.tool_namespaces.len(), 1);
+        assert_eq!(request.tools[1].name, "lookup");
+        assert_eq!(request.tools[2].name, "scratch");
+        assert_eq!(request.tool_namespaces.len(), 2);
         assert_eq!(
             request.responses_tool_order,
             vec![
                 ResponsesToolOrderEntryV1::Tool { index: 0 },
                 ResponsesToolOrderEntryV1::Namespace { index: 0 },
                 ResponsesToolOrderEntryV1::Tool { index: 1 },
+                ResponsesToolOrderEntryV1::Namespace { index: 1 },
+                ResponsesToolOrderEntryV1::Tool { index: 2 },
             ]
         );
 
@@ -895,12 +913,14 @@ mod tests {
 
         let mut conflicting_flat = document.clone();
         conflicting_flat["input"][1]["tools"][0]["strict"] = json!(false);
-        assert!(decode_ingress_request(IngressProtocol::Responses, &conflicting_flat).is_err());
+        let decoded =
+            decode_ingress_request(IngressProtocol::Responses, &conflicting_flat).unwrap();
+        assert!(project_candidate_request(&decoded, &chat).is_err());
         let mut conflicting_namespace = document;
         conflicting_namespace["input"][1]["tools"][1]["description"] = json!("different");
-        assert!(
-            decode_ingress_request(IngressProtocol::Responses, &conflicting_namespace).is_err()
-        );
+        let decoded =
+            decode_ingress_request(IngressProtocol::Responses, &conflicting_namespace).unwrap();
+        assert!(project_candidate_request(&decoded, &chat).is_err());
 
         for tools in [
             json!([
@@ -916,14 +936,12 @@ mod tests {
                 ]
             }]),
         ] {
-            assert!(
-                decode_ingress_request(
-                    IngressProtocol::Responses,
-                    &json!({"model":"alias","input":"goal","tools":tools}),
-                )
-                .is_err(),
-                "different kinds with the same namespace/local name must fail ingress"
-            );
+            let decoded = decode_ingress_request(
+                IngressProtocol::Responses,
+                &json!({"model":"alias","input":"goal","tools":tools}),
+            )
+            .unwrap();
+            assert!(project_candidate_request(&decoded, &chat).is_err());
         }
 
         let exact_namespace_child_duplicate = decode_ingress_request(
@@ -946,13 +964,24 @@ mod tests {
             exact_namespace_child_duplicate.tool_namespaces[0]
                 .tools
                 .len(),
+            2
+        );
+        assert_eq!(
+            project_candidate_request(&exact_namespace_child_duplicate, &chat)
+                .unwrap()
+                .body["tools"]
+                .as_array()
+                .unwrap()
+                .len(),
             1
         );
     }
 
     #[test]
-    fn namespace_children_and_named_choice_fail_closed_when_unsupported_or_ambiguous() {
+    fn namespace_children_are_typed_and_chat_must_resolve_named_choice() {
+        use super::super::super::project_candidate_request;
         use super::super::decode_ingress_request;
+        use crate::server::core_runtime::profiles::{CandidateProtocolProfile, fixed_reasoning};
         for tool in [
             json!({"type":"namespace","name":"group","tools":[{"type":"namespace","name":"nested","tools":[{"type":"function","name":"child","parameters":{}}]}]}),
             json!({"type":"namespace","name":"group","execution":"hosted","tools":[{"type":"function","name":"child","parameters":{}}]}),
@@ -985,11 +1014,20 @@ mod tests {
             ],
             "tool_choice":{"type":"function","name":"same"}
         });
-        assert!(decode_ingress_request(IngressProtocol::Responses, &ambiguous).is_err());
+        let chat = CandidateProtocolProfile::exact_portable_path(
+            IngressProtocol::Responses,
+            IngressProtocol::ChatCompletions,
+            "physical",
+            fixed_reasoning("fixed"),
+        );
+        let decoded = decode_ingress_request(IngressProtocol::Responses, &ambiguous).unwrap();
+        assert!(project_candidate_request(&decoded, &chat).is_err());
 
         let mut unique = ambiguous;
         unique["tools"].as_array_mut().unwrap().pop();
-        assert!(decode_ingress_request(IngressProtocol::Responses, &unique).is_ok());
+        let decoded = decode_ingress_request(IngressProtocol::Responses, &unique).unwrap();
+        let projected = project_candidate_request(&decoded, &chat).unwrap();
+        assert_eq!(projected.body["tool_choice"]["function"]["name"], "a__same");
     }
     #[test]
     fn native_responses_controls_are_typed_and_preserved() {

@@ -658,6 +658,8 @@ if ($Scope -eq 'components') {
     ($residualOracle + 'residual_tool_error_and_multiple_captions_cannot_disappear_as_no_result'),
     ($residualOracle + 'residual_script_keeps_literal_paths_and_original_sleep_before_late_write'))
   Invoke-RequiredTests 'agent-public-business' @('-p','hiroute-daemon','--test','windows_headless',$publicBusiness) @($publicBusiness) @('--ignored','--exact','--nocapture')
+  $codexDisable = 'windows_codex_disable::actual_windows_codex_disables_edited_managed_settings'
+  Invoke-RequiredTests 'agent-codex-disable' @('-p','hiroute-daemon','--test','windows_headless',$codexDisable) @($codexDisable) @('--ignored','--exact','--nocapture')
   $userModels = 'actual_windows_pi_and_dsh_persisted_user_models'
   Invoke-RequiredTests 'agent-user-models' @('-p','hiroute-daemon','--test','windows_headless',$userModels) @($userModels) @('--ignored','--exact','--nocapture')
   $management = 'actual_windows_installed_management_commands'
