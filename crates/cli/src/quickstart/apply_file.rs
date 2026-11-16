@@ -100,6 +100,22 @@ fn request(
                 "ApplyAgentPlanChange",
             ))
         }
+        "routing.preview" if payload["change"]["schema"] == PLAN_LIFECYCLE_CHANGE_SCHEMA_V1 => {
+            let input: PlanLifecyclePreviewRequestV1 =
+                serde_json::from_value(payload.clone()).map_err(internal)?;
+            let result: PlanLifecyclePreviewV1 =
+                serde_json::from_value(preview.clone()).map_err(internal)?;
+            Ok((
+                json!(PlanLifecycleApplyRequestV1 {
+                    change: input.change,
+                    accept_digest: result.change_digest,
+                    expected_revisions: result.expected_revisions,
+                    idempotency_key: key.into(),
+                }),
+                "routing.apply",
+                "ApplyAgentPlanChange",
+            ))
+        }
         "compute.connection.preview" => {
             let (spec, digest, revisions, kind) =
                 if payload["change"]["schema"] == COMPUTE_MANAGEMENT_CHANGE_SCHEMA_V2 {
@@ -219,6 +235,61 @@ fn write_new(path: &Path, value: &Value) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn lifecycle_preview_prepares_exact_apply_request() {
+        let digest = format!("sha256:{}", "a".repeat(64));
+        let payload = json!({"change":{
+            "schema": PLAN_LIFECYCLE_CHANGE_SCHEMA_V1,
+            "plan_id": "plan/test",
+            "expected_head_revision": 1,
+            "status": "deleted"
+        }});
+        let head = |revision: u64, status: &str| {
+            json!({
+                "reference": {
+                    "workspace_id": "personal/default",
+                    "plan_id": "plan/test",
+                    "content_revision": 1,
+                    "content_digest": digest
+                },
+                "head_revision": revision,
+                "model_alias": "hiroute-test",
+                "status": status
+            })
+        };
+        let preview = json!({
+            "schema": PLAN_LIFECYCLE_PREVIEW_SCHEMA_V1,
+            "change_digest": digest,
+            "expected_revisions": {"target": 7, "dependencies": {}},
+            "before_head": head(1, "enabled"),
+            "plan_head": head(2, "deleted"),
+            "references_digest": digest,
+            "has_agent_references": false,
+            "has_version_holds": false,
+            "no_new_calls": true
+        });
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("apply.json");
+        let prepared = prepare(
+            "routing.preview",
+            &payload,
+            preview,
+            path.to_str().unwrap(),
+            Some("stable-key".into()),
+        )
+        .unwrap();
+        assert_eq!(prepared["submission"]["command_id"], "routing.apply");
+        assert_eq!(
+            prepared["submission"]["operation_lookup"]["operation_kind"],
+            "ApplyAgentPlanChange"
+        );
+        let apply: PlanLifecycleApplyRequestV1 =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(apply.idempotency_key, "stable-key");
+        let encoded = serde_json::to_value(&apply).unwrap();
+        assert_eq!(encoded["change"]["status"], "deleted");
+        assert_eq!(encoded["expected_revisions"]["target"], 7);
+    }
     #[test]
     fn exact_request_is_private_and_never_overwrites_or_leaves_partial_destination() {
         let root = tempfile::tempdir().unwrap();
