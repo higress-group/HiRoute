@@ -36,6 +36,8 @@ async function change(selector, value, type = 'select') {
   })()`);
 }
 async function shot(name) {
+  await evaluate(client, `Promise.all(document.getAnimations().filter(animation => animation.effect?.getComputedTiming().iterations !== Infinity)
+    .map(animation => animation.finished.catch(() => {}))).then(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)))))`);
   const image = await client.send('Page.captureScreenshot', { format: 'png' });
   await writeFile(path.join(output, `${name}.png`), Buffer.from(image.data, 'base64'));
 }
