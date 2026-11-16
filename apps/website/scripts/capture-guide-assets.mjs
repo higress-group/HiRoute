@@ -64,9 +64,10 @@ try {
       if (agentGuideCaptureStates.includes(state)) {
         await openAgentGuideCapture(client, base, language, state, click);
       } else if (state.startsWith('trial-')) {
-        await navigate(client, `${base}new-model-trial.html?native=1&view=${state === 'trial-entry' ? 'home' : 'quickstart'}&lang=${language}&theme=dark`, { width: 1200, height: 900 });
+        await navigate(client, `${base}new-model-trial.html?native=1&view=${state === 'trial-entry' ? 'home&published-recommendations=1' : 'quickstart'}&lang=${language}&theme=dark`, { width: 1200, height: 900 });
         await waitFor(client, 'Boolean(document.querySelector(".new-models"))');
-        await waitFor(client, `[...document.querySelectorAll('.new-models button')].some(n => !n.disabled && /^(试用|接入并试用|Try it|Try|Connect and try)$/.test(n.textContent.trim()))`);
+        const action = state === 'trial-entry' ? t('开始配置', 'Start configuration') : t('接入并试用', 'Connect and try');
+        await waitFor(client, `[...document.querySelectorAll('.new-models button')].some(n => !n.disabled && n.textContent.trim() === ${JSON.stringify(action)})`);
         if (state === 'trial-setup') {
           await click(t('接入并试用', 'Connect and try'));
           await waitFor(client, 'Boolean(document.querySelector(".trial-setup"))');

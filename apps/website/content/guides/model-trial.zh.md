@@ -22,6 +22,7 @@ CLI 参考：https://hiroute.ai/zh/docs/cli/
 - 选试用模型和主力模型：compute list · compute connection options / preview / apply
 - 选择或添加决策连接：decision connections options / list / apply
 - 设置试用路由、信任度并发布：routing options → routing preview → routing apply
+- 替换已有路由中的模型：用 compute list 确认可用绑定，读取当前路由和草稿，只修改指定位置，经 routing preview / apply 保存草稿。发布需要单独确认。
 - 映射到常用 Agent：agents connect preview → agents connect apply
 - 查看路由时间线和模型表现：sessions timeline · observation plan-quality samples · observation plan-trust
 - 回放信任度、查看调整建议：observation plan-trust replay / suggestions
@@ -36,17 +37,13 @@ CLI 参考：https://hiroute.ai/zh/docs/cli/
 
 ## 从首页开始
 
-首页的“新模型”列出由 hiroute.ai 维护的推荐，每个模型会标明能否直接试用：
-
-- **已连接，可以直接试**：选择“试用”。
-- **需要先连接**：选择“接入并试用”，在试用流程里直接完成接入。
-- 想试的模型不在推荐里时，选择“试用其他模型”，从已接入的模型中挑选。
+在首页“新模型”中，找到推荐模型并选择“开始配置”，然后选择“新建试用路由”或“替换已有路由里的模型”。想试的模型不在推荐里时，选择“试用其他模型”，从已接入的模型中挑选。
 
 试用流程分四步：选择模型、核对并发布、映射 Agent、开始使用。
 
 <figure>
-  <a href="/guide-assets/trial-entry-zh.webp"><img src="/guide-assets/trial-entry-zh.webp" alt="首页新模型试用卡片" width="1200" height="900" loading="lazy" /></a>
-  <figcaption>试用位是新模型的统一入口：已有连接可直接试，需要连接时在流程内完成。推荐列表会更新，图中模型为示例。</figcaption>
+  <a href="/guide-assets/trial-entry-zh.webp"><img src="/guide-assets/trial-entry-zh.webp" alt="首页新模型推荐和开始配置按钮" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>从“开始配置”进入试用或替换流程。推荐模型以首页当前列表为准。</figcaption>
 </figure>
 
 ## 1. 选择模型
@@ -81,6 +78,12 @@ CLI 参考：https://hiroute.ai/zh/docs/cli/
 按页面给出的启动方式开启一个新会话。Codex 按需使用时，复制启动命令，在安装 Codex 的电脑的终端里运行；直接运行普通 Codex 或 Desktop 不会使用这份试用配置。
 
 先从范围明确的小任务开始，然后在“会话”的路由时间线里观察：每一轮实际用了哪个模型、为什么这样选、评分多少，以及低分保护在哪里触发、在哪里解除。费用按 API 等价价格估算。
+
+## 替换已有路由里的模型
+
+在推荐模型的“开始配置”中选择“替换已有路由里的模型”。已有可用接入时，选中它并选择“使用所选接入”。如果还未接入，可以复用已有接入的凭据，或新建接入并完成检查。
+
+接入确认可用后，选择一条路由及一个模型位置，例如“常规模型 · 第 1 位”。如果这条路由已有当前草稿，替换会写入该草稿。选择“预览替换”，核对位置、替换前后的模型和接入，再选择“保存草稿”。准备好后，在“智能路由”中打开草稿并选择“发布更改”。
 
 ## 根据证据调整信任度
 

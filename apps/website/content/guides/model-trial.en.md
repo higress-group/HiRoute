@@ -22,6 +22,7 @@ Command pointers (choose only what the goal needs; prefix each with hiroute):
 - Choose trial and primary models: compute list · compute connection options / preview / apply
 - Choose or add a decision connection: decision connections options / list / apply
 - Configure trust and publish the trial route: routing options → routing preview → routing apply
+- Replace a model in an existing route: use compute list to confirm an available binding, read the current route and draft, update the requested position, and save a draft through routing preview / apply. Confirm publication separately.
 - Map the route to your usual Agent: agents connect preview → agents connect apply
 - Read the routing timeline and model performance: sessions timeline · observation plan-quality samples · observation plan-trust
 - Replay trust settings and read suggestions: observation plan-trust replay / suggestions
@@ -36,17 +37,13 @@ The UI and CLI connect to the same HiRoute service and share configuration and e
 
 ## Start from Home
 
-**New models** on Home lists recommendations maintained by hiroute.ai, and marks whether each one is ready to try:
-
-- **Connected and ready to try:** select **Try it**.
-- **Needs a connection:** select **Connect and try** and connect it inside the trial flow.
-- If the model you want is not featured, select **Try another model** and pick one of your connected models.
+In **New models** on Home, find a recommendation and select **Start configuration**. Choose **Create a trial route** or **Replace a model in an existing route**. To try a model outside the recommendations, select **Try another model** and pick a connected model.
 
 The trial has four steps: choose models, review and publish, map the Agent, and start using it.
 
 <figure>
-  <a href="/guide-assets/trial-entry-en.webp"><img src="/guide-assets/trial-entry-en.webp" alt="New-model trial card on Home" width="1200" height="900" loading="lazy" /></a>
-  <figcaption>The trial entry brings new models into one flow. Reuse a connection or add one as needed. Recommendations change; the pictured models are examples.</figcaption>
+  <a href="/guide-assets/trial-entry-en.webp"><img src="/guide-assets/trial-entry-en.webp" alt="Home recommendations and the Start configuration button" width="1200" height="900" loading="lazy" /></a>
+  <figcaption>Start configuration opens the trial and replacement choices. Use the current list on Home to see available recommendations.</figcaption>
 </figure>
 
 ## 1. Choose models
@@ -81,6 +78,12 @@ If you leave the trial flow, you can resume mapping from **Smart routing**.
 Start a new session as the page describes. For Codex on demand, copy the launch command and run it in a terminal on the computer where Codex is installed; running ordinary Codex or Desktop does not use the trial configuration.
 
 Begin with a well-scoped task, then watch the routing timeline in **Sessions**: which model ran each turn and why, how each stage scored, and where low-score protection applied and was released. Costs are API-equivalent estimates.
+
+## Replace a model in an existing route
+
+Select **Start configuration** on a recommendation, then **Replace a model in an existing route**. Choose an available connection and select **Use selected connection**. If you need to add the model, reuse the credentials from an existing connection or create a connection and check it.
+
+After confirming the connection, choose a route and a model position such as **Regular models · Position 1**. If the route has a current draft, this replacement is saved in that draft. Select **Preview replacement** to review the position, the old and new models, and the connection. Select **Save draft**. When you are ready to make the change active, open the draft in **Smart routing** and select **Publish changes**.
 
 ## Adjust trust with evidence
 

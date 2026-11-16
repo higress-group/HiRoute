@@ -75,7 +75,7 @@ Start here to address model costs or try a new model on real work.
 3. **Connect your usual Agent.** Open “Agent,” select Codex or another target, and choose “Enable” under “Model routing.” Select the published route and save. With Codex, you can choose “On demand · CLI only” and copy the launch command. For other modes, restart or load configuration as the page instructs.
 4. **Run a small task and check.** Select the route in your Agent and run a task with a clear expected result. In “Sessions,” confirm the actual route, model and usage. Saving configuration does not switch an already running session.
 
-**Want to try a new model directly?** Use “Try” or “Connect and try” in Home’s “New models” section. The flow takes you through model selection, route publication and Agent mapping. The new model starts with simple turns, backed by your familiar primary model.
+**Want to try a new model directly?** Select **Start configuration** under **New models** on Home, then **Create a trial route**. The flow takes you through model selection, route publication and Agent mapping. The new model starts with simple turns, backed by your familiar primary model.
 
 <figure>
   <a href="/guide-assets/trial-entry-en.webp"><img src="/guide-assets/trial-entry-en.webp" alt="Dark-mode Home with a new-model card and trial action" width="1200" height="900" loading="lazy" /></a>
