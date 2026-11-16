@@ -230,16 +230,19 @@ JavaScript entries use the selected Node. Both launch paths share this dispatch,
 and native authentication evidence binds the actual PE identity even while its npm
 shim stays unchanged. The [native npm regression](../../crates/integrations/src/agents/windows_native_npm_tests.rs)
 executes the declared image without Node and rejects a changed engine identity.
-The `.cmd` shim is never evaluated. [DSH PATH discovery](../../crates/integrations/src/agents/dsh_windows.rs)
+The `.cmd` shim is never evaluated. [Shared executable discovery](../../crates/integrations/src/agents/executable.rs)
+continues a Windows PATH search after an unusable entry, retaining the failure if
+no candidate passes path admission. Explicit selections report that failure at
+the selected path. [DSH PATH discovery](../../crates/integrations/src/agents/dsh_windows.rs)
 continues after unusable candidates and can follow a standalone shim to its
 declared DSH npm entry, including the generated npm form with a relative target.
 The public composition check binds the chosen native program and its declared
 entry alongside the launcher. [Qoder lookup](../../crates/integrations/src/agents/qoder_discovery.rs)
 can confirm a missing candidate behind a PATH junction while retaining strict
 admission for an existing executable. The [Windows public scan regression](../../crates/daemon/tests/support/windows_agent_discovery.rs)
-runs both DSH lookup paths and the two Desktop-only Codex entries through a
-production Control daemon with temporary roots. System shell selectors come from the actual
-Windows system directory. Worker and CPA subscription-source HOME discovery use
+runs the Claude PATH walk, both DSH lookup paths and the two Desktop-only Codex
+entries through a production Control daemon with temporary roots. System shell
+selectors come from the actual Windows system directory. Worker and CPA subscription-source HOME discovery use
 the same account native-profile selector in the daemon control runtime,
 while explicit ecosystem configuration roots retain their existing meaning.
 [Managed Claude drive paths](../../crates/integrations/src/agents/managed_launch/windows.rs)

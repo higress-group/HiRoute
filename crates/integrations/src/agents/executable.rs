@@ -135,6 +135,10 @@ pub(super) fn candidates(path: &Path) -> Vec<PathBuf> {
 }
 
 pub(super) fn resolve(path: &Path) -> Result<Option<PathBuf>, ProbeFailure> {
+    #[cfg(windows)]
+    let searching_path = searches_path(path);
+    #[cfg(windows)]
+    let mut rejected_candidate = false;
     for candidate in candidates(path) {
         #[cfg(windows)]
         {
@@ -143,6 +147,12 @@ pub(super) fn resolve(path: &Path) -> Result<Option<PathBuf>, ProbeFailure> {
             match super::managed_launch::windows_executable_path(&candidate) {
                 Ok(canonical) => return Ok(Some(canonical)),
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error)
+                    if searching_path && error.kind() == std::io::ErrorKind::NotADirectory =>
+                {
+                    continue;
+                }
+                Err(_) if searching_path => rejected_candidate = true,
                 Err(_) => return Err(ProbeFailure::Unavailable),
             }
         }
@@ -157,6 +167,10 @@ pub(super) fn resolve(path: &Path) -> Result<Option<PathBuf>, ProbeFailure> {
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
             Err(_) => return Err(ProbeFailure::Unavailable),
         }
+    }
+    #[cfg(windows)]
+    if rejected_candidate {
+        return Err(ProbeFailure::Unavailable);
     }
     Ok(None)
 }
@@ -397,6 +411,24 @@ mod windows_tests {
         AgentClaudePresetValuesV2, CanonicalDigest, ManagedClaudeLaunchDescriptorV2,
         ManagedLaunchProfileV1,
     };
+
+    #[test]
+    fn windows_explicit_executable_does_not_skip_an_unavailable_preferred_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let selected = directory.path().join("agent");
+        let preferred = selected.with_extension("exe");
+        let fallback = selected.with_extension("cmd");
+        std::fs::create_dir(&preferred).unwrap();
+        std::fs::write(&fallback, b"@echo off\r\n").unwrap();
+
+        assert_eq!(resolve(&selected), Err(ProbeFailure::Unavailable));
+
+        std::fs::remove_dir(preferred).unwrap();
+        assert_eq!(
+            std::fs::canonicalize(resolve(&selected).unwrap().unwrap()).unwrap(),
+            std::fs::canonicalize(fallback).unwrap()
+        );
+    }
 
     #[test]
     fn windows_executable_observation_prepares_managed_launch_with_native_drive_identity() {

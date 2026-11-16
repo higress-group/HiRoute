@@ -17,6 +17,51 @@ use std::{
 const CODEX: &str = "agent_codex_default";
 const CODEX_DESKTOP: &str = "agent_codex_desktop";
 const DSH: &str = "agent_dsh_default";
+const CLAUDE: &str = "agent_claude_default";
+
+#[test]
+#[ignore = "requires measured Windows CLI and daemon executables"]
+fn actual_windows_claude_scan_continues_past_unavailable_path_entries() {
+    let root = tempfile::tempdir().unwrap();
+    let file_entry = root.path().join("not a directory");
+    fs::write(&file_entry, b"file in PATH").unwrap();
+    let target = root.path().join("alias target");
+    let junction = root.path().join("junction");
+    let later = root.path().join("later installation");
+    fs::create_dir(&target).unwrap();
+    fs::create_dir(&later).unwrap();
+    fs::write(target.join("claude.exe"), b"unusable alias candidate").unwrap();
+    hiroute_platform::directory_link::create(&target, &junction).unwrap();
+
+    // A native image with an offline --version supplies a repeatable scan fixture.
+    let cli = input("HIROUTE_WORKER_CLI_BINARY");
+    let executable = later.join("claude.exe");
+    fs::copy(&cli, &executable).unwrap();
+    let missing = root.path().join("missing");
+    let case = root.path().join("path-walk");
+    let scope = ScanScope::new(&case, vec![&missing, &file_entry, &junction, &later]);
+    let (exit, bytes) = scope.run(&cli, &["version".into()], None);
+    assert_eq!(exit, 0);
+    let identity: Value = serde_json::from_slice(&bytes).unwrap();
+    let expected_version = identity["data"]["version"].as_str().unwrap();
+    let mut daemon = scope.start();
+
+    assert_eq!(row(&scope.scan(None), CLAUDE)["version"], expected_version);
+    fs::remove_file(&executable).unwrap();
+    assert_eq!(
+        row(&scope.scan(None), CLAUDE)["configuration_state"],
+        "executable_probe_unavailable"
+    );
+    fs::remove_dir(&junction).unwrap();
+    assert_eq!(
+        row(&scope.scan(None), CLAUDE)["configuration_state"],
+        "not_found_in_scope"
+    );
+    daemon.stop().unwrap();
+    println!(
+        "Windows Claude discovery: later installation found, unavailable and absent distinguished"
+    );
+}
 
 #[test]
 #[ignore = "requires official DSH npm and Node artifacts on Windows"]

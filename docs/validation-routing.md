@@ -325,9 +325,11 @@ It records `read_only_dsh_discovery`; it does not establish model configuration,
 an actual model request or UI acceptance. Other test names and mismatched ignored
 selection retain the ordinary fresh-profile admission.
 
-The two ignored public scan cases in [Windows Agent discovery](../crates/daemon/tests/support/windows_agent_discovery.rs)
+The ignored public scan cases in [Windows Agent discovery](../crates/daemon/tests/support/windows_agent_discovery.rs)
 run the measured CLI and Control daemon in temporary roots and record
-`read_only_agent_discovery`. Use the configured standard-user session. The DSH
+`read_only_agent_discovery`. Use the configured standard-user session. The Claude
+case exercises lookup of a later native image and distinguishes an unavailable
+PATH candidate from a confirmed absence. The DSH
 case requires the pinned npm entry and Node. The Codex case requires the official
 MSIX registered for that user and runs with an isolated PATH and HOME so the
 only visible Codex engine is the bundled one.

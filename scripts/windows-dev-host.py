@@ -304,12 +304,14 @@ def admit_test_profile(request, home, localappdata):
     if (request['binary'] == 'hiroute_local_storage.exe' and not request['ignored']
             and request['case'] in {prefix + name for name in artifact_cases}):
         return 'temporary_artifact_component'
-    # These regressions use only temporary auth files and a temporary search path.
+    # These regressions use only temporary files and search paths.
     windows_regressions = {
         ('hiroute_cpa_bridge.exe',
          'accounts::stock::pin_tests::windows_pin_reads_accept_cpa_replacement_with_private_inherited_acl'),
         ('hiroute_integrations.exe',
          'agents::filesystem::tests::qoder::windows_qoder_scan_distinguishes_absence_from_unusable_path'),
+        ('hiroute_integrations.exe',
+         'agents::executable::windows_tests::windows_explicit_executable_does_not_skip_an_unavailable_preferred_file'),
     }
     if not request['ignored'] and (request['binary'], request['case']) in windows_regressions:
         return 'temporary_artifact_component'
@@ -349,6 +351,7 @@ def admit_test_profile(request, home, localappdata):
             and request['case'] in {
                 'windows_agent_discovery::actual_windows_codex_desktop_only_registers_both_agent_entries',
                 'windows_agent_discovery::actual_windows_dsh_scan_accepts_a_standalone_shim_and_skips_invalid_path_candidates',
+                'windows_agent_discovery::actual_windows_claude_scan_continues_past_unavailable_path_entries',
             }):
         # These scans own their runtime, storage and native configuration roots.
         return 'read_only_agent_discovery'

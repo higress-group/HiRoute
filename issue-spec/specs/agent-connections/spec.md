@@ -1114,6 +1114,13 @@ Desktop SHALL retain the supported local Agent catalog when an installation or e
 - **WHEN** a supported Agent has no discovered effective configuration
 - **THEN** its catalog entry remains visible with an honest discovery state and a rescan action; settings cannot be applied without a validated context.
 
+#### Scenario: An earlier Windows PATH entry cannot be used
+
+- **WHEN** the shared Windows executable resolver searches PATH by name and an earlier entry is missing, is not a directory, or cannot supply an admitted executable
+- **THEN** discovery SHALL continue in search order and use the first candidate that passes the Agent's executable path checks
+- **AND** an exhausted search SHALL report an unavailable probe if an entry could not be inspected or a candidate failed path admission, and report no match when the search confirms absence
+- **AND** an explicitly selected executable remains subject to its own path checks and does not fall back to a different launcher after a failed admission.
+
 #### Scenario: Remember and revalidate a custom directory
 
 - **WHEN** the owner selects a valid custom configuration directory and later reopens Desktop
