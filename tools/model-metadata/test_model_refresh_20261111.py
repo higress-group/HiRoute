@@ -36,7 +36,7 @@ class November11ModelProjectionTests(unittest.TestCase):
             if binding['model_key'] in NEW_MODELS:
                 self.assertEqual(binding['availability']['state'], 'conditional')
                 self.assertEqual(binding['protocol_qualification'], 'runtime-required')
-        self.assertEqual(len(self.data['models']), 30)
+        self.assertEqual(len(self.data['models']), 31)
         for model in self.data['models']:
             self.assertFalse(any(key in model['model_configuration_id'] for key in NEW_MODELS))
 

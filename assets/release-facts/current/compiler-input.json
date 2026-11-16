@@ -2076,6 +2076,19 @@
         {
           "capabilities": {
             "context_tokens": 1000000,
+            "max_output_tokens": 262144,
+            "streaming": true,
+            "tool": true,
+            "vision": true
+          },
+          "display_name": "Qwen4-Max",
+          "model_configuration_id": "model.catalog.qwen-4-max",
+          "publisher_id": "publisher.alibaba-qwen",
+          "revision": 1
+        },
+        {
+          "capabilities": {
+            "context_tokens": 1000000,
             "max_output_tokens": 393216,
             "streaming": true,
             "tool": true,
@@ -7604,7 +7617,7 @@
         {
           "canonical_identity": "qwen-4-max",
           "capabilities": {
-            "streaming": "conditional",
+            "streaming": "supported",
             "structured_output": "supported",
             "tool": "supported",
             "vision": "supported",
@@ -7615,7 +7628,7 @@
             "value": 1000000
           },
           "context_variants": [],
-          "data_note": "Input ceilings are 983616 tokens with thinking and 991808 without thinking. The 1000000-token context is the total window. In Chat, max_tokens and max_completion_tokens limit thinking and the final answer together. preserve_thinking defaults true, and historical reasoning_content must be sent separately from content. Responses uses max_output_tokens for the combined budget.",
+          "data_note": "Input ceilings are 983616 tokens with thinking and 991808 without thinking. The 1000000-token context is the total window. In Chat, max_tokens and max_completion_tokens limit thinking and the final answer together. preserve_thinking defaults true, and historical reasoning_content must be sent separately from content. Responses uses max_output_tokens for the combined budget. Provider documentation includes streaming; endpoint and account qualification still require runtime checks.",
           "display_name": "Qwen4-Max",
           "evidence_refs": [
             "source-qwen4-max-chat",
@@ -107393,11 +107406,11 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:5fe26be18cfd1c57fb85d3bf81f09a18618ff939f59c6cbd3dbd7724112ae317"
+      "source_catalog_digest": "sha256:e79b376f0cfa4635fb54c70073d15ada01ea04f5378c8792f2d6bac93dc1bcfb"
     },
     "rating_snapshot": {
-      "digest": "sha256:5fa20fef854989fc3c1a6106af04121e5b934ad1f391ab93a414958ec570aadf",
-      "model_catalog_digest": "sha256:9a7552c0d3206b1e144ed7c55e344a4479ca387cae7deb36ae7666cf29b07239",
+      "digest": "sha256:3903b9b5f5b0c6111d7dd2e752d9538390d32e72950c3a0edee8d025449f4919",
+      "model_catalog_digest": "sha256:78607d8256d4c051929c12c629b6b0dc33dc8c1f703f3f1c21e8e44117ac2ebf",
       "models": [
         {
           "capability": {
@@ -107502,6 +107515,13 @@
             "parameter": "enable_thinking"
           },
           "model_configuration_id": "model.bailian.qwen3-max-2026-01-23"
+        },
+        {
+          "capability": {
+            "kind": "fixed",
+            "profile": "provider-default"
+          },
+          "model_configuration_id": "model.catalog.qwen-4-max"
         },
         {
           "capability": {
@@ -108376,6 +108396,25 @@
           "native_configuration": {
             "enabled": true,
             "kind": "toggle"
+          },
+          "overall": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "tool": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          }
+        },
+        {
+          "coding": {
+            "reason": "rating_not_collected",
+            "state": "unknown"
+          },
+          "model_configuration_id": "model.catalog.qwen-4-max",
+          "native_configuration": {
+            "kind": "fixed",
+            "profile": "provider-default"
           },
           "overall": {
             "reason": "rating_not_collected",
@@ -109502,7 +109541,7 @@
     "schema": "hiroute.release-model-data/v2"
   },
   "official_model_data": {
-    "data_revision": 17,
+    "data_revision": 18,
     "pricing_facts": [
       {
         "pricing_key": "anthropic-platform/claude-fable-5-2/claude-fable-5-2",

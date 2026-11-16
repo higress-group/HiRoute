@@ -1,7 +1,7 @@
 {
   "artifact_kind": "hiroute.model-metadata-client-discovery-runs",
   "as_of": "2026-11-16",
-  "catalog_digest_compared": "sha256:5fe26be18cfd1c57fb85d3bf81f09a18618ff939f59c6cbd3dbd7724112ae317",
+  "catalog_digest_compared": "sha256:e79b376f0cfa4635fb54c70073d15ada01ea04f5378c8792f2d6bac93dc1bcfb",
   "policy": {
     "candidate_outputs_materialized": true,
     "metadata_records_materialized": true,
