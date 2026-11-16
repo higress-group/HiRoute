@@ -450,5 +450,11 @@ private local storage. Shut down the test guest after the smoke.
    standard-user cases. Publication replay of a historically deferred installer
    verifies the original artifact-bound decision and its recorded verdicts.
 
+The ordinary website workflow validates the catalog merge and leaves deployment
+of a new release to `publish-release`. The release workflow uploads the verified
+objects before deploying the catalog and accompanying website edits. See the
+[website deployment policy](../apps/website/README.md#oss-deployment) for
+follow-up pushes and manual dispatches.
+
 The build workflow only stores Actions artifacts. It does not publish a GitHub
 Release, alter the stable catalog, or replace any immutable distribution object.

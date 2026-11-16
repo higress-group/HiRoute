@@ -300,9 +300,10 @@ sequence rules and release compatibility. OSS upload credentials are described b
 
 ## OSS deployment
 
-The `website` workflow builds on pull requests. Pushes to `main` and explicit
-dispatches on `main` deploy through the `website-production` GitHub environment. Configure
-the same secret names as the Higress website:
+The `website` workflow builds on pull requests, selected pushes to `main`, and
+manual dispatches. An eligible push or manual dispatch on `main` deploys through
+the `website-production` GitHub environment. Configure the same secret names as
+the Higress website:
 
 - `ACCESS_KEYID`
 - `ACCESS_KEYSECRET`
@@ -313,12 +314,25 @@ The fixed storage configuration is:
 - endpoint: `oss-cn-hongkong.aliyuncs.com`
 - region: `cn-hongkong`
 
+A push that adds an unrecorded release version runs website validation and
+leaves deployment to `publish-release`. Follow-up website pushes and manual
+dispatches wait while a catalog entry has neither a recorded snapshot nor a
+published GitHub Release. The release workflow builds from `main` when it starts,
+so website changes merged alongside the catalog or during that wait are included.
+If a release is already public on GitHub and its website publication needs a
+retry, dispatch `publish-release` for the same tag.
+
+Ordinary deployment rechecks the website inputs on `main` while holding the
+shared production lock. A queued build skips upload if those inputs have changed.
+Product-only commits, including release snapshot and development version updates,
+do not invalidate the website build.
+
 Website deployment uses short caching for mutable pages and immutable caching for
 hashed Astro assets. Release packages use immutable caching and SHA256 metadata.
 Neither workflow deletes objects or synchronizes the whole bucket destructively.
-When the manifest is nonempty, ordinary website deployment first checks that every
-referenced release object exists with matching size and SHA metadata; broken links
-therefore fail deployment without replacing the currently served site.
+Before either workflow uploads website content, every referenced release object
+must exist with matching size and SHA-256 metadata. An absent or mismatched
+object fails the deployment.
 
 DNS, HTTPS, custom-domain routing, bucket read policy, and the rule that missing
 `/releases/*` and `/model-feed/*` objects return a real 404 without redirects remain
