@@ -29,6 +29,11 @@ facts. Source, product, region, protocol, account, and upstream model ID scopes 
 same-name models from different Providers never share endpoints, credentials, prices, or
 entitlements.
 
+A descriptive recommendation can use a generated reference model with ID
+`model.catalog.<model_key>`. The Desktop reads the canonical model's documented
+endpoint bindings and checks the selected installed connection product during
+setup. Keep these references free of executable capabilities and offers.
+
 The generated runtime projection promotes only records with a complete executable endpoint and
 adapter contract. Models newly observed from an already-qualified account/Endpoint may use the
 separately marked conservative runtime fallback; that does not create canonical identity, rating,

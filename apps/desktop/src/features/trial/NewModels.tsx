@@ -73,7 +73,8 @@ export function NewModels({ language, active, plans, refreshVersion, onTry, onSa
         <div className="new-model-meta"><span>{modelSubtitle(model, language)} · {t(`公告收录 ${shortDate(includedOn, language)}`, `Announcement added ${shortDate(includedOn, language)}`)}</span><span className="badge info no-dot">{kind === 'model_update' ? t('模型更新', 'Update') : t('新模型', 'New')}</span></div>
         <h3>{headline || model.display_name}</h3>
         {tags.length > 0 && <div className="model-fact-tags">{tags.map(tag => <span key={tag} className="badge no-dot">{tag}</span>)}</div>}
-        {note && <p className="new-model-note">{note}</p>}
+        <p className="new-model-note">{referenceModelKey(model) && note ? note
+          : t('从范围明确的小任务开始试用，并观察实际表现。', 'Start with a well-scoped task and observe the results.')}</p>
         <div className="new-model-foot">
           <div className="new-model-status">
             <span className={`badge no-dot ${s.tone}`}>{s.label}</span>

@@ -227,7 +227,7 @@ try {
       assert.ok(await evaluate(client, `document.querySelector('.trial-model-card[aria-pressed=true] .trial-model-note')?.textContent.trim().length>0`));
       assert.ok(await evaluate(client, `document.querySelector('.trial-model-card[aria-pressed=true] .trial-model-check')!==null`));
       await shot(`trial-cards-${suffix}`);
-      const clearance = await evaluate(client, `(()=>{const s=document.querySelector('.trial-page .page-content');s.scrollTop=s.scrollHeight;const cards=[...document.querySelectorAll('.trial-setup>.trial-card')];const last=cards.at(-1).getBoundingClientRect(),footer=document.querySelector('.trial-footer').getBoundingClientRect();return {last:last.bottom,top:footer.top,height:footer.height,bottom:footer.bottom};})()`);
+      const clearance = await evaluate(client, `(()=>{const s=document.querySelector('.trial-page .page-content');s.scrollTop=s.scrollHeight;const cards=[...document.querySelectorAll('.trial-setup .trial-card')];const last=cards.at(-1).getBoundingClientRect(),footer=document.querySelector('.trial-footer').getBoundingClientRect();return {last:last.bottom,top:footer.top,height:footer.height,bottom:footer.bottom};})()`);
       assert.ok(clearance.top - clearance.last >= clearance.height - 1, JSON.stringify(clearance));
       assert.ok(clearance.bottom <= height + 1, JSON.stringify(clearance));
       await shot(`trial-bottom-${suffix}`);
