@@ -117,6 +117,15 @@ test('release publisher rejects an existing object with different immutable meta
   assert.doesNotMatch(readLog(data.log), /oss cp/);
 });
 
+test('website deploy refuses a published object with different SHA-256 metadata', () => {
+  const data = fixture();
+  const result = execute('.github/scripts/deploy-website-oss.sh',
+    [data.dist, data.manifestPath], data, { OSS_TEST_SHA: '0'.repeat(64) });
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /metadata does not match manifest/);
+  assert.doesNotMatch(readLog(data.log), /oss cp/);
+});
+
 test('OSS object sizes must match the complete Content-Length field', () => {
   for (const [script, argumentsFor, message] of [
     ['.github/scripts/publish-release-oss.sh', data => [data.assets, data.manifestPath, 'v1.2.3'], /different size/],

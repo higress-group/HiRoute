@@ -7,6 +7,7 @@ on:
       - 'news/**'
       - 'experiments/**'
       - 'decision-extensions/**'
+      - 'apps/desktop/src-tauri/icons/icon.png'
       - 'scripts/collect-third-party-licenses.py'
       - 'scripts/build-cpa.py'
       - 'scripts/build-release.py'
@@ -32,6 +33,7 @@ on:
       - 'news/**'
       - 'experiments/**'
       - 'decision-extensions/**'
+      - 'apps/desktop/src-tauri/icons/icon.png'
       - 'scripts/collect-third-party-licenses.py'
       - 'scripts/build-cpa.py'
       - 'scripts/build-release.py'
@@ -63,6 +65,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    outputs:
+      deploy: ${{ steps.publication.outputs.deploy }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -105,10 +109,17 @@ jobs:
           path: apps/website/dist
           if-no-files-found: error
           retention-days: 7
+      - name: Check publication readiness
+        id: publication
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WEBSITE_BEFORE: ${{ github.event.before }}
+        run: node .github/scripts/website-deployment.mjs plan "$WEBSITE_BEFORE"
 
   deploy:
     needs: build
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && needs.build.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: website-production
@@ -119,17 +130,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Check that the build still matches main
+        id: current
+        run: node .github/scripts/website-deployment.mjs current
       - uses: actions/download-artifact@v4
+        if: steps.current.outputs.deploy == 'true'
         with:
           name: hiroute-website-${{ github.sha }}
           path: apps/website/dist
       - name: Install Aliyun CLI
+        if: steps.current.outputs.deploy == 'true'
         run: .github/scripts/install-aliyun-cli.sh "$RUNNER_TEMP/bin"
       - name: Upload static website to hiroute-ai
+        if: steps.current.outputs.deploy == 'true'
         env:
           ACCESS_KEYID: ${{ secrets.ACCESS_KEYID }}
           ACCESS_KEYSECRET: ${{ secrets.ACCESS_KEYSECRET }}
