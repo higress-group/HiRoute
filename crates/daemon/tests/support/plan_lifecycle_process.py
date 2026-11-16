@@ -1,5 +1,6 @@
 """Plan lifecycle through the real CLI, durable publication and daemon restart."""
 import json
+import stat
 import sys
 from publication_product import Product
 from publication_process import bootstrap, configure_model_settings_v2
@@ -18,16 +19,30 @@ def run(repository):
                       'plan_id': product.plan_id,
                       'expected_head_revision': head['head_revision'], 'status': status}
             count = operation_count(product)
-            preview = product.public_cli('routing preview', {'change': change})[1]['data']
+            apply_file = product.project / f'lifecycle-{status}.json'
+            prepared = product.public_cli(
+                f'routing preview --apply-file {apply_file} --idempotency-key {status}',
+                {'change': change})[1]['data']
+            preview = prepared['preview']
+            submission = prepared['submission']
+            assert submission['state'] == 'prepared_not_submitted'
+            assert submission['command_id'] == 'routing.apply'
+            assert submission['operation_lookup']['operation_kind'] == 'ApplyAgentPlanChange'
+            assert stat.S_IMODE(apply_file.stat().st_mode) == 0o600
+            exact = apply_file.read_bytes()
             # No Agent grant is configured yet, so even an enabled Plan has no public alias.
             assert preview['no_new_calls'], preview
             assert not preview['has_agent_references'] and not preview['has_version_holds'], preview
             assert read_content(product) == (head, versions)
+            assert operation_count(product) == count, 'Preview applied a lifecycle change'
+            command = ' '.join(submission['arguments'])
+            result = product.public_cli(command)[1]
+            assert result['data']['state'] == 'succeeded', result
+            assert product.public_cli(command)[1]['data'] == result['data']
             body = {'change': change, 'accept_digest': preview['change_digest'],
                     'expected_revisions': preview['expected_revisions'], 'idempotency_key': status}
-            result = product.public_cli('routing apply', body)[1]
-            assert result['data']['state'] == 'succeeded', result
             assert product.public_cli('routing apply', body)[1]['data'] == result['data']
+            assert apply_file.read_bytes() == exact
             assert operation_count(product) == count + 1
             updated, retained = read_content(product)
             assert updated['status'] == status and updated['head_revision'] == head['head_revision'] + 1
