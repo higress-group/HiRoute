@@ -1624,6 +1624,18 @@
   ],
   "field_compatibility_support": [
     {
+      "contract": "OpenAI Responses web_search_call",
+      "field": "action.type=find",
+      "mode": "legacy_adapter",
+      "owner": "gateway/protocol-adapters",
+      "reason": "HiRoute 0.6.3 and earlier could read and render find as a search action tag. Existing input remains readable, and native replay preserves the original item. Responses items generated from the typed action use find_in_page.",
+      "removal_condition": "Retire only after supported Gateway callers and retained native history no longer require the released find tag.",
+      "allowed_paths": [
+        "crates/gateway/src/model_ir/search.rs",
+        "crates/gateway/src/adapters/tests/native_literal_provenance.rs"
+      ]
+    },
+    {
       "contract": "hiroute.windows-desktop-package/v1",
       "field": "historical native_runtime deferral and dual-selection evidence",
       "mode": "legacy_adapter",

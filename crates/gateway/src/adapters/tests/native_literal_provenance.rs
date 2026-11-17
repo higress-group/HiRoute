@@ -513,7 +513,8 @@ fn native_literal_canonical_search_history_preserves_typed_marker_strings() {
     for action in [
         json!({"type":"search","query":marker,"queries":[marker],"sources":[{"type":"url","url":marker}]}),
         json!({"type":"open_page","url":marker}),
-        json!({"type":"find","url":marker,"pattern":marker}),
+        json!({"type":"find_in_page","url":marker,"pattern":marker}),
+        json!({"type":"find_in_page","pattern":marker}),
     ] {
         let fixture = Fixture::new();
         let search =
@@ -526,6 +527,32 @@ fn native_literal_canonical_search_history_preserves_typed_marker_strings() {
         request.native_body = None;
         let wire = fixture.wire(&request, IngressProtocol::Responses);
         assert_eq!(wire["input"][0], search);
+    }
+}
+
+#[test]
+fn responses_find_accepts_released_alias_and_preserves_native_action() {
+    let fixture = Fixture::new();
+    let legacy = json!({"type":"find","url":"https://example.com/","pattern":"Example"});
+    let standard = json!({"type":"find_in_page","url":"https://example.com/","pattern":"Example"});
+    let no_url = json!({"type":"find_in_page","pattern":"Example"});
+    let null_url = json!({"type":"find_in_page","url":null,"pattern":"Example"});
+    for (received, rendered) in [(legacy, standard), (null_url, no_url)] {
+        let search = json!({"type":"web_search_call","id":"ws_find","status":"completed",
+            "action":received});
+        let mut request = decode_ingress_request(
+            IngressProtocol::Responses,
+            &json!({"model":"alias","input":[search,{"role":"user","content":"continue"}]}),
+        )
+        .unwrap();
+        assert_eq!(
+            fixture.wire(&request, IngressProtocol::Responses)["input"][0],
+            search
+        );
+
+        request.native_body = None;
+        let wire = fixture.wire(&request, IngressProtocol::Responses);
+        assert_eq!(wire["input"][0]["action"], rendered);
     }
 }
 

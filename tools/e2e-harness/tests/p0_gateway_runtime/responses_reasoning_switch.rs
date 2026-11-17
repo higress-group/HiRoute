@@ -19,8 +19,12 @@ fn responses_reasoning_switch_preserves_portable_history_and_target_source_state
         "type": "function_call", "id": "fc_lookup", "call_id": "lookup-call",
         "name": "lookup", "arguments": "{}", "status": "completed"
     });
+    let search = json!({
+        "type": "web_search_call", "id": "ws_lookup", "status": "completed",
+        "action": {"type": "find_in_page", "url": "https://example.com/", "pattern": "Example"}
+    });
     let gpt = NativeProvider::start(vec![
-        streamed("gpt-tool", vec![encrypted.clone(), tool]),
+        streamed("gpt-tool", vec![encrypted.clone(), search.clone(), tool]),
         streamed(
             "gpt-answer",
             vec![message("msg_a", "final_answer", "Found it.")],
@@ -71,6 +75,7 @@ fn responses_reasoning_switch_preserves_portable_history_and_target_source_state
     let mut input = vec![json!({"role": "user", "content": "Find the record."})];
     input.extend(send(&fixture, session, "main", "turn-a", &input));
     assert_eq!(input[1], encrypted);
+    assert_eq!(input[2], search);
     input
         .push(json!({"type": "function_call_output", "call_id": "lookup-call", "output": "found"}));
     // Select GPT again after the tool result so this assertion exercises native
@@ -79,6 +84,7 @@ fn responses_reasoning_switch_preserves_portable_history_and_target_source_state
     input.extend(send(&fixture, session, "main", "turn-a2", &input));
     assert_eq!((gpt.calls(), kimi.calls(), classifier.calls()), (2, 0, 2));
     assert_eq!(upstream_input(&gpt, 1)[1], encrypted);
+    assert_eq!(upstream_input(&gpt, 1)[2], search);
 
     input.push(json!({"role": "user", "content": "Say hello."}));
     let kimi_output = send(&fixture, session, "main", "turn-b", &input);
@@ -87,7 +93,7 @@ fn responses_reasoning_switch_preserves_portable_history_and_target_source_state
     assert_eq!(
         upstream_input(&kimi, 0),
         excluding(&input, "rs_openai"),
-        "GPT ciphertext must stay at its source, with text and tool history preserved"
+        "GPT ciphertext must stay at its source, with search, text and tool history preserved"
     );
 
     input.extend(kimi_output);

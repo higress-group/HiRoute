@@ -288,6 +288,10 @@ delivery expands them once per child and charges the full repeated wire length.
 [Listener regressions](../../tools/e2e-harness/tests/p0_gateway_protocol/responses_chat_tools.rs)
 cover described namespaces, tool continuation and unsupported-tool fallback.
 
+The typed Responses search adapter reads and renders `find_in_page`, including
+completed actions without a URL. It reads the released `find` spelling for
+compatibility. Native replay retains the incoming action and fields.
+
 Same-protocol Responses forwarding preserves provider tool names and namespaces
 even when they disagree across snapshots of the same call. The call ID and
 native carrier (function, custom or provider-run web search) must remain stable.

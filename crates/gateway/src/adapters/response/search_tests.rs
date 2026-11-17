@@ -29,7 +29,16 @@ fn events() -> Vec<Value> {
 
 #[test]
 fn search_stream_replays_with_trusted_owner_and_original_action() {
-    let wire: Vec<u8> = events()
+    assert_search_stream_replay(events());
+    let mut frames = events();
+    frames[5]["item"]["action"] = json!({
+        "type":"find_in_page","url":"https://example.com/search","pattern":"Fixture"
+    });
+    assert_search_stream_replay(frames);
+}
+
+fn assert_search_stream_replay(frames: Vec<Value>) {
+    let wire: Vec<u8> = frames
         .iter()
         .flat_map(|event| {
             format!(
@@ -70,11 +79,11 @@ fn search_stream_replays_with_trusted_owner_and_original_action() {
             .find(|event| event.event.as_deref() == Some("response.output_item.done"))
             .unwrap();
         assert_eq!(done.data["item"]["type"], "web_search_call");
-        assert_eq!(done.data["item"]["action"], events()[5]["item"]["action"]);
+        assert_eq!(done.data["item"]["action"], frames[5]["item"]["action"]);
         let body = json!({"model":"alias","input":[done.data["item"].clone()]});
         let request = decode_ingress_request(IngressProtocol::Responses, &body).unwrap();
         let native = project_candidate_request(&request, &candidate).unwrap();
-        assert_eq!(native.body["input"][0], events()[5]["item"]);
+        assert_eq!(native.body["input"][0], frames[5]["item"]);
         let another = CandidateProtocolProfile::exact_portable_path(
             IngressProtocol::Responses,
             IngressProtocol::Responses,

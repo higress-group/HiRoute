@@ -862,7 +862,10 @@ impl<'a> Encoder<'a> {
             }
             Some(WebSearchAction::Find { url, pattern }) => {
                 self.tag(b"find");
-                self.string(url);
+                match url {
+                    Some(url) => self.string(url),
+                    None => self.tag(b"no-url"),
+                }
                 self.string(pattern);
             }
             None => self.tag(b"no-action"),

@@ -65,8 +65,10 @@ pub enum WebSearchAction {
     OpenPage {
         url: String,
     },
+    #[serde(rename = "find_in_page", alias = "find")]
     Find {
-        url: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        url: Option<String>,
         pattern: String,
     },
 }
