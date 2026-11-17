@@ -420,6 +420,7 @@ fn decode_tool_declarations(
                     .push(ResponsesToolOrderEntryV1::Tool { index });
             }
             "namespace" => {
+                ensure_absent(object, &["execution"], "responses namespace execution")?;
                 ensure_keys(
                     context,
                     object,
