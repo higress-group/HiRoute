@@ -105,7 +105,7 @@ def digest(value):
     return 'sha256:' + hashlib.sha256(body).hexdigest()
 
 
-def publication(product, sequence, present=True):
+def publication(product, sequence, *, revision_offset, present=True):
     snapshot = json.loads((product.repo / 'assets/release-facts/current/bundle/official-model-data.json').read_text())
     data = snapshot['data']
     if present:
@@ -143,7 +143,7 @@ def publication(product, sequence, present=True):
     rating['models'].sort(key=lambda row: row['model_configuration_id'])
     rating['model_catalog_digest'] = digest(data['models'])
     rating['digest'] = digest([rating[key] for key in ['schema', 'version', 'scale_version', 'model_catalog_digest', 'models', 'records']])
-    snapshot.update(data_revision=sequence, data_digest=digest(data))
+    snapshot.update(data_revision=snapshot['data_revision'] + revision_offset, data_digest=digest(data))
     return {'schema': 'hiroute.model-feed/v2', 'sequence': sequence, 'issued_at': '2026-10-18T00:00:00Z', 'source_revision': product.sha, **snapshot, 'featured': []}
 
 
@@ -260,7 +260,7 @@ def complete_metadata_pages(product):
 def correct_saved_model(product, fixture, source, binding, included):
     before = preserve_vision(product, source, binding)
     corrected = copy.deepcopy(included)
-    corrected.update(sequence=18, data_revision=18)
+    corrected.update(sequence=18, data_revision=included['data_revision'] + 1)
     data = corrected['data']
     model = next(m for m in data['models'] if m['model_configuration_id'] == MODEL)
     model['capabilities']['context_tokens'] += 4096
@@ -277,7 +277,7 @@ def correct_saved_model(product, fixture, source, binding, included):
     corrected['data_digest'] = digest(data)
     (fixture / 'publication.json').write_bytes(wire(corrected))
     status = product.cli('models', 'feed', 'refresh')['data']
-    assert status['selected']['data_revision'] == 18, status
+    assert status['selected']['data_revision'] == corrected['data_revision'], status
     defaults = product.cli('compute', 'defaults', 'get', '--request-stdin', payload={'source_id': source['source_id']})['data']
     fields = next(m for m in defaults['models'] if m['binding_id'] == binding)['fields']
     assert fields['context_tokens']['effective_value'] == context, fields
@@ -318,7 +318,7 @@ def run(repository):
     stage = 'install'
     try:
         product.env.update(HIROUTE_TEST_MODEL_FEED_ROOT=str(fixture), HIROUTE_E2E_DIAL_CONFIG=str(upstream.dial))
-        included = publication(product, 17)
+        included = publication(product, 17, revision_offset=1)
         (fixture / 'publication.json').write_bytes(wire(included))
         product.install()
         product.start()
@@ -414,7 +414,7 @@ def run(repository):
         assert product.cli('routing', 'preview', '--request-stdin', payload=new_draft)['status'] == 'succeeded'
         stage = 'withdraw-remove-restart'
         print(json.dumps({'scenario': 'installed-https-feed-lifecycle', 'stage': stage}), flush=True)
-        withdrawn = publication(product, 20, False)
+        withdrawn = publication(product, 20, revision_offset=3, present=False)
         (fixture / 'publication.json').write_bytes(wire(withdrawn))
         assert product.cli('models', 'feed', 'refresh')['data']['held']['sequence'] == 20
         stale = raw(product, 'models', 'feed', 'remove', 'apply', payload={
@@ -474,12 +474,12 @@ def run(repository):
         assert status['last_attempt']['reason'] == 'older_sequence' and status['held'] is None, status
         (fixture / 'publication.json').write_bytes(wire(withdrawn))
         assert product.cli('models', 'feed', 'refresh')['data']['held']['sequence'] == 20
-        conflicting = publication(product, 20)
+        conflicting = publication(product, 20, revision_offset=3)
         (fixture / 'publication.json').write_bytes(wire(conflicting))
         assert product.cli('models', 'feed', 'refresh')['data']['last_attempt']['reason'] == 'same_sequence_conflicting_digest'
         stage = 'embedded-absorption'
         print(json.dumps({'scenario': 'installed-https-feed-lifecycle', 'stage': stage}), flush=True)
-        restored = publication(product, 21)
+        restored = publication(product, 21, revision_offset=4)
         (fixture / 'publication.json').write_bytes(wire(restored))
         assert product.cli('models', 'feed', 'refresh')['data']['held']['sequence'] == 21
         (fixture / 'absorbed.json').write_bytes(wire(restored))
