@@ -554,6 +554,15 @@ Position metadata is ephemeral and cannot authorize provider affinity or cleanup
 The [cross-protocol coverage cases](src/agent_turn_history/boundary/coverage_tests.rs)
 and [retained-peer stages](src/core_runtime/decision_history/retained_peer_tests.rs)
 exercise fresh recovery without removing old input.
+Codex also appends a `function_call_output` named `agent.goal_objective` without
+`call_id` as additional context. [Ingress](src/adapters/responses_ingress.rs)
+preserves that exact form as unmodeled native context; it adds no ToolResult or
+user intent. Native Responses replay retains the original item, while Chat and
+Messages candidates are excluded without an equivalent mapping. Ordinary tool
+results retain strict call identity. [Adapter cases](src/adapters/tests/goal_context.rs)
+and [listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/codex_goal_context.rs)
+cover goal continuation, large Replay-backed text and protocol fallback.
+
 Native Codex peer `agent_message` items use the
 [Responses ingress](src/adapters/responses_ingress.rs) native-only path: same-protocol
 forwarding preserves author/recipient, text and ciphertext. Cross-protocol conversion

@@ -132,6 +132,37 @@ pub(super) fn decode_responses_input(
                 name: None,
             });
         }
+        "function_call_output"
+            if !object.contains_key("call_id")
+                && object.get("name").and_then(Value::as_str) == Some("goal_objective")
+                && object.get("namespace").and_then(Value::as_str) == Some("agent") =>
+        {
+            ensure_keys(
+                context,
+                object,
+                &[
+                    "type",
+                    "name",
+                    "namespace",
+                    "output",
+                    "id",
+                    "status",
+                    "internal_chat_message_metadata_passthrough",
+                ],
+                "responses goal context",
+            )?;
+            if !object.get("output").is_some_and(Value::is_string) {
+                return Err(ModelIrError::InvalidField("output"));
+            }
+            // Codex appends this context after the real create_goal result. It
+            // has no call identity and cannot become an executable ToolResult.
+            context.mark_native_only();
+            messages.push(CanonicalMessage {
+                role: MessageRole::Assistant,
+                content: Vec::new(),
+                name: None,
+            });
+        }
         "function_call_output" => {
             ensure_keys(
                 context,

@@ -36,6 +36,9 @@ mod native_image_replay;
 #[path = "tests/codex_replay.rs"]
 mod codex_replay;
 
+#[path = "tests/goal_context.rs"]
+mod goal_context;
+
 #[path = "tests/payload_tolerance.rs"]
 mod payload_tolerance;
 

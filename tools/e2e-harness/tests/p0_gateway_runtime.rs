@@ -18,6 +18,8 @@ mod cancelled_tool_stage;
 mod codex_acp_history;
 #[path = "p0_gateway_runtime/codex_additional_tools.rs"]
 mod codex_additional_tools;
+#[path = "p0_gateway_runtime/codex_goal_context.rs"]
+mod codex_goal_context;
 #[path = "p0_gateway_runtime/codex_v2_encoding.rs"]
 mod codex_v2_encoding;
 #[path = "p0_gateway_runtime/context_overflow.rs"]

@@ -126,6 +126,16 @@ proven target format and rejects collisions. Past delivery/memory membership/cur
 candidate cannot grant or deny future request authority. Current grant/route/credential
 checks are independent. Output delivery counters reflect actual accepted frames only.
 
+Codex's additional goal context is a native Responses `function_call_output` with
+`name=goal_objective`, `namespace=agent`, string `output`, and no `call_id` field.
+It is retained as an unmodeled, non-executable native history item. It SHALL NOT
+create a canonical ToolResult, tool identity, user input, execution authority,
+semantic-prefix evidence or cleanup permission. Same-protocol forwarding retains
+the original item; Chat and Messages conversion requires an explicit equivalent
+and is currently excluded. The real `create_goal` call/result keeps its own ID.
+Every other executable tool result still requires its protocol's nonempty call ID;
+an absent, null or invalid identity cannot be repaired or attached to another call.
+
 Native Responses history preserves message.phase, supported turn metadata, reasoning
 fields/summary, nonempty encrypted_content, and legitimate completed item states;
 no process-local reasoning-owner registration is required. For the registered
