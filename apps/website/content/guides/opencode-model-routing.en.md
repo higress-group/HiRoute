@@ -4,6 +4,8 @@ Already have an OpenCode provider? Reuse its API in HiRoute, use a fast model fo
 
 [Download HiRoute](/en/download/) · [Browse Agent guides](/en/docs/agent-integrations/)
 
+Want local execution and local decisions? See the [Qwen + D3 integration guide](/en/docs/local-model-routing/) for a hybrid route with a cloud primary model.
+
 <aside class="agent-guide" id="agent-cli" aria-label="Instructions for an Agent">
 <div class="agent-guide-heading"><strong>Let an Agent follow this guide</strong></div>
 <details class="agent-guide-preview">
