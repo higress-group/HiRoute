@@ -22,6 +22,8 @@ For selected issue-spec steps, the built-in phase sequence and canonical artifac
 3. Default to `--issue` for a bounded change with one code writer. A single child or subagent is an execution choice, not a reason to create TASK or PROCESS. Use `--proposal` with optional `--design` and `--implement` only when product, design, or concrete coordination risk requires them. File count does not select the path.
 4. Read only selected issue bodies and typed planning artifacts. Historical REVIEW, VERIFY, evidence, receipt, finalization, Archive, and merge-authority data are explicit read-only audit history.
 
+When authorized work exposes evidence-backed CLI, workflow, or project skill friction, use [Workflow feedback](references/workflow-feedback.md). Project guidance may refine routing and write authorization.
+
 ## Optional Planning and Implementation
 
 - Create Proposal, Design, Implement, and TASK only when product, design, or coordination risk makes that planning useful. Create PROCESS only when a concrete execution need requires managed coordination: concurrent code writers, protection of pre-existing work through isolation, enforced path ownership, restartable cross-session handoff, or dependency-ordered integration. Generate selected canonical SPEC, QUESTION, TASK, and PROCESS planning artifacts; transition existing artifacts instead of regenerating them.
