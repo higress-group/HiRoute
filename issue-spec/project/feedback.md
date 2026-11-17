@@ -50,9 +50,11 @@ local absolute paths. Use `issue-spec version --json` for the installed CLI and
 [release.json](../../.agents/skills/issue-spec-workflow/release.json) for the generated
 workflow revision. Explain when a relevant revision is unavailable.
 
-For ordinary GitHub feedback in these repositories, follow the
-[GitHub skill](../../.agents/skills/issue-spec-github/SKILL.md). Confirm the required
-labels exist and provision missing labels if permitted. Set both labels at creation.
+Use the command below for the shared guide's Issue-creation step when filing
+ordinary feedback in either GitHub repository. Follow the
+[GitHub skill](../../.agents/skills/issue-spec-github/SKILL.md). Confirm both
+labels exist and provision missing labels if permitted. Pass one `--label` for
+`improvement/feedback` and one for the selected category at creation.
 
 ```sh
 gh issue create --repo OWNER/REPO --title 'Observed problem' --body-file report.md \
@@ -72,13 +74,19 @@ escalation result and any incomplete labeling.
 ## Review an interval
 
 When requested, query both verified repositories for `improvement/feedback`,
-including closed Issues. Use creation time for new Issues and search updated older
-Issues for dated occurrence records. Use the requested timezone and explicit dates.
-Count independent events by observation date and event identity. Page through the
-results and disclose gaps in coverage. Group by underlying cause and owning layer,
-give Issue and occurrence counts, link representative evidence and prioritize by
-observed impact and recurrence. Include relevant fix and adoption updates, with
-the observed benefit or missing verification.
+including closed Issues. Use creation time for new Issues and search updated
+older Issues for dated observations in their bodies and comments. Include and
+link independently verified historical evidence. Match historical evidence and
+structured records to the original event identity and count each event once by
+observation date in the requested timezone. Give explicit dates for interval counts
+and state the scope of any cumulative count. Build the interval report from
+existing evidence. Automatic escalation uses the CLI's confirmed count of
+structured records.
+
+Page through the results and disclose gaps in coverage. Group by underlying
+cause and owning layer. Give Issue and occurrence counts, link representative
+evidence and prioritize by observed impact and recurrence. Include relevant
+fix and adoption updates, with the observed benefit or missing verification.
 
 ## Assess an improvement in later work
 
