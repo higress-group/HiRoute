@@ -76,6 +76,14 @@ export const guidePages = {
       en: 'Configure a set of models for your Agent. Fixed model and Free first follow candidate order, difficulty routing keeps hard parts on your primary model, and custom branches pick by task category.',
     },
   },
+  'local-model-routing': {
+    zh: '本地模型与前沿模型协作', en: 'Local and frontier models',
+    title: { zh: '本地 Qwen 与前沿模型协作：使用 D3 本地决策', en: 'Combine local Qwen and frontier models with local D3 decisions' },
+    description: {
+      zh: '研究并配置本地 Qwen3.8-27B、D3 决策模型与云端主力模型的混合路由，了解协议要求、部署边界和 OpenCode 接入步骤。',
+      en: 'Plan and configure local Qwen3.8-27B execution, local D3 decisions and a cloud primary model. Understand protocol requirements, deployment limits and OpenCode setup.',
+    },
+  },
   'optimize-model-routing': {
     zh: '复盘与优化模型路由', en: 'Review and optimize model routing',
     title: { zh: 'Codex token 成本优化：让 Agent 复盘路由、调整决策提示词与信任度', en: 'Optimize Codex token costs: review routing, decision prompts and trust' },

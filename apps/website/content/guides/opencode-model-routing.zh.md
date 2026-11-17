@@ -4,6 +4,8 @@
 
 [下载 HiRoute](/zh/download/) · [查看其他 Agent 教程](/zh/docs/agent-integrations/)
 
+希望执行与决策都能使用本地模型？参考 [Qwen + D3 接入方案](/zh/docs/local-model-routing/)，将本地模型与云端主力组成混合路由。
+
 <aside class="agent-guide" id="agent-cli" aria-label="给 Agent 的操作指引">
 <div class="agent-guide-heading"><strong>让 Agent 参考本页执行</strong></div>
 <details class="agent-guide-preview">

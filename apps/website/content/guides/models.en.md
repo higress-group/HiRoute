@@ -54,6 +54,8 @@ After saving, a model shows **Connection ready**. This means it meets the local 
 
 ## Choose what to do next
 
+For local Qwen execution with a cloud primary model and local D3 decisions, see [Local and frontier models](/en/docs/local-model-routing/).
+
 Have a Qoder or WorkBuddy account? Connect the models it offers through [headless Magpie](/en/docs/magpie-model-sources/). See [Agent integrations](/en/docs/agent-integrations/) for other sources and setup steps.
 
 - **Reduce model costs in your daily Agent:** create a [model route](/en/docs/model-routing/) and map it to your Agent.
