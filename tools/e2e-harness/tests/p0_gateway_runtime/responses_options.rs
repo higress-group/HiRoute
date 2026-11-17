@@ -47,7 +47,10 @@ fn native_search_extensions_reach_upstream_and_retain_provider_outcomes() {
         assert_eq!(actual["tools"], body["tools"]);
         assert_eq!(actual["input"], body["input"]);
         if upstream_status == 400 {
-            assert_eq!(response.body, PERMANENT_ERROR);
+            assert_eq!(
+                serde_json::from_slice::<Value>(&response.body).unwrap(),
+                json!({"error":{"code":"UPSTREAM_ATTEMPT_FAILED","type":"upstream_error"}})
+            );
         }
     }
 }
@@ -150,7 +153,10 @@ fn native_tool_extensions_reach_each_protocol_and_retain_provider_outcomes() {
             assert_eq!(actual[history], body[history]);
             assert_eq!(actual["tools"], body["tools"]);
             if status == 400 {
-                assert_eq!(response.body, PERMANENT_ERROR);
+                assert_eq!(
+                    serde_json::from_slice::<Value>(&response.body).unwrap(),
+                    json!({"error":{"code":"UPSTREAM_ATTEMPT_FAILED","type":"upstream_error"}})
+                );
             }
         }
     }
