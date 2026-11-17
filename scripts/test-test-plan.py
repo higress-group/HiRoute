@@ -954,7 +954,9 @@ class IntegrationPreflightTests(unittest.TestCase):
 
     def test_public_project_agent_policy_does_not_build_product_binaries(self):
         paths = ['.gitignore', 'CLAUDE.md', '.agents/README.md', '.issue-spec/config.json', 'issue-spec/config.yaml',
-                 'issue-spec/project/workflow.md', '.claude/skills/issue-spec-apply',
+                 'issue-spec/project/workflow.md', 'issue-spec/project/feedback.md',
+                 '.claude/skills/issue-spec-apply', '.claude/skills/issue-spec-feedback',
+                 '.agents/skills/issue-spec-feedback/SKILL.md',
                  '.agents/skills/hiroute-implementation-writer/SKILL.md',
                  '.agents/skills/hiroute-validation/SKILL.md', '.claude/skills/hiroute-validation',
                  '.agents/skills/hiroute-release/SKILL.md', '.claude/skills/hiroute-release',

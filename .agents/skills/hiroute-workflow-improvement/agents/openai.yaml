@@ -1,6 +1,0 @@
-interface:
-  display_name: "HiRoute Workflow Improvement"
-  short_description: "Route and record HiRoute workflow feedback"
-  default_prompt: "Use $hiroute-workflow-improvement to classify feedback from HiRoute skills, CLI use, or workflows and record each independent occurrence with issue-spec feedback record."
-policy:
-  allow_implicit_invocation: true

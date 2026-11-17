@@ -59,8 +59,11 @@ INTEGRATION_SKILL = ".agents/skills/hiroute-integrate/SKILL.md"
 PROJECT_AGENT_SKILLS = {
     "hiroute-compatibility", "hiroute-cu", "hiroute-design-author", "hiroute-implementation-writer",
     "hiroute-integrate", "hiroute-macos-launch", "hiroute-process-coordinator",
-    "hiroute-public-pr", "hiroute-release", "hiroute-ui-quality", "hiroute-validation", "hiroute-workflow-improvement",
-    "issue-spec-apply", "issue-spec-github", "issue-spec-propose", "issue-spec-workflow", "model-metadata-maintainer",
+    "hiroute-public-pr", "hiroute-release", "hiroute-ui-quality", "hiroute-validation",
+    # A comparison base may still contain the retired project feedback skill.
+    "hiroute-workflow-improvement",
+    "issue-spec-apply", "issue-spec-feedback", "issue-spec-github", "issue-spec-propose",
+    "issue-spec-workflow", "model-metadata-maintainer",
 }
 AGENT_TOOL_COMMANDS = {
     "hiroute-cu": [["node", "--test", ".agents/skills/hiroute-cu/tests/" + name]
