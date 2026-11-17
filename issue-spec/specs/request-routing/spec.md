@@ -224,6 +224,7 @@ foreign signatures. Structured-output format is independent of thinking controls
 | Messages `output_config.format.type=json_schema` | Preserve native format or map to Responses `text.format` / Chat `response_format.json_schema` |
 | Structured Schema, description, explicit strict | Preserve exactly; absent required target name uses `hiroute_structured_output`, absent strict uses true |
 | Unknown format or format additions | Native preservation; cross-protocol exclusion when no equivalent exists |
+| Messages function-tool `type` absent, null or `custom` | Preserve the native declaration; cross-protocol conversion retains ordinary function semantics |
 | Messages function-tool boolean `eager_input_streaming` and valid `cache_control` | Preserve native hints; cross-protocol may omit non-execution hints while retaining callable semantics |
 | Chat response `service_tier` | Cross-protocol decoder accepts absent/null/string, rejects other types; native response passthrough remains unchanged |
 

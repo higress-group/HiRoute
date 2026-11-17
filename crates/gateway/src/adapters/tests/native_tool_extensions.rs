@@ -32,10 +32,59 @@ fn requests() -> Vec<(IngressProtocol, Value, [&'static str; 3])> {
             {"role":"user","content":"Read the fixture"},
             {"role":"assistant","content":[{"type":"tool_use","id":"call-1","name":"read","input":{}}]},
             {"role":"user","content":[{"type":"tool_result","tool_use_id":"call-1","content":"done"}]}
-        ],"tools":[{"name":"read","input_schema":{"type":"object"}}]}),
+        ],"tools":[{"type":"custom","name":"read","input_schema":{"type":"object"}}]}),
             ["/tools/0", "/messages/1/content/0", "/messages/2/content/0"],
         ),
     ]
+}
+
+#[test]
+fn messages_custom_type_keeps_native_bytes_and_portable_function_semantics() {
+    let (_, original, _) = requests()
+        .into_iter()
+        .find(|(protocol, _, _)| *protocol == IngressProtocol::Messages)
+        .unwrap();
+    for kind in [None, Some(json!(null)), Some(json!("custom"))] {
+        let mut body = original.clone();
+        match kind {
+            Some(kind) => body["tools"][0]["type"] = kind,
+            None => {
+                body["tools"][0].as_object_mut().unwrap().remove("type");
+            }
+        }
+        let request = decode_ingress_request(IngressProtocol::Messages, &body).unwrap();
+        assert!(!request.native_only);
+        for target in [
+            IngressProtocol::Responses,
+            IngressProtocol::ChatCompletions,
+            IngressProtocol::Messages,
+        ] {
+            let projected = project_candidate_request(
+                &request,
+                &exact_state_profile(IngressProtocol::Messages, target),
+            )
+            .unwrap();
+            match target {
+                IngressProtocol::Messages => assert_eq!(projected.body["tools"], body["tools"]),
+                IngressProtocol::Responses => {
+                    assert_eq!(projected.body["tools"][0]["type"], "function");
+                    assert_eq!(projected.body["tools"][0]["name"], "read");
+                    assert_eq!(
+                        projected.body["tools"][0]["parameters"],
+                        body["tools"][0]["input_schema"]
+                    );
+                }
+                IngressProtocol::ChatCompletions => {
+                    assert_eq!(projected.body["tools"][0]["type"], "function");
+                    assert_eq!(projected.body["tools"][0]["function"]["name"], "read");
+                    assert_eq!(
+                        projected.body["tools"][0]["function"]["parameters"],
+                        body["tools"][0]["input_schema"]
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[test]

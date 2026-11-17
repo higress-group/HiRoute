@@ -977,11 +977,20 @@ fn decode_messages_tools(
     value: Option<&Value>,
 ) -> Result<Vec<CanonicalTool>, ModelIrError> {
     decode_tools(value, |object| {
-        ensure_absent(object, &["type"], "messages hosted Tool")?;
+        match object.get("type") {
+            None | Some(Value::Null) => {}
+            Some(Value::String(kind)) if kind == "custom" => {}
+            Some(_) => {
+                return Err(ModelIrError::UnsupportedValue(
+                    "messages hosted Tool".into(),
+                ));
+            }
+        }
         ensure_keys(
             context,
             object,
             &[
+                "type",
                 "name",
                 "description",
                 "input_schema",

@@ -90,7 +90,7 @@ fn native_tool_extensions_reach_each_protocol_and_retain_provider_outcomes() {
                 {"role":"user","content":"Read the fixture"},
                 {"role":"assistant","content":[{"type":"tool_use","id":"call-1","name":"read","input":{},"provider_options":{"origin":"model"}}]},
                 {"role":"user","content":[{"type":"tool_result","tool_use_id":"call-1","content":"done"}]}
-            ],"tools":[{"name":"read","input_schema":{"type":"object"},"defer_loading":true}]}),
+            ],"tools":[{"type":"custom","name":"read","input_schema":{"type":"object"},"defer_loading":true}]}),
         ),
     ] {
         for status in [200, 400] {
@@ -108,9 +108,10 @@ fn native_tool_extensions_reach_each_protocol_and_retain_provider_outcomes() {
                 upstream_protocol: protocol,
                 statically_enabled: true,
             }];
-            let fixture = RuntimeFixture::launch_with_publication_candidates(
+            let fixture = RuntimeFixture::launch_with_observation_and_publication_candidates(
                 &[&provider],
                 1,
+                ObservationFaults::healthy(),
                 Some(&candidates),
             );
             let response = request(
