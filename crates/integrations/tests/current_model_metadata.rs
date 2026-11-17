@@ -117,8 +117,8 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
             .all(|capability| !capability.capability_id.starts_with("cap.runtime.")),
         "incomplete bindings must not become executable capabilities"
     );
-    assert_eq!(data.metadata_catalog.provider_records.len(), 115);
-    assert_eq!(data.metadata_catalog.model_records.len(), 790);
+    assert_eq!(data.metadata_catalog.provider_records.len(), 116);
+    assert_eq!(data.metadata_catalog.model_records.len(), 789);
     assert_eq!(data.metadata_catalog.inference_rules.len(), 191);
     for product_key in [
         "bailian-token-personal-cn-beijing",
@@ -865,7 +865,7 @@ fn connection_templates_cover_current_api_and_free_options_without_inventory_gat
 }
 
 #[test]
-fn qwen4_preview_survives_client_loading_without_promoting_paid_execution() {
+fn qwen4_max_metadata_survives_client_loading_without_executable_catalog_entries() {
     let (registry, data) = fixture();
     let (manifest, registry_bytes, data_bytes) = encoded(&registry, &data);
     let catalog =
@@ -883,35 +883,27 @@ fn qwen4_preview_survives_client_loading_without_promoting_paid_execution() {
     let model = metadata
         .canonical_models
         .iter()
-        .find(|m| m.model_key == "qwen-4-max-preview")
+        .find(|m| m.model_key == "qwen-4-max")
         .unwrap();
-    assert_eq!(model.lifecycle, "preview");
-    assert_eq!(model.context_tokens.state, MetadataTokenStateV1::Unknown);
-    assert_eq!(model.max_output_tokens.value, Some(393_216));
+    assert_eq!(model.lifecycle, "active");
+    assert_eq!(model.upstream_ids, ["qwen4-max"]);
+    assert_eq!(model.context_tokens.value, Some(1_000_000));
+    assert_eq!(model.max_output_tokens.value, Some(262_144));
     let bindings: Vec<_> = metadata
         .endpoint_bindings
         .iter()
         .filter(|b| b.model_key == model.model_key)
         .collect();
-    assert_eq!(bindings.len(), 10);
+    assert_eq!(bindings.len(), 9);
     for binding in bindings {
-        assert!(binding.product_key.starts_with("bailian-token-"));
-        assert_eq!(binding.interface_candidates.len(), 1);
+        assert_eq!(binding.upstream_model_id, "qwen4-max");
         assert_eq!(binding.availability.state, "conditional");
         assert_eq!(binding.protocol_qualification, "runtime-required");
-        assert!(
-            binding
-                .availability
-                .condition
-                .contains("2026-11-25T16:00:00Z")
-        );
     }
     let record = metadata
         .model_records
         .iter()
-        .find(|r| {
-            r.model_record_key == "official/bailian-token-personal-cn-beijing/qwen4-max-preview"
-        })
+        .find(|r| r.model_record_key == "official/bailian-token-personal-cn-beijing/qwen4-max")
         .unwrap();
     assert_eq!(
         record.context_tokens.state,
@@ -923,37 +915,38 @@ fn qwen4_preview_survives_client_loading_without_promoting_paid_execution() {
             .contains(&MetadataUsageScenarioV1::RequestLimitPrefill)
     );
     assert!(
-        record
+        !record
             .usable_for
             .contains(&MetadataUsageScenarioV1::OutputLimitPrefill)
     );
     let note = model.data_note.as_deref().unwrap();
     for detail in [
-        "thinking and answer",
+        "thinking and the final answer",
         "reasoning_content",
         "preserve_thinking defaults true",
-        "max_tokens equals max_completion_tokens",
+        "max_tokens and max_completion_tokens",
     ] {
         assert!(
             note.contains(detail),
             "missing public contract detail: {detail}"
         );
     }
-    let published = serde_json::to_value(&snapshot.data).unwrap();
-    assert!(
-        published["pricing_facts"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|p| p["model_key"] != "qwen-4-max-preview")
-    );
+    let prices: Vec<_> = snapshot
+        .data
+        .pricing_facts
+        .iter()
+        .filter(|price| price.model_key == model.model_key)
+        .collect();
+    assert_eq!(prices.len(), 1);
+    assert_eq!(prices[0].product_key, "bailian-payg-cn");
+    assert_eq!(prices[0].currency, "CNY");
     assert_eq!(catalog.model_data().models.len(), 30);
     assert!(
         catalog
             .model_data()
-            .models
+            .model_endpoint_capabilities
             .iter()
-            .all(|m| !m.model_configuration_id.contains("qwen-4"))
+            .all(|capability| capability.upstream_model_id != "qwen4-max")
     );
 }
 

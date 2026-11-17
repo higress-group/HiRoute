@@ -5,7 +5,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 NEW_MODELS = {
-    'qwen-4-max-preview', 'minimax-m3', 'minimax-m3-1-flash',
+    'qwen-4-max', 'minimax-m3', 'minimax-m3-1-flash',
     'glm-5-3-flashx-global',
     'deepseek-v4-1-flash-1017', 'gemini-4-argon', 'gemini-4-carbon', 'grok-4-7',
 }
@@ -40,48 +40,60 @@ class November11ModelProjectionTests(unittest.TestCase):
         for model in self.data['models']:
             self.assertFalse(any(key in model['model_configuration_id'] for key in NEW_MODELS))
 
-    def test_qwen4_is_a_timed_credits_preview_without_payg_prices(self):
-        m = self.models['qwen-4-max-preview']
-        self.assertEqual(m['lifecycle'], 'preview')
-        self.assertEqual(m['context_tokens'], {'state': 'unknown', 'value': None})
-        self.assertEqual(m['max_output_tokens'], {'state': 'known', 'value': 393216})
-        self.assertEqual(self.prices('qwen-4-max-preview'), [])
-        bindings = self.bindings('qwen-4-max-preview')
-        self.assertEqual(len(bindings), 10)
-        self.assertEqual({b['product_key'] for b in bindings}, {
-            'bailian-token-personal-cn-beijing', 'bailian-token-team-cn-beijing'})
+    def test_qwen4_production_identity_replaces_preview_across_the_snapshot(self):
+        m = self.models['qwen-4-max']
+        self.assertEqual(m['lifecycle'], 'active')
+        self.assertEqual(m['upstream_ids'], ['qwen4-max'])
+        self.assertEqual(m['context_tokens'], {'state': 'known', 'value': 1000000})
+        self.assertEqual(m['max_output_tokens'], {'state': 'known', 'value': 262144})
+        self.assertIn('thinking and final answer combined', m['max_output_scope'])
+        bindings = self.bindings('qwen-4-max')
+        products = {'bailian-payg-cn', 'bailian-token-personal-cn-beijing', 'bailian-token-team-cn-beijing'}
+        self.assertEqual(len(bindings), 9)
+        self.assertEqual({b['product_key'] for b in bindings}, products)
         for b in bindings:
-            self.assertEqual(len(b['interface_candidates']), 1)
-            self.assertIn('2026-11-25T16:00:00Z', b['availability']['condition'])
-            self.assertIn('no PAYG', b['availability']['condition'])
-        for kind in ('personal', 'team'):
-            for uid in ('qwen4-max-preview', 'qwen4.0-max-preview'):
-                r = self.records[f'official/bailian-token-{kind}-cn-beijing/{uid}']
-                self.assertEqual(r['context_tokens'], {'state': 'runtime_required', 'value': None})
-                self.assertNotIn('request-limit-prefill', r['usable_for'])
-                self.assertIn('output-limit-prefill', r['usable_for'])
-                fact = self.source_records[r['model_record_key']]['source_assertions'][0]
-                self.assertEqual(fact['preview_start'], '2026-11-11T02:00:00Z')
-                self.assertEqual(fact['preview_end_exclusive'], '2026-11-25T16:00:00Z')
-                self.assertEqual(fact['billing_model_id'], 'qwen4.0-max-preview')
+            self.assertEqual(b['upstream_model_id'], 'qwen4-max')
+        for product in products:
+            self.assertIn('qwen4-max', self.products[product]['documented_upstream_model_ids'])
+            r = self.records[f'official/{product}/qwen4-max']
+            for field in ('context_tokens', 'max_output_tokens'):
+                self.assertEqual(r[field], {'state': 'runtime_required', 'value': None})
+            self.assertNotIn('request-limit-prefill', r['usable_for'])
+            self.assertNotIn('output-limit-prefill', r['usable_for'])
+        for artifact in (self.source, self.data):
+            encoded = json.dumps(artifact)
+            for obsolete in ('qwen-4-max-preview', 'qwen4-max-preview', 'qwen4.0-max-preview'):
+                self.assertNotIn(obsolete, encoded)
 
     def test_qwen4_wire_budgets_and_history_are_not_interchanged(self):
-        r = self.records['official/bailian-token-personal-cn-beijing/qwen4-max-preview']
+        r = self.records['official/bailian-token-personal-cn-beijing/qwen4-max']
         fact = self.source_records[r['model_record_key']]['source_assertions'][0]
-        self.assertEqual(fact['max_output_includes'], ['thinking', 'answer'])
+        self.assertEqual(fact['token_limits_by_thinking_mode'], {
+            'thinking': {'max_input_tokens': 983616, 'max_output_tokens': 262144,
+                         'output_includes': ['thinking', 'answer']},
+            'non-thinking': {'max_input_tokens': 991808, 'max_output_tokens': 131072,
+                             'output_includes': ['answer']},
+        })
+        protocols = {
+            'openai-chat': ('reasoning_effort', ['max_tokens', 'max_completion_tokens']),
+            'openai-responses': ('reasoning.effort', ['max_output_tokens']),
+            'anthropic-messages': ('output_config.effort', ['max_tokens']),
+        }
+        for protocol, (parameter, budget_fields) in protocols.items():
+            api = fact['api_contracts'][protocol]
+            self.assertEqual(api['effort_parameter'], parameter)
+            self.assertEqual(api['output_budget_parameters'], budget_fields)
+            self.assertEqual(api['canonical_efforts'], ['low', 'high', 'xhigh'])
+            self.assertEqual(api['default_effort'], 'high')
+            aliases = {'medium': 'high', 'max': 'xhigh'}
+            if protocol != 'anthropic-messages':
+                aliases['minimal'] = 'low'
+            self.assertEqual(api['aliases'], aliases)
         chat = fact['api_contracts']['openai-chat']
-        responses = fact['api_contracts']['openai-responses']
-        self.assertEqual(chat['effort_parameter'], 'reasoning_effort')
-        self.assertEqual(responses['effort_parameter'], 'reasoning.effort')
-        self.assertEqual(chat['output_budget_parameters'], ['max_tokens', 'max_completion_tokens'])
-        self.assertEqual(responses['output_budget_parameters'], ['max_output_tokens'])
+        self.assertEqual(chat['default_thinking_budget'], 131072)
         self.assertTrue(chat['preserve_thinking_default'])
         self.assertTrue(chat['history_must_remain_separate_from_content'])
         self.assertEqual(chat['history_field'], 'reasoning_content')
-        for api in (chat, responses):
-            self.assertEqual(api['aliases'], {'minimal': 'low', 'high': 'xhigh', 'max': 'xhigh'})
-            self.assertEqual(api['canonical_efforts'], ['none', 'low', 'medium', 'xhigh'])
-            self.assertEqual(api['default_effort'], 'xhigh')
 
     def test_minimax_chat_ceiling_does_not_leak_to_other_protocols(self):
         for key in ('minimax-m3', 'minimax-m3-1-flash'):
@@ -174,13 +186,23 @@ class November11ModelProjectionTests(unittest.TestCase):
                                  'https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/apps/anthropic')
                 self.assertEqual(face['request_path'], '/v1/messages')
 
-    def test_qwen4_retirement_does_not_apply_to_the_entire_token_plan(self):
+    def test_qwen4_beijing_payg_rates_and_token_plan_credits_remain_product_scoped(self):
+        price, = self.prices('qwen-4-max')
+        self.assertEqual((price['product_key'], price['currency'], price['unit']),
+                         ('bailian-payg-cn', 'CNY', 'per-1m-tokens'))
+        standard, cache_5m, cache_1h = price['schedules']
+        self.assertEqual(standard['rates'], {'input': '10', 'output': '30', 'cache-read': '0.5'})
+        for schedule, ttl, rate in ((cache_5m, 300, '12.5'), (cache_1h, 3600, '20')):
+            self.assertEqual(schedule['condition']['cache_ttl_seconds'], ttl)
+            self.assertEqual(schedule['rates'], {'cache-write': rate})
+        self.assertTrue(all(s['condition']['region'] == 'cn-beijing' for s in price['schedules']))
         for tier in ('personal', 'team'):
             product = self.products[f'bailian-token-{tier}-cn-beijing']
-            self.assertNotIn('2026-11-25', product['restriction'])
-            self.assertNotIn('retired', product['restriction'])
-            self.assertNotIn('preview', product['restriction'].lower())
-        self.assertIn('2026-11-25T16:00:00Z', self.models['qwen-4-max-preview']['data_note'])
+            self.assertTrue(any(fact.startswith('qwen4-max uses ') for fact in product['quota_facts']))
+            record = self.source_records[f"official/{product['product_key']}/qwen4-max"]
+            billing = record['source_assertions'][0]['billing']
+            self.assertEqual(billing, {'unit': 'credits', 'components': ['input', 'cache', 'output'],
+                                       'model_conversion': 'runtime-required'})
 
     def test_callable_ids_and_lifecycle_survive_projection(self):
         old = self.models['mistral-large-3']
@@ -200,10 +222,12 @@ class November11ModelProjectionTests(unittest.TestCase):
         sources = {s['source_key']: s for s in self.source['evidence_sources']}
         self.assertEqual(sources['source-001']['collected_on'], '2026-09-13')
         self.assertEqual(sources['source-214']['collected_on'], '2026-11-10')
-        for key in ('source-qwen4-preview', 'source-minimax-pricing-current', 'source-mistral3-lifecycle', 'source-gemini4-carbon'):
+        for key in ('source-minimax-pricing-current', 'source-mistral3-lifecycle', 'source-gemini4-carbon'):
             self.assertEqual(sources[key]['collected_on'], '2026-11-11')
             self.assertEqual(sources[key]['digest_state'], 'captured')
             self.assertRegex(sources[key]['bytes_digest'], r'^sha256:[0-9a-f]{64}$')
+        self.assertEqual(sources['source-qwen4-max-model']['collected_on'], '2026-11-16')
+        self.assertEqual(sources['source-qwen4-max-model']['digest_state'], 'captured')
 
 
 if __name__ == '__main__':

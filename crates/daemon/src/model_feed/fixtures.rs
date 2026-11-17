@@ -58,7 +58,8 @@ pub(crate) fn publication(sequence: u64) -> FeedPayload {
     data.metadata_catalog
         .canonical_models
         .sort_by(|a, b| a.model_key.cmp(&b.model_key));
-    snapshot.data_revision = sequence.max(2);
+    // The added model changes the embedded data, regardless of publication order.
+    snapshot.data_revision += 1;
     snapshot.data_digest = hiroute_domain::CanonicalDigest::of(data).unwrap();
     FeedPayload::from_snapshot(
         snapshot,

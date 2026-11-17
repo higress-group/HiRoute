@@ -94,7 +94,7 @@ test('Kimi protocol switch carries the endpoint authentication semantics', () =>
 });
 
 const personalTokenModels = [
-  'qwen4-max-preview', 'qwen4.0-max-preview',
+  'qwen4-max',
   'qwen3.8-max', 'qwen3.8-flash', 'qwen3.7-max', 'qwen3.7-plus', 'qwen3.6-flash',
   'deepseek-v4.1-flash', 'deepseek-v4.1-flash-1017', 'deepseek-v4-pro', 'deepseek-v4-pro-0813', 'deepseek-v4-flash-0731',
   'glm-5.3', 'glm-5.2',
@@ -290,56 +290,35 @@ test('custom API metadata prefill inherits the matching product scope', () => {
 });
 
 
-test('Qwen4 preview check drafts retain explicit user budgets and require connection qualification', async () => {
+test('Qwen4-Max metadata prepares editable drafts on PAYG and Token Plan', async () => {
   const { withRegisteredModels, buildCheckDraft } = await import('../src/features/model-connections/state.ts');
-  const candidates = registeredModelCandidates(option('bailian.token-plan.cn.v1'), bundle.metadata_catalog)
-    .filter(candidate => ['qwen4-max-preview', 'qwen4.0-max-preview'].includes(candidate.upstream_model_id));
-  assert.deepEqual(candidates.map(candidate => candidate.upstream_model_id).sort(),
-    ['qwen4-max-preview', 'qwen4.0-max-preview']);
-  const drafts = withRegisteredModels([], candidates);
-  for (const draft of drafts) {
-    assert.equal(draft.membership, 'user_declared');
-    assert.equal(draft.catalog_configuration_id, null);
-    assert.ok(draft.capabilities.max_output_tokens.value <= 393_216);
-    assert.ok(draft.capabilities.max_output_tokens.value <= draft.capabilities.context_tokens.value);
-    assert.equal(draft.capabilities.native_reasoning.value.default_profile, 'xhigh');
+  for (const connection of ['bailian.payg.cn.v1', 'bailian.token-plan.cn.v1']) {
+    const registered = option(connection);
+    for (const endpoint of registered.endpoints) {
+      const candidates = registeredModelCandidates({ ...registered, endpoints: [endpoint] }, bundle.metadata_catalog)
+        .filter(candidate => candidate.upstream_model_id.startsWith('qwen4'));
+      assert.deepEqual(candidates.map(candidate => candidate.upstream_model_id), ['qwen4-max']);
+      const [draft] = withRegisteredModels([], candidates);
+      assert.equal(draft.membership, 'user_declared');
+      assert.equal(draft.catalog_configuration_id, null);
+      assert.equal(draft.capabilities.max_output_tokens.value, 262_144);
+      assert.ok(draft.capabilities.max_output_tokens.value <= draft.capabilities.context_tokens.value);
+      assert.deepEqual(draft.capabilities.native_reasoning.value.profiles, ['low', 'high', 'xhigh']);
+      assert.equal(draft.capabilities.native_reasoning.value.default_profile, 'high');
+      const edited = { ...draft, capabilities: { ...draft.capabilities,
+        context_tokens: { value: 900_000, basis: 'user_declared' },
+        max_output_tokens: { value: 120_000, basis: 'user_declared' },
+      } };
+      const refreshed = withRegisteredModels([edited], candidates);
+      assert.equal(refreshed[0], edited, 'metadata refresh preserves explicit manual limits');
+      const wire = buildCheckDraft({ provenance: { kind: 'user_configured', configuration_revision: 1 }, models: refreshed });
+      const [selected] = wire.models;
+      assert.deepEqual(selected.capabilities.context_tokens, edited.capabilities.context_tokens);
+      assert.deepEqual(selected.capabilities.max_output_tokens, edited.capabilities.max_output_tokens);
+      assert.equal(selected.catalog_configuration_id, null);
+    }
   }
-  const edited = { ...drafts[0], capabilities: { ...drafts[0].capabilities,
-    context_tokens: { value: 900_000, basis: 'user_declared' },
-    max_output_tokens: { value: 393_216, basis: 'user_declared' },
-  } };
-  const refreshed = withRegisteredModels([edited], candidates);
-  assert.equal(refreshed[0], edited, 'metadata refresh preserves explicit manual limits');
-  const wire = buildCheckDraft({ provenance: { kind: 'user_configured', configuration_revision: 1 }, models: refreshed });
-  const selected = wire.models.find(model => model.upstream_model_id === edited.upstream_model_id);
-  assert.deepEqual(selected.capabilities.context_tokens, edited.capabilities.context_tokens);
-  assert.deepEqual(selected.capabilities.max_output_tokens, edited.capabilities.max_output_tokens);
-  assert.equal(selected.catalog_configuration_id, null);
-});
-
-test('Qwen4 Messages plan metadata prepares a draft without granting qualification or replacing edits', async () => {
-  const { withRegisteredModels, buildCheckDraft } = await import('../src/features/model-connections/state.ts');
-  const tokenPlan = option('bailian.token-plan.cn.v1');
-  const messages = tokenPlan.endpoints.find(endpoint => endpoint.protocol === 'messages');
-  assert.ok(messages);
-  const candidates = registeredModelCandidates({ ...tokenPlan, endpoints: [{ ...messages, stable_preference: 0 }] }, bundle.metadata_catalog)
-    .filter(candidate => candidate.upstream_model_id === 'qwen4-max-preview');
-  assert.equal(candidates.length, 1);
-  const [draft] = withRegisteredModels([], candidates);
-  assert.equal(draft.membership, 'user_declared');
-  assert.equal(draft.catalog_configuration_id, null);
-  assert.equal(draft.capabilities.native_reasoning.value.default_profile, 'xhigh');
-  assert.ok(draft.capabilities.max_output_tokens.value <= 393_216);
-  const edited = { ...draft, capabilities: { ...draft.capabilities,
-    context_tokens: { value: 900_000, basis: 'user_declared' },
-    max_output_tokens: { value: 300_000, basis: 'user_declared' },
-  } };
-  const refreshed = withRegisteredModels([edited], candidates);
-  assert.equal(refreshed[0], edited);
-  const wire = buildCheckDraft({ provenance: { kind: 'user_configured', configuration_revision: 1 }, models: refreshed });
-  assert.deepEqual(wire.models[0].capabilities.context_tokens, edited.capabilities.context_tokens);
-  assert.deepEqual(wire.models[0].capabilities.max_output_tokens, edited.capabilities.max_output_tokens);
-  assert.equal(wire.models[0].catalog_configuration_id, null);
+  assert.ok(!ids('bailian.coding-plan.cn.v1').includes('qwen4-max'));
 });
 
 test('native-only Hydrogen never enters the installed Google OpenAI-compatible picker', () => {

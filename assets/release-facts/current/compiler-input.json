@@ -2770,7 +2770,8 @@
             "qwen3.8-flash",
             "qwen3.8-max",
             "qwen3.8-max-0902",
-            "qwen3.8-max-2026-09-02"
+            "qwen3.8-max-2026-09-02",
+            "qwen4-max"
           ],
           "evidence_refs": [
             "source-038",
@@ -2782,7 +2783,10 @@
             "source-196",
             "source-bailian-deepseek-current",
             "source-bailian-release-current",
-            "source-qwen38-current"
+            "source-qwen38-current",
+            "source-qwen4-max-base-urls",
+            "source-qwen4-max-model",
+            "source-qwen4-max-pricing"
           ],
           "interfaces": [
             {
@@ -2871,8 +2875,7 @@
             "qwen3.7-plus",
             "qwen3.8-flash",
             "qwen3.8-max",
-            "qwen4-max-preview",
-            "qwen4.0-max-preview"
+            "qwen4-max"
           ],
           "evidence_refs": [
             "source-044",
@@ -2880,8 +2883,12 @@
             "source-136",
             "source-170",
             "source-211",
-            "source-qwen4-personal",
-            "source-qwen4-preview"
+            "source-qwen4-max-base-urls",
+            "source-qwen4-max-model",
+            "source-qwen4-max-personal",
+            "source-qwen4-max-token-plan-billing",
+            "source-qwen4-max-token-plan-release",
+            "source-qwen4-personal"
           ],
           "interfaces": [
             {
@@ -2919,7 +2926,8 @@
             "Standard: 80000 Credits/month",
             "Pro: 200000 Credits/month",
             "Effective 2026-11-09 20:00 Asia/Shanghai; existing monthly cycles receive the new quota without resetting used Credits",
-            "Credits reset each subscription month and do not roll over; usage pauses when exhausted unless a usage pack is available"
+            "Credits reset each subscription month and do not roll over; usage pauses when exhausted unless a usage pack is available",
+            "qwen4-max uses monthly personal Credits, then purchased usage packs. Credit consumption depends on input, cache and output tokens. The model-specific conversion requires usage evidence from the plan console."
           ],
           "region_scope": "China, Beijing only",
           "restriction": "Personal plan; Credits and eligibility are not PAYG tokens"
@@ -2954,14 +2962,17 @@
             "qwen3.7-plus",
             "qwen3.8-flash",
             "qwen3.8-max",
-            "qwen4-max-preview",
-            "qwen4.0-max-preview"
+            "qwen4-max"
           ],
           "evidence_refs": [
             "source-044",
             "source-137",
             "source-170",
-            "source-qwen4-preview",
+            "source-qwen4-max-base-urls",
+            "source-qwen4-max-model",
+            "source-qwen4-max-team",
+            "source-qwen4-max-token-plan-billing",
+            "source-qwen4-max-token-plan-release",
             "source-qwen4-team"
           ],
           "interfaces": [
@@ -2995,7 +3006,8 @@
           "product_kind": "seat-credit-subscription",
           "provider": "Alibaba Cloud Model Studio",
           "quota_facts": [
-            "25000, 100000, or 250000 Credits per seat/month depending on tier"
+            "25000, 100000, or 250000 Credits per seat/month depending on tier",
+            "qwen4-max uses monthly seat Credits, then shared usage packs. Credit consumption depends on input, cache and output tokens. The model-specific conversion requires usage evidence from the plan console."
           ],
           "region_scope": "China, Beijing only",
           "restriction": "Team seat entitlement; no personal rolling-7-day semantics"
@@ -4156,7 +4168,7 @@
           "restriction": "General platform credentials"
         }
       ],
-      "as_of": "2026-11-13",
+      "as_of": "2026-11-16",
       "canonical_models": [
         {
           "canonical_identity": "claude-fable-5-1",
@@ -7590,7 +7602,7 @@
           ]
         },
         {
-          "canonical_identity": "qwen-4-max-preview",
+          "canonical_identity": "qwen-4-max",
           "capabilities": {
             "streaming": "conditional",
             "structured_output": "supported",
@@ -7599,26 +7611,26 @@
             "web_search": "supported"
           },
           "context_tokens": {
-            "state": "unknown",
-            "value": null
+            "state": "known",
+            "value": 1000000
           },
           "context_variants": [],
-          "data_note": "Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG. Context is documented as 1M without an exact integer. Output maximum 393216 includes thinking and answer. Chat max_tokens equals max_completion_tokens, and preserve_thinking defaults true: retain all historical reasoning_content separately from content. Responses max_output_tokens also includes thinking and answer; its approximately 80% input window is not an exact input cap. Domestic alias bills as qwen4.0-max-preview. No per-token price is inferred.",
-          "display_name": "Qwen4 Max Preview",
+          "data_note": "Input ceilings are 983616 tokens with thinking and 991808 without thinking. The 1000000-token context is the total window. In Chat, max_tokens and max_completion_tokens limit thinking and the final answer together. preserve_thinking defaults true, and historical reasoning_content must be sent separately from content. Responses uses max_output_tokens for the combined budget.",
+          "display_name": "Qwen4-Max",
           "evidence_refs": [
-            "source-qwen4-chat",
-            "source-qwen4-global",
-            "source-qwen4-preview",
-            "source-qwen4-responses"
+            "source-qwen4-max-chat",
+            "source-qwen4-max-messages",
+            "source-qwen4-max-model",
+            "source-qwen4-max-responses"
           ],
           "identity_stability": "immutable-or-provider-stable",
-          "lifecycle": "preview",
+          "lifecycle": "active",
           "max_input_tokens": null,
-          "max_output_note": null,
-          "max_output_scope": null,
+          "max_output_note": "Non-thinking mode has a 131072-token output maximum.",
+          "max_output_scope": "Default thinking mode, thinking and final answer combined",
           "max_output_tokens": {
             "state": "known",
-            "value": 393216
+            "value": 262144
           },
           "modalities": {
             "image_input": "supported",
@@ -7626,24 +7638,22 @@
             "text_output": "supported",
             "video_input": "supported"
           },
-          "model_key": "qwen-4-max-preview",
+          "model_key": "qwen-4-max",
           "publisher": "Alibaba Cloud / Qwen",
           "reasoning": {
-            "default": "xhigh",
+            "default": "high",
             "kind": "discrete-or-budget",
-            "note": "Chat uses reasoning_effort; Responses uses reasoning.effort. minimal maps to low; high/max map to xhigh; none disables thinking. Chat effort and thinking_budget cannot coexist.",
+            "note": "Chat uses reasoning_effort, Responses uses reasoning.effort, and Messages uses output_config.effort. medium maps to high and max maps to xhigh. Chat accepts either reasoning_effort or thinking_budget.",
             "profiles": [
-              "none",
               "low",
-              "medium",
+              "high",
               "xhigh"
             ]
           },
           "source_stability_note": "current-provider-documented",
           "upstream_id_state": null,
           "upstream_ids": [
-            "qwen4-max-preview",
-            "qwen4.0-max-preview"
+            "qwen4-max"
           ]
         }
       ],
@@ -8648,6 +8658,78 @@
         },
         {
           "availability": {
+            "condition": "Beijing PAYG API key required. Account entitlement, endpoint and protocol behavior require qualification. output_config.effort defaults to high.",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/qwen-4-max/qwen4-max/anthropic-messages",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-qwen4-max-base-urls",
+            "source-qwen4-max-messages",
+            "source-qwen4-max-model"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/anthropic-messages",
+            "bailian-payg-cn/anthropic-messages-workspace-beijing"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-4-max",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "qwen4-max"
+        },
+        {
+          "availability": {
+            "condition": "Beijing PAYG API key required. Account entitlement, endpoint and protocol behavior require qualification. reasoning_effort defaults to high and preserve_thinking defaults to true.",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/qwen-4-max/qwen4-max/openai-chat",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-qwen4-max-base-urls",
+            "source-qwen4-max-chat",
+            "source-qwen4-max-model"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/openai-chat",
+            "bailian-payg-cn/openai-chat-workspace-beijing"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-4-max",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "qwen4-max"
+        },
+        {
+          "availability": {
+            "condition": "Beijing PAYG API key required. Account entitlement, endpoint and protocol behavior require qualification. reasoning.effort defaults to high and max_output_tokens includes thinking.",
+            "state": "conditional"
+          },
+          "binding_key": "bailian-payg-cn/qwen-4-max/qwen4-max/openai-responses",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-qwen4-max-base-urls",
+            "source-qwen4-max-model",
+            "source-qwen4-max-responses"
+          ],
+          "interface_candidates": [
+            "bailian-payg-cn/openai-responses",
+            "bailian-payg-cn/openai-responses-workspace-beijing"
+          ],
+          "lifecycle": null,
+          "model_key": "qwen-4-max",
+          "product_key": "bailian-payg-cn",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "canonical-callable-id",
+          "upstream_model_id": "qwen4-max"
+        },
+        {
+          "availability": {
             "condition": "Listed for this Beijing Token Plan. Subscription, account, region and protocol eligibility require qualification; this dated revision does not inherit rolling-ID reasoning defaults.",
             "state": "conditional"
           },
@@ -8944,119 +9026,78 @@
         },
         {
           "availability": {
-            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG.",
+            "condition": "Beijing Token Plan subscription and dedicated key required. Account entitlement, endpoint and protocol behavior require qualification. output_config.effort defaults to high.",
             "state": "conditional"
           },
-          "binding_key": "bailian-token-personal-cn-beijing/qwen-4-max-preview/qwen4-max-preview/anthropic-messages",
+          "binding_key": "bailian-token-personal-cn-beijing/qwen-4-max/qwen4-max/anthropic-messages",
           "capability_overrides": {},
           "evidence_refs": [
-            "source-qwen4-claude-code-20261113",
-            "source-qwen4-messages-20261113",
-            "source-qwen4-personal",
-            "source-qwen4-preview"
+            "source-qwen4-max-base-urls",
+            "source-qwen4-max-messages",
+            "source-qwen4-max-model",
+            "source-qwen4-max-personal",
+            "source-qwen4-max-token-plan-release"
           ],
           "interface_candidates": [
             "bailian-token-personal-cn-beijing/anthropic-messages"
           ],
           "lifecycle": null,
-          "model_key": "qwen-4-max-preview",
+          "model_key": "qwen-4-max",
           "product_key": "bailian-token-personal-cn-beijing",
           "protocol_qualification": "runtime-required",
           "replaced_by_upstream_id": null,
           "upstream_identity_role": "canonical-callable-id",
-          "upstream_model_id": "qwen4-max-preview"
+          "upstream_model_id": "qwen4-max"
         },
         {
           "availability": {
-            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG. reasoning_effort; max_tokens/max_completion_tokens includes thinking plus answer. preserve_thinking defaults true; retain historical reasoning_content.",
+            "condition": "Beijing Token Plan subscription and dedicated key required. Account entitlement, endpoint and protocol behavior require qualification. reasoning_effort defaults to high and preserve_thinking defaults to true.",
             "state": "conditional"
           },
-          "binding_key": "bailian-token-personal-cn-beijing/qwen-4-max-preview/qwen4-max-preview/openai-chat",
+          "binding_key": "bailian-token-personal-cn-beijing/qwen-4-max/qwen4-max/openai-chat",
           "capability_overrides": {},
           "evidence_refs": [
-            "source-qwen4-chat",
-            "source-qwen4-personal",
-            "source-qwen4-preview"
+            "source-qwen4-max-base-urls",
+            "source-qwen4-max-chat",
+            "source-qwen4-max-model",
+            "source-qwen4-max-personal",
+            "source-qwen4-max-token-plan-release"
           ],
           "interface_candidates": [
             "bailian-token-personal-cn-beijing/openai-chat"
           ],
           "lifecycle": null,
-          "model_key": "qwen-4-max-preview",
+          "model_key": "qwen-4-max",
           "product_key": "bailian-token-personal-cn-beijing",
           "protocol_qualification": "runtime-required",
           "replaced_by_upstream_id": null,
           "upstream_identity_role": "canonical-callable-id",
-          "upstream_model_id": "qwen4-max-preview"
+          "upstream_model_id": "qwen4-max"
         },
         {
           "availability": {
-            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG. reasoning.effort; max_output_tokens includes thinking plus answer. Approximately 80% input window with automatic truncation.",
+            "condition": "Beijing Token Plan subscription and dedicated key required. Account entitlement, endpoint and protocol behavior require qualification. reasoning.effort defaults to high and max_output_tokens includes thinking.",
             "state": "conditional"
           },
-          "binding_key": "bailian-token-personal-cn-beijing/qwen-4-max-preview/qwen4-max-preview/openai-responses",
+          "binding_key": "bailian-token-personal-cn-beijing/qwen-4-max/qwen4-max/openai-responses",
           "capability_overrides": {},
           "evidence_refs": [
-            "source-qwen4-personal",
-            "source-qwen4-preview",
-            "source-qwen4-responses"
+            "source-qwen4-max-base-urls",
+            "source-qwen4-max-model",
+            "source-qwen4-max-personal",
+            "source-qwen4-max-responses",
+            "source-qwen4-max-token-plan-release"
           ],
           "interface_candidates": [
             "bailian-token-personal-cn-beijing/openai-responses"
           ],
           "lifecycle": null,
-          "model_key": "qwen-4-max-preview",
+          "model_key": "qwen-4-max",
           "product_key": "bailian-token-personal-cn-beijing",
           "protocol_qualification": "runtime-required",
           "replaced_by_upstream_id": null,
           "upstream_identity_role": "canonical-callable-id",
-          "upstream_model_id": "qwen4-max-preview"
-        },
-        {
-          "availability": {
-            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG. reasoning_effort; max_tokens/max_completion_tokens includes thinking plus answer. preserve_thinking defaults true; retain historical reasoning_content.",
-            "state": "conditional"
-          },
-          "binding_key": "bailian-token-personal-cn-beijing/qwen-4-max-preview/qwen4.0-max-preview/openai-chat",
-          "capability_overrides": {},
-          "evidence_refs": [
-            "source-qwen4-chat",
-            "source-qwen4-personal",
-            "source-qwen4-preview"
-          ],
-          "interface_candidates": [
-            "bailian-token-personal-cn-beijing/openai-chat"
-          ],
-          "lifecycle": null,
-          "model_key": "qwen-4-max-preview",
-          "product_key": "bailian-token-personal-cn-beijing",
-          "protocol_qualification": "runtime-required",
-          "replaced_by_upstream_id": null,
-          "upstream_identity_role": "canonical-callable-id",
-          "upstream_model_id": "qwen4.0-max-preview"
-        },
-        {
-          "availability": {
-            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG. reasoning.effort; max_output_tokens includes thinking plus answer. Approximately 80% input window with automatic truncation.",
-            "state": "conditional"
-          },
-          "binding_key": "bailian-token-personal-cn-beijing/qwen-4-max-preview/qwen4.0-max-preview/openai-responses",
-          "capability_overrides": {},
-          "evidence_refs": [
-            "source-qwen4-personal",
-            "source-qwen4-preview",
-            "source-qwen4-responses"
-          ],
-          "interface_candidates": [
-            "bailian-token-personal-cn-beijing/openai-responses"
-          ],
-          "lifecycle": null,
-          "model_key": "qwen-4-max-preview",
-          "product_key": "bailian-token-personal-cn-beijing",
-          "protocol_qualification": "runtime-required",
-          "replaced_by_upstream_id": null,
-          "upstream_identity_role": "canonical-callable-id",
-          "upstream_model_id": "qwen4.0-max-preview"
+          "upstream_model_id": "qwen4-max"
         },
         {
           "availability": {
@@ -9571,119 +9612,78 @@
         },
         {
           "availability": {
-            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG.",
+            "condition": "Beijing Token Plan subscription and dedicated key required. Account entitlement, endpoint and protocol behavior require qualification. output_config.effort defaults to high.",
             "state": "conditional"
           },
-          "binding_key": "bailian-token-team-cn-beijing/qwen-4-max-preview/qwen4-max-preview/anthropic-messages",
+          "binding_key": "bailian-token-team-cn-beijing/qwen-4-max/qwen4-max/anthropic-messages",
           "capability_overrides": {},
           "evidence_refs": [
-            "source-qwen4-claude-code-20261113",
-            "source-qwen4-messages-20261113",
-            "source-qwen4-preview",
-            "source-qwen4-team"
+            "source-qwen4-max-base-urls",
+            "source-qwen4-max-messages",
+            "source-qwen4-max-model",
+            "source-qwen4-max-team",
+            "source-qwen4-max-token-plan-release"
           ],
           "interface_candidates": [
             "bailian-token-team-cn-beijing/anthropic-messages"
           ],
           "lifecycle": null,
-          "model_key": "qwen-4-max-preview",
+          "model_key": "qwen-4-max",
           "product_key": "bailian-token-team-cn-beijing",
           "protocol_qualification": "runtime-required",
           "replaced_by_upstream_id": null,
           "upstream_identity_role": "canonical-callable-id",
-          "upstream_model_id": "qwen4-max-preview"
+          "upstream_model_id": "qwen4-max"
         },
         {
           "availability": {
-            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG. reasoning_effort; max_tokens/max_completion_tokens includes thinking plus answer. preserve_thinking defaults true; retain historical reasoning_content.",
+            "condition": "Beijing Token Plan subscription and dedicated key required. Account entitlement, endpoint and protocol behavior require qualification. reasoning_effort defaults to high and preserve_thinking defaults to true.",
             "state": "conditional"
           },
-          "binding_key": "bailian-token-team-cn-beijing/qwen-4-max-preview/qwen4-max-preview/openai-chat",
+          "binding_key": "bailian-token-team-cn-beijing/qwen-4-max/qwen4-max/openai-chat",
           "capability_overrides": {},
           "evidence_refs": [
-            "source-qwen4-chat",
-            "source-qwen4-preview",
-            "source-qwen4-team"
+            "source-qwen4-max-base-urls",
+            "source-qwen4-max-chat",
+            "source-qwen4-max-model",
+            "source-qwen4-max-team",
+            "source-qwen4-max-token-plan-release"
           ],
           "interface_candidates": [
             "bailian-token-team-cn-beijing/openai-chat"
           ],
           "lifecycle": null,
-          "model_key": "qwen-4-max-preview",
+          "model_key": "qwen-4-max",
           "product_key": "bailian-token-team-cn-beijing",
           "protocol_qualification": "runtime-required",
           "replaced_by_upstream_id": null,
           "upstream_identity_role": "canonical-callable-id",
-          "upstream_model_id": "qwen4-max-preview"
+          "upstream_model_id": "qwen4-max"
         },
         {
           "availability": {
-            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG. reasoning.effort; max_output_tokens includes thinking plus answer. Approximately 80% input window with automatic truncation.",
+            "condition": "Beijing Token Plan subscription and dedicated key required. Account entitlement, endpoint and protocol behavior require qualification. reasoning.effort defaults to high and max_output_tokens includes thinking.",
             "state": "conditional"
           },
-          "binding_key": "bailian-token-team-cn-beijing/qwen-4-max-preview/qwen4-max-preview/openai-responses",
+          "binding_key": "bailian-token-team-cn-beijing/qwen-4-max/qwen4-max/openai-responses",
           "capability_overrides": {},
           "evidence_refs": [
-            "source-qwen4-preview",
-            "source-qwen4-responses",
-            "source-qwen4-team"
+            "source-qwen4-max-base-urls",
+            "source-qwen4-max-model",
+            "source-qwen4-max-responses",
+            "source-qwen4-max-team",
+            "source-qwen4-max-token-plan-release"
           ],
           "interface_candidates": [
             "bailian-token-team-cn-beijing/openai-responses"
           ],
           "lifecycle": null,
-          "model_key": "qwen-4-max-preview",
+          "model_key": "qwen-4-max",
           "product_key": "bailian-token-team-cn-beijing",
           "protocol_qualification": "runtime-required",
           "replaced_by_upstream_id": null,
           "upstream_identity_role": "canonical-callable-id",
-          "upstream_model_id": "qwen4-max-preview"
-        },
-        {
-          "availability": {
-            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG. reasoning_effort; max_tokens/max_completion_tokens includes thinking plus answer. preserve_thinking defaults true; retain historical reasoning_content.",
-            "state": "conditional"
-          },
-          "binding_key": "bailian-token-team-cn-beijing/qwen-4-max-preview/qwen4.0-max-preview/openai-chat",
-          "capability_overrides": {},
-          "evidence_refs": [
-            "source-qwen4-chat",
-            "source-qwen4-preview",
-            "source-qwen4-team"
-          ],
-          "interface_candidates": [
-            "bailian-token-team-cn-beijing/openai-chat"
-          ],
-          "lifecycle": null,
-          "model_key": "qwen-4-max-preview",
-          "product_key": "bailian-token-team-cn-beijing",
-          "protocol_qualification": "runtime-required",
-          "replaced_by_upstream_id": null,
-          "upstream_identity_role": "canonical-callable-id",
-          "upstream_model_id": "qwen4.0-max-preview"
-        },
-        {
-          "availability": {
-            "condition": "Public documentation only; account, region, entitlement and protocol require qualification. Preview from 2026-11-11 10:00 to 2026-11-25 24:00 UTC+8 (exclusive end 2026-11-25T16:00:00Z); retired after this window. Token Plan only, no PAYG. reasoning.effort; max_output_tokens includes thinking plus answer. Approximately 80% input window with automatic truncation.",
-            "state": "conditional"
-          },
-          "binding_key": "bailian-token-team-cn-beijing/qwen-4-max-preview/qwen4.0-max-preview/openai-responses",
-          "capability_overrides": {},
-          "evidence_refs": [
-            "source-qwen4-preview",
-            "source-qwen4-responses",
-            "source-qwen4-team"
-          ],
-          "interface_candidates": [
-            "bailian-token-team-cn-beijing/openai-responses"
-          ],
-          "lifecycle": null,
-          "model_key": "qwen-4-max-preview",
-          "product_key": "bailian-token-team-cn-beijing",
-          "protocol_qualification": "runtime-required",
-          "replaced_by_upstream_id": null,
-          "upstream_identity_role": "canonical-callable-id",
-          "upstream_model_id": "qwen4.0-max-preview"
+          "upstream_model_id": "qwen4-max"
         },
         {
           "availability": {
@@ -14163,38 +14163,92 @@
         },
         {
           "authority": "help.aliyun.com",
-          "bytes_digest": "sha256:9dd28dfccaabb4963b3d8b2291ff1deb45d28a59c1b021883075ccefbb08e0ac",
-          "collected_on": "2026-11-11",
+          "bytes_digest": "sha256:f35b83c0657a4a3c4a0299650196b1c5364aa8acd43ce7aa485a293fea54674d",
+          "collected_on": "2026-11-16",
+          "digest_state": "captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/base-url",
+          "source_key": "source-qwen4-max-base-urls",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": "sha256:5882ecc6f6621ec765a6717b9302c2bc06e21b89fb8137f40dd4fe31051bea90",
+          "collected_on": "2026-11-16",
           "digest_state": "captured",
           "locator": "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-chat-completions",
-          "source_key": "source-qwen4-chat",
+          "source_key": "source-qwen4-max-chat",
           "source_kind": "provider-documentation"
         },
         {
           "authority": "help.aliyun.com",
-          "bytes_digest": null,
-          "collected_on": "2026-11-13",
-          "digest_state": "not-captured",
-          "locator": "https://help.aliyun.com/zh/model-studio/claude-code",
-          "source_key": "source-qwen4-claude-code-20261113",
-          "source_kind": "provider-documentation"
-        },
-        {
-          "authority": "docs.qwencloud.com",
-          "bytes_digest": "sha256:9335c22f22c8b636644ab682d20c37171f8c61a2c4740206514b115036007022",
-          "collected_on": "2026-11-11",
+          "bytes_digest": "sha256:350c2417a8666977ac33118c99a8f9ecfd9b092787682956049a4a62490a822e",
+          "collected_on": "2026-11-16",
           "digest_state": "captured",
-          "locator": "https://docs.qwencloud.com/developer-guides/getting-started/latest-model",
-          "source_key": "source-qwen4-global",
+          "locator": "https://help.aliyun.com/zh/model-studio/anthropic-api-messages",
+          "source_key": "source-qwen4-max-messages",
           "source_kind": "provider-documentation"
         },
         {
           "authority": "help.aliyun.com",
-          "bytes_digest": null,
-          "collected_on": "2026-11-13",
-          "digest_state": "not-captured",
-          "locator": "https://help.aliyun.com/zh/model-studio/anthropic-api-messages",
-          "source_key": "source-qwen4-messages-20261113",
+          "bytes_digest": "sha256:bd27c63b676b118cbc57830741c7a75783c88fbe45b23e6beb3fe913ad9b328a",
+          "collected_on": "2026-11-16",
+          "digest_state": "captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/qwen4-max",
+          "source_key": "source-qwen4-max-model",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": "sha256:b99d6a941034445b153eba449c816741daf287fe52e507caec66720ea0365bcb",
+          "collected_on": "2026-11-16",
+          "digest_state": "captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/token-plan-personal-overview",
+          "source_key": "source-qwen4-max-personal",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": "sha256:b10972945ea704bace91d8896149b7b73ac290ef7e3a3e5646ad840223167d39",
+          "collected_on": "2026-11-16",
+          "digest_state": "captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/model-pricing",
+          "source_key": "source-qwen4-max-pricing",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": "sha256:e030375d20024eb9616c0cb020541802e043ae2117f004ec2e61bdc759a4a102",
+          "collected_on": "2026-11-16",
+          "digest_state": "captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses",
+          "source_key": "source-qwen4-max-responses",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": "sha256:9c0fab5f0836c79de9f0fd4821ed6be7bf7846d9cc77121df4e6525e33359bdd",
+          "collected_on": "2026-11-16",
+          "digest_state": "captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/token-plan-team-overview",
+          "source_key": "source-qwen4-max-team",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": "sha256:9ec24db176267364524f1d61d37986f9d68bf0fa486ee94982eb1bf96e66ece5",
+          "collected_on": "2026-11-16",
+          "digest_state": "captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/token-plan-usage-quota",
+          "source_key": "source-qwen4-max-token-plan-billing",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "help.aliyun.com",
+          "bytes_digest": "sha256:23547a8a0ec9f306be76f2bf66d5e6d7d0fc54a0bcbf716bf821c8bb7e5aa60c",
+          "collected_on": "2026-11-16",
+          "digest_state": "captured",
+          "locator": "https://help.aliyun.com/zh/model-studio/token-plan-product-updates",
+          "source_key": "source-qwen4-max-token-plan-release",
           "source_kind": "provider-documentation"
         },
         {
@@ -14204,24 +14258,6 @@
           "digest_state": "captured",
           "locator": "https://help.aliyun.com/zh/model-studio/token-plan-personal-overview",
           "source_key": "source-qwen4-personal",
-          "source_kind": "provider-documentation"
-        },
-        {
-          "authority": "docs.bailian.console.aliyun.com",
-          "bytes_digest": "sha256:194abf70ce617e48a2862faae722c98cab18bfca158717b5ac278a11d7a5fd21",
-          "collected_on": "2026-11-11",
-          "digest_state": "captured",
-          "locator": "https://docs.bailian.console.aliyun.com/en/model-studio/qwen4-max-preview",
-          "source_key": "source-qwen4-preview",
-          "source_kind": "provider-documentation"
-        },
-        {
-          "authority": "help.aliyun.com",
-          "bytes_digest": "sha256:9ebf14dba514131df0cbcb667b737e7a6ddd54dedcc417371851a889ffd7a068",
-          "collected_on": "2026-11-11",
-          "digest_state": "captured",
-          "locator": "https://help.aliyun.com/en/model-studio/qwen-api-via-openai-responses",
-          "source_key": "source-qwen4-responses",
           "source_kind": "provider-documentation"
         },
         {
@@ -70724,7 +70760,7 @@
           },
           "cost_hint_state": "not_recorded",
           "cost_hints": [],
-          "display_name": "Qwen4 Max Preview",
+          "display_name": "Qwen4-Max",
           "execution_fit": {
             "state": "native_text_representable"
           },
@@ -70733,10 +70769,10 @@
             "text",
             "video"
           ],
-          "lifecycle": "preview",
+          "lifecycle": "active",
           "max_output_tokens": {
-            "state": "known",
-            "value": 393216
+            "state": "runtime_required",
+            "value": null
           },
           "metadata_completeness": {
             "capabilities": "partial",
@@ -70747,30 +70783,134 @@
             "modalities": "complete",
             "reasoning_rendering": "complete"
           },
-          "model_record_key": "official/bailian-token-personal-cn-beijing/qwen4-max-preview",
+          "model_record_key": "official/bailian-payg-cn/qwen4-max",
           "normalized_model_matches": [
-            "qwen-4-max-preview"
+            "qwen-4-max"
           ],
           "provenance_refs": [
             {
               "kind": "evidence-source",
-              "source_key": "source-qwen4-chat"
+              "source_key": "source-qwen4-max-base-urls"
             },
             {
               "kind": "evidence-source",
-              "source_key": "source-qwen4-global"
+              "source_key": "source-qwen4-max-chat"
             },
             {
               "kind": "evidence-source",
-              "source_key": "source-qwen4-personal"
+              "source_key": "source-qwen4-max-messages"
             },
             {
               "kind": "evidence-source",
-              "source_key": "source-qwen4-preview"
+              "source_key": "source-qwen4-max-model"
             },
             {
               "kind": "evidence-source",
-              "source_key": "source-qwen4-responses"
+              "source_key": "source-qwen4-max-pricing"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-max-responses"
+            }
+          ],
+          "provider_id": "bailian-payg-cn",
+          "provider_record_key": "official/bailian-payg-cn",
+          "reasoning_rendering_hints": {
+            "reasoning_effort_maps": [],
+            "supported_reasoning_efforts": [
+              "high",
+              "low",
+              "xhigh"
+            ],
+            "thinking_level_maps": []
+          },
+          "replacement_upstream_ids": [],
+          "roles": [
+            "provider-documented-model"
+          ],
+          "status_candidates": [],
+          "upstream_model_id": "qwen4-max",
+          "usable_for": [
+            "custom-api-model-prefill",
+            "lifecycle-warning",
+            "model-directory",
+            "reasoning-capability-prefill",
+            "reasoning-rendering-hint",
+            "vision-capability-prefill"
+          ]
+        },
+        {
+          "capability_hints": {
+            "reasoning": "supported",
+            "streaming": "conditional",
+            "tool": "supported",
+            "vision": "supported"
+          },
+          "context_tokens": {
+            "state": "runtime_required",
+            "value": null
+          },
+          "cost_hint_state": "not_recorded",
+          "cost_hints": [],
+          "display_name": "Qwen4-Max",
+          "execution_fit": {
+            "state": "native_text_representable"
+          },
+          "input_modalities": [
+            "image",
+            "text",
+            "video"
+          ],
+          "lifecycle": "active",
+          "max_output_tokens": {
+            "state": "runtime_required",
+            "value": null
+          },
+          "metadata_completeness": {
+            "capabilities": "partial",
+            "cost": "missing",
+            "identity": "complete",
+            "lifecycle": "complete",
+            "limits": "partial",
+            "modalities": "complete",
+            "reasoning_rendering": "complete"
+          },
+          "model_record_key": "official/bailian-token-personal-cn-beijing/qwen4-max",
+          "normalized_model_matches": [
+            "qwen-4-max"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-max-base-urls"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-max-chat"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-max-messages"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-max-model"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-max-personal"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-max-responses"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-max-token-plan-billing"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-max-token-plan-release"
             }
           ],
           "provider_id": "bailian-token-personal-cn-beijing",
@@ -70780,10 +70920,6 @@
             "supported_reasoning_efforts": [
               "high",
               "low",
-              "max",
-              "medium",
-              "minimal",
-              "none",
               "xhigh"
             ],
             "thinking_level_maps": []
@@ -70793,12 +70929,11 @@
             "provider-documented-model"
           ],
           "status_candidates": [],
-          "upstream_model_id": "qwen4-max-preview",
+          "upstream_model_id": "qwen4-max",
           "usable_for": [
             "custom-api-model-prefill",
             "lifecycle-warning",
             "model-directory",
-            "output-limit-prefill",
             "reasoning-capability-prefill",
             "reasoning-rendering-hint",
             "vision-capability-prefill"
@@ -70817,7 +70952,7 @@
           },
           "cost_hint_state": "not_recorded",
           "cost_hints": [],
-          "display_name": "Qwen4 Max Preview",
+          "display_name": "Qwen4-Max",
           "execution_fit": {
             "state": "native_text_representable"
           },
@@ -70826,104 +70961,11 @@
             "text",
             "video"
           ],
-          "lifecycle": "preview",
+          "lifecycle": "active",
           "max_output_tokens": {
-            "state": "known",
-            "value": 393216
-          },
-          "metadata_completeness": {
-            "capabilities": "partial",
-            "cost": "missing",
-            "identity": "complete",
-            "lifecycle": "complete",
-            "limits": "partial",
-            "modalities": "complete",
-            "reasoning_rendering": "complete"
-          },
-          "model_record_key": "official/bailian-token-personal-cn-beijing/qwen4.0-max-preview",
-          "normalized_model_matches": [
-            "qwen-4-max-preview"
-          ],
-          "provenance_refs": [
-            {
-              "kind": "evidence-source",
-              "source_key": "source-qwen4-chat"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-qwen4-global"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-qwen4-personal"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-qwen4-preview"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-qwen4-responses"
-            }
-          ],
-          "provider_id": "bailian-token-personal-cn-beijing",
-          "provider_record_key": "official/bailian-token-personal-cn-beijing",
-          "reasoning_rendering_hints": {
-            "reasoning_effort_maps": [],
-            "supported_reasoning_efforts": [
-              "high",
-              "low",
-              "max",
-              "medium",
-              "minimal",
-              "none",
-              "xhigh"
-            ],
-            "thinking_level_maps": []
-          },
-          "replacement_upstream_ids": [],
-          "roles": [
-            "provider-documented-model"
-          ],
-          "status_candidates": [],
-          "upstream_model_id": "qwen4.0-max-preview",
-          "usable_for": [
-            "custom-api-model-prefill",
-            "lifecycle-warning",
-            "model-directory",
-            "output-limit-prefill",
-            "reasoning-capability-prefill",
-            "reasoning-rendering-hint",
-            "vision-capability-prefill"
-          ]
-        },
-        {
-          "capability_hints": {
-            "reasoning": "supported",
-            "streaming": "conditional",
-            "tool": "supported",
-            "vision": "supported"
-          },
-          "context_tokens": {
             "state": "runtime_required",
             "value": null
           },
-          "cost_hint_state": "not_recorded",
-          "cost_hints": [],
-          "display_name": "Qwen4 Max Preview",
-          "execution_fit": {
-            "state": "native_text_representable"
-          },
-          "input_modalities": [
-            "image",
-            "text",
-            "video"
-          ],
-          "lifecycle": "preview",
-          "max_output_tokens": {
-            "state": "known",
-            "value": 393216
-          },
           "metadata_completeness": {
             "capabilities": "partial",
             "cost": "missing",
@@ -70933,30 +70975,42 @@
             "modalities": "complete",
             "reasoning_rendering": "complete"
           },
-          "model_record_key": "official/bailian-token-team-cn-beijing/qwen4-max-preview",
+          "model_record_key": "official/bailian-token-team-cn-beijing/qwen4-max",
           "normalized_model_matches": [
-            "qwen-4-max-preview"
+            "qwen-4-max"
           ],
           "provenance_refs": [
             {
               "kind": "evidence-source",
-              "source_key": "source-qwen4-chat"
+              "source_key": "source-qwen4-max-base-urls"
             },
             {
               "kind": "evidence-source",
-              "source_key": "source-qwen4-global"
+              "source_key": "source-qwen4-max-chat"
             },
             {
               "kind": "evidence-source",
-              "source_key": "source-qwen4-preview"
+              "source_key": "source-qwen4-max-messages"
             },
             {
               "kind": "evidence-source",
-              "source_key": "source-qwen4-responses"
+              "source_key": "source-qwen4-max-model"
             },
             {
               "kind": "evidence-source",
-              "source_key": "source-qwen4-team"
+              "source_key": "source-qwen4-max-responses"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-max-team"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-max-token-plan-billing"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-max-token-plan-release"
             }
           ],
           "provider_id": "bailian-token-team-cn-beijing",
@@ -70966,10 +71020,6 @@
             "supported_reasoning_efforts": [
               "high",
               "low",
-              "max",
-              "medium",
-              "minimal",
-              "none",
               "xhigh"
             ],
             "thinking_level_maps": []
@@ -70979,105 +71029,11 @@
             "provider-documented-model"
           ],
           "status_candidates": [],
-          "upstream_model_id": "qwen4-max-preview",
+          "upstream_model_id": "qwen4-max",
           "usable_for": [
             "custom-api-model-prefill",
             "lifecycle-warning",
             "model-directory",
-            "output-limit-prefill",
-            "reasoning-capability-prefill",
-            "reasoning-rendering-hint",
-            "vision-capability-prefill"
-          ]
-        },
-        {
-          "capability_hints": {
-            "reasoning": "supported",
-            "streaming": "conditional",
-            "tool": "supported",
-            "vision": "supported"
-          },
-          "context_tokens": {
-            "state": "runtime_required",
-            "value": null
-          },
-          "cost_hint_state": "not_recorded",
-          "cost_hints": [],
-          "display_name": "Qwen4 Max Preview",
-          "execution_fit": {
-            "state": "native_text_representable"
-          },
-          "input_modalities": [
-            "image",
-            "text",
-            "video"
-          ],
-          "lifecycle": "preview",
-          "max_output_tokens": {
-            "state": "known",
-            "value": 393216
-          },
-          "metadata_completeness": {
-            "capabilities": "partial",
-            "cost": "missing",
-            "identity": "complete",
-            "lifecycle": "complete",
-            "limits": "partial",
-            "modalities": "complete",
-            "reasoning_rendering": "complete"
-          },
-          "model_record_key": "official/bailian-token-team-cn-beijing/qwen4.0-max-preview",
-          "normalized_model_matches": [
-            "qwen-4-max-preview"
-          ],
-          "provenance_refs": [
-            {
-              "kind": "evidence-source",
-              "source_key": "source-qwen4-chat"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-qwen4-global"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-qwen4-preview"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-qwen4-responses"
-            },
-            {
-              "kind": "evidence-source",
-              "source_key": "source-qwen4-team"
-            }
-          ],
-          "provider_id": "bailian-token-team-cn-beijing",
-          "provider_record_key": "official/bailian-token-team-cn-beijing",
-          "reasoning_rendering_hints": {
-            "reasoning_effort_maps": [],
-            "supported_reasoning_efforts": [
-              "high",
-              "low",
-              "max",
-              "medium",
-              "minimal",
-              "none",
-              "xhigh"
-            ],
-            "thinking_level_maps": []
-          },
-          "replacement_upstream_ids": [],
-          "roles": [
-            "provider-documented-model"
-          ],
-          "status_candidates": [],
-          "upstream_model_id": "qwen4.0-max-preview",
-          "usable_for": [
-            "custom-api-model-prefill",
-            "lifecycle-warning",
-            "model-directory",
-            "output-limit-prefill",
             "reasoning-capability-prefill",
             "reasoning-rendering-hint",
             "vision-capability-prefill"
@@ -104217,6 +104173,50 @@
             "api_key"
           ],
           "base_url_candidates": [
+            "https://dashscope.aliyuncs.com/compatible-mode/v1"
+          ],
+          "default_model_ids": [],
+          "description_candidates": [],
+          "discovery_modes": [],
+          "display_name": "Bailian PAYG Beijing (Chat Completions)",
+          "environment_variable_names": [],
+          "metadata_completeness": {
+            "authentication": "complete",
+            "discovery": "missing",
+            "endpoint": "complete",
+            "identity": "complete"
+          },
+          "models_url_candidates": [],
+          "protocol_candidates": [
+            "chat_completions"
+          ],
+          "provenance_refs": [
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-max-base-urls"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-max-chat"
+            }
+          ],
+          "provider_id": "bailian-payg-cn",
+          "provider_record_key": "official/bailian-payg-cn",
+          "signup_url_candidates": [],
+          "unsupported_api_styles": [],
+          "unsupported_transport_locators": [],
+          "usable_for": [
+            "credential-setup-hint",
+            "custom-api-endpoint-prefill",
+            "provider-directory"
+          ]
+        },
+        {
+          "aliases": [],
+          "authentication_candidates": [
+            "api_key"
+          ],
+          "base_url_candidates": [
             "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
           ],
           "default_model_ids": [],
@@ -104237,11 +104237,15 @@
           "provenance_refs": [
             {
               "kind": "evidence-source",
-              "source_key": "source-qwen4-personal"
+              "source_key": "source-qwen4-max-base-urls"
             },
             {
               "kind": "evidence-source",
-              "source_key": "source-qwen4-preview"
+              "source_key": "source-qwen4-max-personal"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-max-token-plan-release"
             }
           ],
           "provider_id": "bailian-token-personal-cn-beijing",
@@ -104281,11 +104285,15 @@
           "provenance_refs": [
             {
               "kind": "evidence-source",
-              "source_key": "source-qwen4-preview"
+              "source_key": "source-qwen4-max-base-urls"
             },
             {
               "kind": "evidence-source",
-              "source_key": "source-qwen4-team"
+              "source_key": "source-qwen4-max-team"
+            },
+            {
+              "kind": "evidence-source",
+              "source_key": "source-qwen4-max-token-plan-release"
             }
           ],
           "provider_id": "bailian-token-team-cn-beijing",
@@ -107385,7 +107393,7 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:ad4587d54429e1b603696f95e80aa227536d3e7e0e4bd3201dffbd858075767b"
+      "source_catalog_digest": "sha256:5fe26be18cfd1c57fb85d3bf81f09a18618ff939f59c6cbd3dbd7724112ae317"
     },
     "rating_snapshot": {
       "digest": "sha256:5fa20fef854989fc3c1a6106af04121e5b934ad1f391ab93a414958ec570aadf",
@@ -109494,7 +109502,7 @@
     "schema": "hiroute.release-model-data/v2"
   },
   "official_model_data": {
-    "data_revision": 16,
+    "data_revision": 17,
     "pricing_facts": [
       {
         "pricing_key": "anthropic-platform/claude-fable-5-2/claude-fable-5-2",
@@ -109708,6 +109716,58 @@
         "evidence_refs": [
           "source-179",
           "source-184"
+        ]
+      },
+      {
+        "pricing_key": "bailian-payg-cn/qwen-4-max/qwen4-max",
+        "product_key": "bailian-payg-cn",
+        "model_key": "qwen-4-max",
+        "upstream_model_id": "qwen4-max",
+        "currency": "CNY",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "standard",
+            "condition": {
+              "kind": "region",
+              "region": "cn-beijing"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "10",
+              "output": "30",
+              "cache-read": "0.5"
+            }
+          },
+          {
+            "schedule_key": "standard-cache-write-300s",
+            "condition": {
+              "kind": "region",
+              "region": "cn-beijing",
+              "cache_ttl_seconds": 300
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "12.5"
+            }
+          },
+          {
+            "schedule_key": "standard-cache-write-3600s",
+            "condition": {
+              "kind": "region",
+              "region": "cn-beijing",
+              "cache_ttl_seconds": 3600
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "20"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-qwen4-max-model",
+          "source-qwen4-max-pricing"
         ]
       },
       {

@@ -86,14 +86,14 @@ fn current_reader_preserves_exact_qwen4_messages_plan_associations() {
         .endpoint_bindings
         .iter()
         .filter(|binding| {
-            binding.model_key == "qwen-4-max-preview"
+            binding.model_key == "qwen-4-max"
                 && binding
                     .interface_candidates
                     .iter()
                     .any(|key| key.ends_with("/anthropic-messages"))
         })
         .collect();
-    assert_eq!(bindings.len(), 2);
+    assert_eq!(bindings.len(), 3);
     for product_key in [
         "bailian-token-personal-cn-beijing",
         "bailian-token-team-cn-beijing",
@@ -102,7 +102,7 @@ fn current_reader_preserves_exact_qwen4_messages_plan_associations() {
             .iter()
             .find(|binding| binding.product_key == product_key)
             .unwrap();
-        assert_eq!(binding.upstream_model_id, "qwen4-max-preview");
+        assert_eq!(binding.upstream_model_id, "qwen4-max");
         assert_eq!(
             binding.interface_candidates,
             [format!("{product_key}/anthropic-messages")]
@@ -113,7 +113,7 @@ fn current_reader_preserves_exact_qwen4_messages_plan_associations() {
             binding
                 .availability
                 .condition
-                .contains("2026-11-25T16:00:00Z")
+                .contains("output_config.effort defaults to high")
         );
     }
     assert!(
@@ -121,6 +121,7 @@ fn current_reader_preserves_exact_qwen4_messages_plan_associations() {
             .data
             .pricing_facts
             .iter()
-            .all(|price| price.model_key != "qwen-4-max-preview")
+            .all(|price| price.model_key != "qwen-4-max"
+                || !price.product_key.starts_with("bailian-token-"))
     );
 }
