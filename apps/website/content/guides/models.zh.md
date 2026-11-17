@@ -4,6 +4,8 @@ HiRoute 在本机集中管理订阅、API 和本地模型。“模型”页面�
 
 本文介绍通用模型：怎样接入、怎样把订阅和 API 里的同名模型组合成一条路由，以及怎样限制 API Key 的花费。桌面应用和 Linux Web UI 的操作相同；命令行对应的 `compute` 命令见 [HiRoute CLI](/zh/docs/cli/)。
 
+用本地 Qwen 执行、云端主力兜底，并由本地 D3 决策的组合方案，见 [本地模型与前沿模型协作](/zh/docs/local-model-routing/)。
+
 <aside class="agent-guide" id="agent-cli" aria-label="给 Agent 的操作指引">
 <div class="agent-guide-heading"><strong>让 Agent 参考本页执行</strong></div>
 
