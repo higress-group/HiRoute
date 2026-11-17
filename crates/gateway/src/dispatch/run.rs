@@ -670,7 +670,7 @@ mod tests {
             .unwrap()
             .start_managed()
             .unwrap();
-        let body = r#"{"model":"worker-model","input":"injected search","tools":[{"type":"web_search","external_web_access":true}]}"#;
+        let body = r#"{"model":"worker-model","input":"injected search","tools":[{"type":"web_search","external_web_access":true,"filters":{"allowed_domains":["example.com"]}}]}"#;
         let mut stream = std::net::TcpStream::connect(address).unwrap();
         stream
             .set_read_timeout(Some(std::time::Duration::from_secs(5)))

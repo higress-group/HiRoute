@@ -160,14 +160,23 @@ fn decode_responses(
                         .as_object_mut()
                         .ok_or(ModelIrError::InvalidField("web_search_call"))?
                         .remove("internal_chat_message_metadata_passthrough");
-                    let call = WebSearchCallV1::from_wire(&native_item)?;
-                    if !matches!(
-                        call.status,
-                        WebSearchStatus::Completed | WebSearchStatus::Failed
-                    ) {
-                        return Err(ModelIrError::InvalidField("unfinished search history"));
+                    checked_object(
+                        context,
+                        &native_item,
+                        &["type", "id", "status", "action"],
+                        "responses search history",
+                    )?;
+                    match WebSearchCallV1::from_wire(&native_item) {
+                        Ok(call)
+                            if matches!(
+                                call.status,
+                                WebSearchStatus::Completed | WebSearchStatus::Failed
+                            ) =>
+                        {
+                            responses_search_history.insert(messages.len(), call);
+                        }
+                        _ => context.mark_native_only(),
                     }
-                    responses_search_history.insert(messages.len(), call);
                     messages.push(CanonicalMessage {
                         role: MessageRole::Assistant,
                         content: Vec::new(),
@@ -712,7 +721,7 @@ fn decode_messages_content(
                     checked_object(context, caller, &["type"], "messages tool_use caller")?;
                 // Direct calls retain ordinary tool semantics. Programmatic callers carry
                 // execution authority that cannot be silently dropped during projection.
-                if required_string(caller, "type")? != "direct" {
+                if caller.len() != 1 || required_string(caller, "type")? != "direct" {
                     return Err(ModelIrError::UnsupportedValue(
                         "messages tool_use caller type".into(),
                     ));
@@ -968,6 +977,7 @@ fn decode_messages_tools(
     value: Option<&Value>,
 ) -> Result<Vec<CanonicalTool>, ModelIrError> {
     decode_tools(value, |object| {
+        ensure_absent(object, &["type"], "messages hosted Tool")?;
         ensure_keys(
             context,
             object,
@@ -1203,25 +1213,23 @@ fn ensure_keys(
 ) -> Result<(), ModelIrError> {
     let allowed = keys.iter().copied().collect::<BTreeSet<_>>();
     for key in object.keys().filter(|key| !allowed.contains(key.as_str())) {
-        // Execution-bearing tool declarations and gateway authority are not
-        // opaque payload extensions. They must remain visible to authorization.
-        if label.to_ascii_lowercase().contains("tool")
-            || matches!(
-                key.as_str(),
-                "authorization"
-                    | "api_key"
-                    | "base_url"
-                    | "endpoint"
-                    | "headers"
-                    | "credentials"
-                    | "mcp_servers"
-                    | "container"
-                    | "computer"
-                    | "web_search_options"
-                    | "conversation"
-                    | "previous_response_id"
-            )
-        {
+        // Tool kinds and execution carriers are checked at their owning decoder.
+        // Ordinary provider fields remain native payload; gateway authority stays local.
+        if matches!(
+            key.as_str(),
+            "authorization"
+                | "api_key"
+                | "base_url"
+                | "endpoint"
+                | "headers"
+                | "credentials"
+                | "mcp_servers"
+                | "container"
+                | "computer"
+                | "web_search_options"
+                | "conversation"
+                | "previous_response_id"
+        ) {
             return Err(ModelIrError::UnsupportedField(format!("{label}.{key}")));
         }
         context.mark_native_only();

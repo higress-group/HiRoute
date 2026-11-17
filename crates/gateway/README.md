@@ -288,9 +288,24 @@ delivery expands them once per child and charges the full repeated wire length.
 [Listener regressions](../../tools/e2e-harness/tests/p0_gateway_protocol/responses_chat_tools.rs)
 cover described namespaces, tool continuation and unsupported-tool fallback.
 
+Native Responses, Chat Completions and Messages retain ordinary extension fields
+on recognized tool declarations and tool-call/result history. Their typed view
+marks unknown semantics native-only, so prefix cleanup and cross-protocol
+conversion cannot drop them. Provider feature metadata does not veto native
+delivery. Tool-kind, execution-carrier and gateway-authority checks remain at
+their owning boundaries. [Adapter cases](src/adapters/tests/native_tool_extensions.rs)
+cover all three protocols, model changes and capability metadata.
+
 The typed Responses search adapter reads and renders `find_in_page`, including
 completed actions without a URL. It reads the released `find` spelling for
 compatibility. Native replay retains the incoming action and fields.
+Unknown search actions, additional history fields and unfinished search states
+retain their native item with unmodeled history. Ordinary `web_search` controls
+also remain intact and visible to network authorization. The upstream validates
+these native payloads; semantic comparison, prefix cleanup and cross-protocol
+conversion require modeled data. The [adapter regressions](src/adapters/tests/native_search.rs)
+and [listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/responses_options.rs)
+cover native delivery and upstream errors.
 
 Same-protocol Responses forwarding preserves provider tool names and namespaces
 even when they disagree across snapshots of the same call. The call ID and

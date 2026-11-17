@@ -455,8 +455,24 @@ fn decode_tool_declarations(
                     .push(ResponsesToolOrderEntryV1::Namespace { index });
             }
             "web_search" => {
-                let search = serde_json::from_value(value.clone())
-                    .map_err(|_| ModelIrError::InvalidField("web_search"))?;
+                ensure_keys(
+                    context,
+                    object,
+                    &["type", "external_web_access"],
+                    "responses hosted search",
+                )?;
+                let external_web_access = match object.get("external_web_access") {
+                    Some(Value::Bool(value)) => Some(*value),
+                    None | Some(Value::Null) => None,
+                    Some(_) => {
+                        context.mark_native_only();
+                        None
+                    }
+                };
+                let search = WebSearchToolV1 {
+                    kind: WebSearchToolKind::WebSearch,
+                    external_web_access,
+                };
                 if decoded.web_search.is_some() {
                     // The typed field supplies hosted-tool admission. Only the
                     // native body describes every declaration's controls.

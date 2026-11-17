@@ -83,6 +83,24 @@ hosted-execution extensions, auth, or destination overrides cannot bypass admiss
 Cross-protocol candidates fail explicitly when equivalence is unavailable; they
 cannot silently drop images, tool semantics, reasoning, or ordinary extensions.
 
+Responses, Chat Completions and Messages native forwarding SHALL retain ordinary
+extension fields on recognized function/custom tool declarations and known
+tool-call/result history. Unknown fields mark the affected history unmodeled and
+disable semantic prefix reuse, cleanup and cross-protocol conversion. Provider
+feature metadata SHALL NOT veto native forwarding of such payloads. Tool kinds,
+programmatic execution carriers, authentication and destination controls retain
+their owning admission checks; an ordinary-field fallback cannot admit a new
+execution capability.
+
+Recognized Responses `web_search` declarations retain ordinary provider controls
+in native forwarding, including controls absent from the local typed projection.
+They remain visible to network authorization. Recognized `web_search_call` history
+with unknown actions, fields or unfinished states is retained as an unmodeled
+native item. The target provider validates that payload. Such an item cannot
+establish complete semantic history, provider-prefix reuse, cleanup or a
+cross-protocol conversion. Authentication and destination overrides retain
+their existing admission rules.
+
 Protocol adapters SHALL derive continuity from their supported typed history,
 using the existing common history representation and prefix comparison. In Chat
 assistant history, textual `reasoning` is an alias of `reasoning_content`. A sole

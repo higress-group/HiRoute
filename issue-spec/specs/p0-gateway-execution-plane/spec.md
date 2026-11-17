@@ -112,8 +112,9 @@ with no invented strict value, unpacked precisely on return. Nonempty grammar/fo
 or inexact wrapper cannot map. Messages has no namespace/custom support. Native
 requests do not acquire this target-specific name constraint or conversion proof.
 Tool choice none/auto/required_any/required_named stays distinct; named choice retains
-function/custom kind and name. Gateway typed input rejects missing/unknown kind or
-extra fields. Product canonical Function omits default tool_kind while Custom writes
+function/custom kind and name. Gateway typed input rejects missing/unknown kinds.
+Ordinary extension fields remain native-only under the request-routing contract.
+Product canonical Function omits default tool_kind while Custom writes
 custom, preserving released Function fact/receipt digests without loosening input.
 
 ### Requirement: Historical tools and reasoning do not require delivery registries
