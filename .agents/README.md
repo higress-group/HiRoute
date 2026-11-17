@@ -44,13 +44,11 @@ reconciliation, not deleting the manifest or force-overwriting local edits.
 Commit the manifest, generated files and links together so worktrees stay pinned.
 
 The shared [workflow improvement skill](skills/hiroute-workflow-improvement/SKILL.md)
-owns feedback routing, deduplication, independent recurrence counting, automatic
-high-priority promotion from the third confirmed occurrence, stable analysis labels
-and verification of adopted improvements when later work provides comparable
-context. Issues preserve the resumption context across sessions; feedback does not
-keep an iteration open. Its CLI and shared workflow suggestions go upstream;
-HiRoute policy suggestions stay here. It has no Codex host dependency and is exposed
-to Claude through its own relative link.
+owns HiRoute feedback routing, classification, publication rules, and verification
+of adopted improvements. The standalone feedback skill and workflow use the same
+[issue-spec feedback guide](skills/issue-spec-workflow/references/workflow-feedback.md)
+for occurrence records, deduplication, and escalation. Issues preserve the context
+for later work. The HiRoute skill is exposed to Claude through its own relative link.
 Generated workflow files and their manifest remain owned by issue-spec.
 
 ## Codex-only skills

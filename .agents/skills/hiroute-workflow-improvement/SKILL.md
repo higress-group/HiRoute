@@ -1,16 +1,13 @@
 ---
 name: hiroute-workflow-improvement
-description: Improve HiRoute iteration by capturing issue-spec CLI and workflow friction, routing labeled feedback to its owner, and assessing adopted improvements when a later task provides suitable context. Use during relevant project work or requested feedback reviews; not ordinary product bugs or automatic upgrades.
+description: Route and classify reproducible feedback about HiRoute project skills, the issue-spec CLI, and workflows. Use for project reporting rules and later adoption checks.
 ---
 
-# Improve issue-spec through evidence
+# HiRoute Workflow Improvement
 
-Use HiRoute iteration as the source of concrete improvement evidence: observed
-friction becomes feedback, recurring feedback informs CLI/workflow corrections,
-and adopted corrections should improve subsequent HiRoute work. These steps can
-span weeks and unrelated sessions; no original agent or conversation owns a
-continuous follow-up obligation. Labels support
-periodic analysis; filing Issues is an intermediate result, not proof of improvement.
+Use this skill for HiRoute's reporting rules, classification, and adoption checks.
+Record observations from project skills and workflows through the
+[shared issue-spec feedback guide](../issue-spec-workflow/references/workflow-feedback.md).
 
 Capture observations while doing the original task, such as repeated manual repair,
 ambiguous guidance, unnecessary steps or missing command capability. Do not launch
@@ -18,10 +15,10 @@ a separate broad audit or require a feedback report for every task.
 Continue the original task wherever possible. Feedback is not a new planning,
 review or delivery gate, and creating an Issue does not authorize its implementation.
 
-HiRoute's repository policy authorizes filing, recurrence comments and labeling
-evidence-backed feedback from its work, including automatic promotion at the
-confirmed recurrence threshold below. Honor a user's narrower scope, such as
-read-only or no publication.
+HiRoute's repository policy authorizes filing, recording verified occurrences, and
+applying the feedback classification labels for evidence from its work. The
+destination's published feedback policy and backend permissions govern escalation.
+Honor a user's narrower scope, such as read-only or no publication.
 Do not infer this standing authorization when copying this skill to another project.
 Do not start agents, recurring jobs, workflow upgrades or automatic rule rewrites.
 
@@ -51,62 +48,40 @@ and state the uncertainty instead of guessing the destination. Split genuinely
 independent CLI and workflow causes into linked reports, not copies of one symptom.
 Never edit generated `issue-spec-*` files to implement upstream suggestions.
 
-## Deduplicate and write
+## File and record feedback
 
-Use the [report and analysis guide](references/feedback.md) for the body fields,
-independent-occurrence counting, label definitions, provider commands and
-time-window queries.
+Use the [report and analysis guide](references/feedback.md) for issue body fields,
+classification labels, and interval reviews.
 
-1. Verify the destination repository and active backend with read-only CLI/auth
-   inspection; use explicit `--repo` on each command. HiRoute and the upstream above
-   are GitHub repositories. Do not change profiles or credentials to bypass failure.
-   If an explicitly selected backend differs, resolve it before writing.
-2. Search both open and closed discussions in the destination with one to three
-   specific command, symptom or instruction terms using `issue-spec search issues`.
-   Read plausible matches with `issue-spec read issue --comments`. Do not rely only
-   on titles, labels, the first page of a broad query, or a search snippet. Follow
-   relevant remaining pages or narrow the query; disclose bounded search coverage.
-3. Reuse an existing Issue for the same cause and expected correction. Add only new
-   evidence or a distinct recurrence through `issue-spec comment create`; do not
-   create another Issue merely because another task or agent discovered it. Count
-   the original observed report as occurrence 1 and each independently evidenced
-   recurrence once. Ordinary discussion, retries and handoffs do not add occurrences.
-   Link the prior evidence and record the confirmed count or lower bound in the new
-   comment. Respect closed/wontfix decisions. A demonstrated regression after a fix
-   may warrant a new Issue linked to the old one; do not reopen it automatically.
-   Split unrelated causes even if their symptoms match.
-4. Prepare a self-contained English body with sanitized reproduction, expected and
-   observed behavior, impact, owning layer, suggested correction and acceptance.
-   Include the minimal scenario and prerequisites needed by a future session; a
-   conversation link or temporary worktree alone cannot carry required context.
+1. Follow the shared guide to verify the destination Issue repository and profile,
+   and search open and closed discussions for the same cause. HiRoute and issue-spec
+   use GitHub. Read plausible matches and disclose the coverage of a bounded search.
+2. Reuse the Issue for the same unresolved cause. Respect closed and wontfix
+   decisions. Link a distinct regression after a fix to its predecessor and use a
+   separate Issue for an unrelated cause.
+3. For a new Issue, prepare a self-contained English body with sanitized
+   reproduction, expected and observed behavior, impact, owning layer, suggested
+   correction and acceptance. Include the minimal scenario and prerequisites
+   needed by a future session.
    Distinguish measured facts from hypotheses. A design gap can use an observed
    task sequence rather than a failing command. Do not manufacture a bug to fill
    a category or attach private logs, credentials or local absolute paths.
-5. On GitHub, provision missing labels first, then create the ordinary suggestion
+4. On GitHub, provision missing labels first, then create the ordinary feedback Issue
    with `gh issue create --body-file ... --label ...` so creation includes its
-   classification. This is HiRoute's explicit feedback-publication policy. Use
-   issue-spec for selected workflow artifacts and ordinary recurrence comments;
-   non-GitHub Issue creation follows its configured issue-spec backend. Use installed
-   command help rather than invented flags. No Proposal, typed QUESTION/TASK or
-   PROCESS is needed just to collect feedback.
-6. Apply `improvement/feedback` and exactly one category label from the table to
-   every report, including a reused matching Issue. Preserve unrelated labels.
-   Provision missing labels without overwriting existing definitions. For a reused
-   Issue with conflicting category labels, resolve ownership before changing them;
-   do not silently remove others' classification.
-   When recorded evidence on an open, unresolved Issue reaches at least
-   **3 confirmed occurrences**, automatically promote it to `priority/high` using the
-   [counting and promotion rules](references/feedback.md#count-independent-occurrences-and-promote).
-   This is part of recording the feedback, without another approval or periodic job.
-7. Read back the Issue URL, body/comment and labels. If a create returns an uncertain
-   result, search/read before retrying. If labeling fails after creation, retain the
-   URL and report the missing labels; retry only that step after resolving the
-   failure. Never create a replacement Issue just to retry labels, switch providers
-   after a denial, or claim the labeled feedback is complete when it is partial.
+   classification. Follow the configured backend's Issue operations for a
+   non-GitHub target. Apply `improvement/feedback` and exactly one category to both
+   new and reused Issues. Preserve unrelated labels and resolve conflicting
+   classification with the Issue owner.
+5. Use the shared guide to preview and record the first observation and each
+   independent recurrence with `issue-spec feedback record`. Reuse the original
+   event identity when replaying a report from a skill or workflow. Read the
+   confirmed count and escalation decision from the command result.
+6. Read back the Issue URL, evidence, and labels. Reconcile an uncertain create
+   against existing Issues. Keep the Issue URL and retry the missing operation
+   when classification or evidence recording only partially succeeded.
 
-Report the Issue URL, category, create/reuse result, confirmed occurrence count,
-priority action and any incomplete labeling. If nothing actionable was found,
-say so without filing placeholder Issues.
+Report the Issue URL, category, recording status, confirmed count, escalation
+result, and any incomplete labeling.
 
 ## Review an interval
 
