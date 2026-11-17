@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 const CHAT_OK: &[u8] = br#"{"id":"chat-options","model":"runtime-native-model-1","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}"#;
 
 #[test]
-fn native_search_extensions_reach_upstream_and_retain_provider_outcomes() {
+fn native_search_and_additional_tools_extensions_reach_upstream_and_retain_provider_outcomes() {
     for upstream_status in [200, 400] {
         let provider = NativeProvider::start(vec![ProviderReply::Complete {
             status: upstream_status,
@@ -17,6 +17,8 @@ fn native_search_extensions_reach_upstream_and_retain_provider_outcomes() {
         }]);
         let fixture = RuntimeFixture::launch(&[&provider], 1);
         let body = json!({"model":MODEL,"stream":false,"input":[
+            {"type":"additional_tools","tools":[{"type":"function","name":"lookup",
+              "parameters":{"type":"object"}}],"provider_options":{"scope":"native"}},
             {"role":"user","content":"Inspect the example"},
             {"type":"web_search_call","id":"ws-native","status":"completed",
              "action":{"type":"provider_future_action","query":"Example"}},

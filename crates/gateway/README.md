@@ -295,6 +295,8 @@ conversion cannot drop them. Provider feature metadata does not veto native
 delivery. Tool-kind, execution-carrier and gateway-authority checks remain at
 their owning boundaries. [Adapter cases](src/adapters/tests/native_tool_extensions.rs)
 cover all three protocols, model changes and capability metadata.
+Unknown `additional_tools` envelope controls remain on their native item;
+endpoints requiring a top-level lift are excluded when it would discard them.
 
 The typed Responses search adapter reads and renders `find_in_page`, including
 completed actions without a URL. It reads the released `find` spelling for

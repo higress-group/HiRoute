@@ -92,7 +92,8 @@ into top-level `tools`. Append those declarations after existing top-level
 tools in input order. Preserve repetitions, namespaces, native field values,
 schema types, and call/result history. The upstream interprets repeated
 definitions and named choices on both same-protocol paths. A candidate that
-would lift a declaration following history is excluded. An incompatible schema
+would lift a declaration following history or discard unknown declaration-envelope
+fields is excluded; a native-item path retains those fields. An incompatible schema
 excludes the adapter that requires its schema dialect and leaves native replay
 available. Positioned declarations with item metadata also exclude cross-protocol
 mappings. Legacy metadata-free declarations remain available to those mappings.
