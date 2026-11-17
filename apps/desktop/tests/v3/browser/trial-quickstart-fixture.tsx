@@ -140,6 +140,12 @@ const agentControl = {
 };
 Object.assign(window,{trialAgentControl:agentControl});
 export async function quickStartInvoke(command:string,payload:any,params:URLSearchParams) {
+ // The V2 host envelopes still carry the same check result and request identity.
+ if (['check_model_connection_v2', 'check_registered_model_connection_v2', 'check_saved_model_connection_v2'].includes(command)) {
+  const check = await quickStartInvoke(command.slice(0, -3), { request: payload.request.request }, params);
+  const envelope = await mockProductInvoke(command, payload, 'ready');
+  return { ...envelope, check };
+ }
  if(command==='trial_agent_choices') return trialAgentRead(agents,command,payload);
  if(command==='trial_agent_model') {
   if(agentControl.failNext){agentControl.failNext=false;throw Error('AGENT_STATUS_UNAVAILABLE');}

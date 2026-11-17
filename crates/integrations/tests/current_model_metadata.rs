@@ -108,8 +108,8 @@ fn current_model_metadata_has_valid_digest_and_no_score_spreading() {
         .validate()
         .expect("current directory metadata");
     data.validate_against(&registry).unwrap();
-    assert_eq!(data.data.models.len(), 30);
-    assert_eq!(data.rating_snapshot.records.len(), 92);
+    assert_eq!(data.data.models.len(), 31);
+    assert_eq!(data.rating_snapshot.records.len(), 93);
     assert!(
         data.data
             .model_endpoint_capabilities
@@ -940,7 +940,7 @@ fn qwen4_max_metadata_survives_client_loading_without_executable_catalog_entries
     assert_eq!(prices.len(), 1);
     assert_eq!(prices[0].product_key, "bailian-payg-cn");
     assert_eq!(prices[0].currency, "CNY");
-    assert_eq!(catalog.model_data().models.len(), 30);
+    assert_eq!(catalog.model_data().models.len(), 31);
     assert!(
         catalog
             .model_data()

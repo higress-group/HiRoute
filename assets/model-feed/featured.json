@@ -1,5 +1,20 @@
 [
   {
+    "id": "new.qwen4-max",
+    "kind": "new_model",
+    "model_configuration_id": "model.catalog.qwen-4-max",
+    "headline": {
+      "en": "Qwen4-Max",
+      "zh": "Qwen4-Max"
+    },
+    "note": {
+      "en": "Use Qwen4-Max with Bailian Pay As You Go or Token Plan. Check availability with your connection.",
+      "zh": "可通过百炼按量或 Token Plan 接入，具体可用性以接入检查为准。"
+    },
+    "links": [],
+    "included_on": "2026-11-16"
+  },
+  {
     "id": "update.deepseek.v4-1-flash.1017",
     "kind": "model_update",
     "model_configuration_id": "model.deepseek.v4-1-flash",

@@ -56,6 +56,17 @@ class November13MetadataTests(unittest.TestCase):
         product = next(p for p in self.metadata['access_products'] if p['product_key'] == 'gemini-api')
         self.assertNotIn('gemini-4-hydrogen', product['documented_upstream_model_ids'])
 
+    def test_qwen4_recommendation_does_not_grant_execution(self):
+        featured_path = ROOT / 'assets/model-feed/featured.json'
+        featured = json.loads(featured_path.read_text())[0]
+        identity = featured['model_configuration_id']
+        self.assertEqual(featured['headline']['en'], 'Qwen4-Max')
+        model, = [m for m in self.data['models'] if m['model_configuration_id'] == identity]
+        self.assertEqual(model['display_name'], 'Qwen4-Max')
+        self.assertFalse(any(c['model_configuration_id'] == identity for c in self.data['model_endpoint_capabilities']))
+        self.assertFalse(any(identity in o['model_configuration_ids'] for o in self.data['offers']))
+        self.assertFalse(any(r['model_configuration_id'] == identity for r in self.data['price_rates']))
+
     def test_qwen4_messages_binds_the_production_id_to_both_plans_and_payg(self):
         bindings = [b for b in self.metadata['endpoint_bindings'] if b['model_key'] == 'qwen-4-max'
                     and any(i.endswith('/anthropic-messages') for i in b['interface_candidates'])]

@@ -382,8 +382,9 @@ export function DesktopApp() {
   // open its inline connection is the only model editor. Leaving follows that editor's guard too.
   async function openTrial(intent: { modelId?: string; bindingId?: string }) {
     const scope = editorScope(page);
-    if (scope && !await requestEditorReplacement(scope)) return;
+    if (scope && !await requestEditorReplacement(scope)) return false;
     setTrialModelsOpen(false); setTrialIntent(intent);
+    return true;
   }
   async function leaveTrial() {
     if (!trialIntent) return true;
@@ -523,10 +524,11 @@ export function DesktopApp() {
   }
 
   async function showRouting(editor?: RoutingEditorIntent | null, routingNotice?: string) {
-    if (!await allowPageChange('routing', true)) return;
+    if (!await allowPageChange('routing', true)) return false;
     setNotice('');
     setRoutingIntent({ key: `routing/${randomId()}`, editor, notice: routingNotice });
     openPage('routing');
+    return true;
   }
 
   function taskPresentation(planId: string) {
@@ -818,7 +820,10 @@ export function DesktopApp() {
             operation={homeOperation}
             trustSuggestions={trustSuggestions}
             onTrustAction={(plan, branch) => void reviewTrustAction(plan, branch)}
-            newModels={<NewModels language={language} mutable={mutationAllowed} active={!trialOpen && page === 'home'} plans={home.desktopSnapshot?.catalog.plans ?? []} refreshVersion={refreshVersion} onTry={modelId => void openTrial({ modelId })} onOpenPlan={planId => { const plan = home.desktopSnapshot?.catalog.plans.find(item => item.agent_plan_id === planId); if (plan) void showRouting({ key: `models/${randomId()}`, plan, initialView: 'performance' }); }} />}
+            newModels={<NewModels language={language} mutable={mutationAllowed} active={!trialOpen && page === 'home'} plans={home.desktopSnapshot?.catalog.plans ?? []} refreshVersion={refreshVersion} onTry={openTrial}
+              onSaveReplacement={({ plan, draft, editor }) => showRouting({ key: draft?.draft_id ?? plan.agent_plan_id, plan, draft, initialContent: editor, saveInitialDraft: true })}
+              onOperation={value => acceptOperation({ ...value, safe_error_code: null }, { kind: 'model-connection' })}
+              onConnectionsChanged={() => { setObserving(true); home.invalidateCatalog(); void home.refreshDesktop(); setRefreshVersion(value => value + 1); }} onOpenPlan={planId => { const plan = home.desktopSnapshot?.catalog.plans.find(item => item.agent_plan_id === planId); if (plan) void showRouting({ key: `models/${randomId()}`, plan, initialView: 'performance' }); }} />}
             hasTasks={taskRead.status === 'ready' && taskRead.tasks.length > 0}
             onAction={handleHomeAction}
           /></div>

@@ -6714,7 +6714,7 @@
       },
       "capabilities": {
         "tool": "supported",
-        "streaming": "conditional",
+        "streaming": "supported",
         "vision": "supported",
         "structured_output": "supported",
         "web_search": "supported"
@@ -6738,7 +6738,7 @@
         "source-qwen4-max-model",
         "source-qwen4-max-responses"
       ],
-      "data_note": "Input ceilings are 983616 tokens with thinking and 991808 without thinking. The 1000000-token context is the total window. In Chat, max_tokens and max_completion_tokens limit thinking and the final answer together. preserve_thinking defaults true, and historical reasoning_content must be sent separately from content. Responses uses max_output_tokens for the combined budget."
+      "data_note": "Input ceilings are 983616 tokens with thinking and 991808 without thinking. The 1000000-token context is the total window. In Chat, max_tokens and max_completion_tokens limit thinking and the final answer together. preserve_thinking defaults true, and historical reasoning_content must be sent separately from content. Responses uses max_output_tokens for the combined budget. Provider documentation includes streaming; endpoint and account qualification still require runtime checks."
     }
   ],
   "endpoint_bindings": [

@@ -49,7 +49,7 @@ try {
     assert.equal(await evaluate(client,`document.querySelector('[data-trial-request-model]').value`),'qwen3-coder-plus');
     await click('.trial-reuse-connection button','Use this connection');
     await waitFor(client,`!document.querySelector('.trial-reuse-connection')`);
-    assert.equal(await evaluate(client,`trialTrace.filter(x=>['apply_compute_save','check_saved_model_connection','compute_subscriptions'].includes(x.command)).length`),0);
+    assert.equal(await evaluate(client,`trialTrace.filter(x=>['apply_compute_save','check_saved_model_connection_v2','compute_subscriptions'].includes(x.command)).length`),0);
   });
   await run('api-one-target-auto-return',async()=>{
     await open();await source();
@@ -69,7 +69,7 @@ try {
     await waitFor(client,`!document.querySelector('.trial-reuse-connection') && document.querySelector('[data-trial-target=trial]').textContent.includes('Actual saved trial model')`);
     const change=await evaluate(client,`trialSetupControl.appendChange`);
     assert.deepEqual(change.selected_model_refs,['model-ref/reuse-target']);assert.ok(change.validation);assert.deepEqual(change.key_edits,[]);
-    assert.equal(await evaluate(client,`trialTrace.filter(x=>['register_protected_model_input','manage_subscription_login','check_saved_model_connection'].includes(x.command)).length`),0);
+    assert.equal(await evaluate(client,`trialTrace.filter(x=>['register_protected_model_input','manage_subscription_login','check_saved_model_connection_v2'].includes(x.command)).length`),0);
   });
   await run('edited-id-reuses-exact-binding',async()=>{
     await open();await source();await field('qwen3-coder-plus');

@@ -109,11 +109,11 @@ function activePlanQualityModels(plan: Plan, candidates: Candidate[]): PlanQuali
   }
   return models;
 }
-export type PlanEditorProps = { mutable?: boolean; plan?: Plan; draft?: Draft; creating?: boolean; trialOnly?: boolean; trialBusy?: boolean; previewAgentId?: string; initialBindingId?: string; initialModelRoute?: ModelRouteRequest; initialContent?: Editor; onCreateDraft?: (editor: Editor) => Promise<boolean>; initialView?: 'configuration' | 'performance'; initialDivisionBranch?: string; editingMemory?: PlanEditorMemory; language: 'zh' | 'en'; active?: boolean; refreshVersion?: number; usedBy?: { id: string; name: string; brand: BrandKind; isDefault: boolean }[]; usedByState?: 'loading' | 'complete' | 'partial' | 'unavailable'; onOpenAgent?: (agentId: string) => void; onOpenSession?: (sessionId: string, requestId: string) => void; onOpenServices?: OpenDecisionConnection; onDone: () => Promise<void>; onClose: () => void; onDirty?: (dirty: boolean) => void; onEdit?: () => void; onBusyChange?: (busy: boolean) => void; onOperation?: (operation: PlanOperation | null) => void; onPublicationReady?: (ready: boolean) => void; onPersistenceStarted?: (action: 'save_draft' | 'publish', identity: PersistenceIdentity) => void; onPersistenceCancelled?: () => void; onPersisted?: (editor: PersistedEditor<Plan, Draft> | null, action: 'save_draft' | 'publish', identity: PersistenceIdentity, operation: PlanOperation | null) => void };
+export type PlanEditorProps = { mutable?: boolean; plan?: Plan; draft?: Draft; creating?: boolean; trialOnly?: boolean; trialBusy?: boolean; previewAgentId?: string; initialBindingId?: string; initialModelRoute?: ModelRouteRequest; initialContent?: Editor; saveInitialDraft?: boolean; onCreateDraft?: (editor: Editor) => Promise<boolean>; initialView?: 'configuration' | 'performance'; initialDivisionBranch?: string; editingMemory?: PlanEditorMemory; language: 'zh' | 'en'; active?: boolean; refreshVersion?: number; usedBy?: { id: string; name: string; brand: BrandKind; isDefault: boolean }[]; usedByState?: 'loading' | 'complete' | 'partial' | 'unavailable'; onOpenAgent?: (agentId: string) => void; onOpenSession?: (sessionId: string, requestId: string) => void; onOpenServices?: OpenDecisionConnection; onDone: () => Promise<void>; onClose: () => void; onDirty?: (dirty: boolean) => void; onEdit?: () => void; onBusyChange?: (busy: boolean) => void; onOperation?: (operation: PlanOperation | null) => void; onPublicationReady?: (ready: boolean) => void; onPersistenceStarted?: (action: 'save_draft' | 'publish', identity: PersistenceIdentity) => void; onPersistenceCancelled?: () => void; onPersisted?: (editor: PersistedEditor<Plan, Draft> | null, action: 'save_draft' | 'publish', identity: PersistenceIdentity, operation: PlanOperation | null) => void };
 
 export const PlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps>(function PlanEditor(props, ref) {
   const [seed, setSeed] = useState<{ editor: Editor; head: number | null } | null>(() => props.draft
-    ? { editor: structuredClone(props.draft.editor), head: props.draft.base_head_revision ?? null } : props.initialContent && !props.plan ? { editor: structuredClone(props.initialContent), head: null } : null);
+    ? { editor: structuredClone(props.initialContent ?? props.draft.editor), head: props.draft.base_head_revision ?? null } : props.initialContent && !props.plan ? { editor: structuredClone(props.initialContent), head: null } : null);
   const [failure, setFailure] = useState<unknown>(null);
   const [retry, setRetry] = useState(0);
   useEffect(() => {
@@ -140,7 +140,7 @@ export const PlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps>(function
   </section>;
 });
 
-const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initialEditor: Editor; initialHead: number | null }>(function LoadedPlanEditor({ initialEditor, initialHead, mutable = true, plan, draft, creating = false, trialOnly = false, trialBusy = false, previewAgentId, initialBindingId, initialModelRoute, initialContent, onCreateDraft, initialView = 'configuration', initialDivisionBranch, editingMemory, language, active = true, refreshVersion = 0, usedBy = [], usedByState = 'complete', onOpenAgent, onOpenSession, onOpenServices, onDone, onClose, onDirty, onEdit, onBusyChange, onOperation, onPersisted, onPersistenceStarted, onPersistenceCancelled, onPublicationReady }, ref) {
+const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initialEditor: Editor; initialHead: number | null }>(function LoadedPlanEditor({ initialEditor, initialHead, mutable = true, plan, draft, creating = false, trialOnly = false, trialBusy = false, previewAgentId, initialBindingId, initialModelRoute, initialContent, saveInitialDraft, onCreateDraft, initialView = 'configuration', initialDivisionBranch, editingMemory, language, active = true, refreshVersion = 0, usedBy = [], usedByState = 'complete', onOpenAgent, onOpenSession, onOpenServices, onDone, onClose, onDirty, onEdit, onBusyChange, onOperation, onPersisted, onPersistenceStarted, onPersistenceCancelled, onPublicationReady }, ref) {
   const en = language === 'en', text = (zh: string, eng: string) => en ? eng : zh;
   const [editor, setEditor] = useState<Editor>(() => structuredClone(initialEditor));
   const nameError = planDisplayNameError(editor.display_name, language);
@@ -199,6 +199,13 @@ const LoadedPlanEditor = forwardRef<PlanEditorHandle, PlanEditorProps & { initia
   const setWorking = (value: boolean) => { activity.busy = value; refreshAvailability(); setBusy(value); };
   const latestSave = useRef<() => Promise<boolean>>(async () => false);
   latestSave.current = () => saveAvailability.allowed ? act('save_draft') : Promise.resolve(false);
+  // The recommendation's reviewed replacement enters through the ordinary draft action.
+  const initialSaveRequested = useRef(false);
+  useEffect(() => {
+    if (!saveInitialDraft || !active || !canEdit || initialSaveRequested.current) return;
+    initialSaveRequested.current = true;
+    void latestSave.current();
+  }, [saveInitialDraft, active, canEdit]);
   const confirmLeave = () => activity.mutable ? confirmSaveDraftOrDiscard(language, () => latestSave.current(), saveAvailability) : confirmDiscard(language);
   const confirmReplacement = async () => {
     if (activity.busy || activity.trialBusy) return false;

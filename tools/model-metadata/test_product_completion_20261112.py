@@ -48,7 +48,7 @@ class ProductCompletionTests(unittest.TestCase):
         for schedule in prices['minimax-m3']['schedules']:
             self.assertEqual(schedule['condition']['threshold_token_unit'], 'unresolved')
             self.assertNotIn('cache-write', schedule['rates'])
-        self.assertEqual(len(self.data['models']), 30)
+        self.assertEqual(len(self.data['models']), 31)
 
     def test_flashx_china_is_not_a_coding_plan_grant(self):
         binds = [b for b in self.metadata['endpoint_bindings'] if b['model_key'] == 'glm-5-3-flashx-global']

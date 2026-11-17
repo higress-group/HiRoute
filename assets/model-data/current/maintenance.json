@@ -3,9 +3,9 @@
   "source_bundle": "assets/model-data/current/rating-seed.json",
   "source_bytes_digest": "sha256:2f3b02526a9263e756c3a94e4d74336aca36724abd984fbec4a0a89833619b9f",
   "metadata_catalog": "assets/model-data/current/inputs/metadata-catalog.json",
-  "metadata_catalog_bytes_digest": "sha256:77fe9901f5f959574c30fc2eb36aa7487d4c9c75db500f7485d040f90be520d6",
+  "metadata_catalog_bytes_digest": "sha256:976d770c7ebd048fbd1f571897ac147c8b2b0db6df021ee0a22664efb465f326",
   "client_discovery_runs": "assets/model-data/current/inputs/client-discovery-runs.json",
-  "client_discovery_runs_bytes_digest": "sha256:8e4b646afe6f3be38faaac5019ef61b3558f1e82e3fab05eb800c7843850f7c3",
+  "client_discovery_runs_bytes_digest": "sha256:2da0e3ba39b73c38e93b87fc714d6e4c96c89a327f9137d1ada1552c79fdd168",
   "snapshot_version": "hiroute-20260913/current-1",
   "method_revision": "preserved-explicit-native/v1",
   "evidence": {
@@ -826,6 +826,20 @@
           }
         ]
       }
+    },
+    {
+      "source_model_key": "qwen-4-max",
+      "model_configuration_id": "model.catalog.qwen-4-max",
+      "publisher_id": "publisher.alibaba-qwen",
+      "native_capability": {
+        "kind": "fixed",
+        "profile": "provider-default"
+      },
+      "sources": [
+        "https://help.aliyun.com/zh/model-studio/qwen4-max"
+      ],
+      "collected_on": "2026-11-16",
+      "identity_note": "Descriptive recommendation. The saved connection determines the executable model, supported reasoning settings, and billing product."
     }
   ],
   "current_provider_limits": [

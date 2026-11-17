@@ -296,7 +296,7 @@ try {
     await click('.trial-recovery button','Use this saved model');
     await waitFor(client, `document.querySelector('.trial-page').textContent.includes('Saved synthetic model')`);
     assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
-    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='check_registered_model_connection').some(x=>x.payload.request.inference_model_id)`),false);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='check_registered_model_connection_v2').some(x=>x.payload.request.request.inference_model_id)`),false);
     assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='model_availability').length`),catalogReads,'unlinked save does not synchronously reread unrelated catalog history');
     assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='decision_services_v3').length`),serviceReads,'saved model selection does not wait for unrelated decision services');
   });
@@ -339,7 +339,7 @@ try {
     await setLabel('Model ID','fixture-unlinked-model');
     await click('.modal-foot button','Check and save');
     await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('Use this saved model')`);
-    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='check_model_connection').length`),1);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='check_model_connection_v2').length`),1);
     assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
   });
   await run('readiness.compound-live-focus', async () => {
@@ -400,7 +400,7 @@ try {
     await evaluate(client, `(()=>{const source=[...document.querySelectorAll('.trial-picker-source')].find(e=>e.textContent.includes('Codex'));[...source.querySelectorAll('.trial-choice')].find(e=>e.textContent.includes('GPT-5.6-Sol')).click();return true;})()`);
     await waitFor(client, `!document.querySelector('.trial-picker') && !!document.querySelector('[data-trial-target=primary] .trial-choice.selected')`);
     const commands=await evaluate(client, `trialTrace.slice(${before}).map(x=>x.command)`);
-    assert.equal(commands.some(command=>['compute_scan','compute_subscriptions','check_model_connection','check_registered_model_connection','apply_compute_save'].includes(command)),false,JSON.stringify(commands));
+    assert.equal(commands.some(command=>['compute_scan','compute_subscriptions','check_model_connection_v2','check_registered_model_connection_v2','apply_compute_save'].includes(command)),false,JSON.stringify(commands));
     await shot('picker-selected-same-name-en-755');
     await click('.trial-footer .btn-primary','Review changes');
     await waitFor(client, `!!document.querySelector('.trial-review > .actions .btn-primary:not(:disabled)')`);

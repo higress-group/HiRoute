@@ -6,7 +6,7 @@ import { Dialog, Disclosure, ProductPage, UiIcon } from '../../ui';
 import { requestEditorReplacement } from '../../ui/discard-guard';
 import { type Editor, type Plan, type Selection } from '../../plan-editor';
 import type { DesktopOperation, DesktopSnapshot } from '../../product/home-projections';
-import type { TrialCatalogSnapshot, TrialManagementSnapshot, TrialMember, TrialRetainedApiConnection, TrialSource, TrialSetupSnapshot } from './types';
+import type { TrialCatalogSnapshot, TrialManagementSnapshot, TrialMember, TrialRetainedApiConnection, TrialSource } from './types';
 import type { ComputeConnectionOptions, ComputeSaveResult, OperationReference } from '../model-connections/types';
 import type { AvailableModel, ModelAvailabilityResult } from '../model-feed/types';
 import { agentDisplayName } from '../agents/ecosystems';
@@ -18,6 +18,7 @@ import type { DecisionIntent, OpenDecisionConnection } from '../decision-service
 import { TrustLevelControl } from '../trust/TrustLevelControl';
 import { agentEcosystem } from '../agents/ecosystems';
 import { TrialConnectModel, type TrialConnectionState } from './TrialConnectModel';
+import { readTrialSetup } from './read-setup';
 import { TrialReuseConnection } from './TrialReuseConnection';
 import type { ReusedTrialBinding } from './reuse-connection';
 import { TrialAgentChoice, TrialAgentMapping } from './TrialAgentMapping';
@@ -60,16 +61,6 @@ function retainedApiFor(current: TrialCatalogSnapshot | null | undefined, candid
   if (!current || !candidate?.routable) return undefined;
   const record = (index ?? retainedApiIndex(current.management)).get(candidate.binding_id);
   return record?.model_configuration_id === candidate.model_configuration_id ? record : undefined;
-}
-
-async function readTrialSetup(): Promise<TrialSetupSnapshot> {
-  for (let attempt = 0; ; attempt += 1) {
-    try { return await invoke<TrialSetupSnapshot>('trial_setup_snapshot'); }
-    catch (error) {
-      const code = safeDiagnosticCode(error, 'UNKNOWN');
-      if (attempt >= 1 || !['READ_SNAPSHOT_CHANGED', 'CHANGE_PREVIEW_STALE', 'application.error.change_preview_stale'].includes(code)) throw error;
-    }
-  }
 }
 
 export function TrialQuickStart({ initialModelId, initialBindingId, language, mutable, snapshot, operation, onOperation, onRefresh, onClose, onOpenAgent, onOpenPerformance, onOpenSessions, onOpenModels, active = true, onRepresentedOperations = ignoreRepresentedOperations }: {
@@ -292,7 +283,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
   const alias = trial ? createTrialAlias(trialName ?? trial.display_name, nonce) : '';
   const announcements = data ? modelAnnouncements(data.availability).entries : [];
   const featured = announcements.map(entry => entry.model_configuration_id);
-  const cards = [...new Set([...(initialModelId ? [initialModelId] : []), ...featured, ...(trialId ? [trialId] : [])])].flatMap(id => models.filter(m => m.catalog && m.model_configuration_id === id)).slice(0, 6);
+  const cards = [...new Set([...(initialModelId ? [initialModelId] : []), ...featured, ...(trialId ? [trialId] : [])])].flatMap(id => models.filter(m => m.catalog && m.model_configuration_id === id && m.availability.kind !== 'descriptive_only')).slice(0, 6);
   const primaryOptions = models.filter(m => m.model_configuration_id !== trialId && candidates(m.model_configuration_id).length > 0);
   const source = (binding?: string) => retainedApiFor(data, data?.options.candidates.find(c => c.binding_id === binding), retainedApi)?.display_name ?? data?.management.sources.find(s => s.models.some(m => m.binding_id === binding))?.display_name;
   const bindingInfo = (binding?: string) => {
