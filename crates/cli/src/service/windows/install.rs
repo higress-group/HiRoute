@@ -60,6 +60,8 @@ pub(crate) fn run(verb: &str, arguments: &[OsString]) -> u8 {
                     "INSTALL_ARCHITECTURE_UNSUPPORTED",
                     "INSTALL_MAINTENANCE_BUSY",
                     "INSTALL_OWNERSHIP_CONFLICT",
+                    "INSTALL_PATH_REPARSE_UNSUPPORTED",
+                    "INSTALL_PATH_NOT_REGULAR_FILE",
                     "AGENT_CONTROL_UNAVAILABLE",
                     "AGENT_RESTORE_DATA_REQUIRED",
                     "INSTALL_PACKAGE_IN_USE",
