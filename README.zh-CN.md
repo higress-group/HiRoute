@@ -134,7 +134,7 @@ HiRoute 在本地运行，将受支持的订阅、API 接入和本地模型集�
 HiRoute 提供 **macOS、Windows x64 和 Omarchy 桌面应用**，以及 Linux Web UI 与 CLI。
 已发布的安装包见[下载页](https://hiroute.ai/zh/download/)。
 
-0.6.3 改进 Agent 恢复、受管 Codex 模型发现、Codex 工具路由、Windows Agent 发现与 CLI 路由计划生命周期操作。
+0.6.4 支持从首页配置 Qwen4-Max 试用，也可以替换路由草稿里的模型。新版改进 Codex 工具调用续接和订阅模型发现，修正 GPT-6.2 API 的输入上限预填，并在桌面侧栏提供更新入口。试用、替换和发布步骤见[新模型试用指南](https://hiroute.ai/zh/docs/model-trial/)。
 
 1. **接入模型**：加入受支持的订阅或 API，选择经济模型与主力。
 2. **配置分工**：在**模型 → 决策模型**中连接判断服务，选择信任程度，发布并映射到 Agent。

@@ -39,7 +39,7 @@ With a ChatGPT subscription, sign in and choose the Codex models available to yo
   <figcaption>Click Sign in on the Codex card and authorize with your ChatGPT subscription account.</figcaption>
 </figure>
 
-3. When the card says **Signed in. Check and choose models**, click **Check and choose models**, then **Check subscription**. The available models appear when the check completes.
+3. When the card says **Signed in. Check and choose models**, click **Check and choose models**, then **Check subscription**. Fetching the model list can take up to a minute. The models available to your account appear when the check completes.
 4. Select the models you want. To add credits as well, [enter the receiving organization's API key](#api-credits). Click **Save and connect** and confirm the models appear under **General models**.
 
 <figure class="guide-shot-dialog">

@@ -16,16 +16,18 @@ The website change does not alter those components.
 | --- | --- | --- |
 | `models-add` | Models → Add models | `interaction-audit-fixtures.mjs` |
 | `trial-entry` | Home → New models | `new-model-trial.tsx`, Home view |
-| `trial-setup` | Create a trial route → Choose models | `trial-quickstart-fixture.tsx` |
+| `trial-setup` | Home → Try another model → Choose models | `trial-quickstart-fixture.tsx` |
 | `agent-editor` | Agent → Codex → Model routing | `interaction-audit-fixtures.mjs` |
 | `agent-management` | Agent → Codex → HiRoute management → Enable | `interaction-audit-fixtures.mjs` |
 | `routing-worker` | Smart routing → More settings → Task delegation | `interaction-audit-fixtures.mjs` |
 | `agent-task` | Agent → Codex → Task routing | `interaction-audit-fixtures.mjs` |
 | `tasks` | Agent → Task history → a running task | `interaction-audit-fixtures.mjs` |
 
-The two `trial-entry` images were reproduced on 2026-11-17 using the Desktop source at
-`fee27f2527899c0eb1e71b46942b95b526b10d2b`. The Home fixture uses the current
-recommendation list and displays the production Start configuration action.
+Both languages of `trial-entry` and `trial-setup` were recaptured on 2026-11-18
+from Desktop source `1e6b7a1f51a8ab66b6d927622f0af04f97ce5267`. The Home fixture
+shows the current recommendations and the Start configuration action. The trial
+fixture opens the first setup step through Try another model and shows an example
+connected model.
 
 Fixtures are under `apps/desktop/tests/v3/browser/`. English captures translate
 the sample route names at the host boundary. The management capture uses a known
