@@ -101,6 +101,25 @@ establish complete semantic history, provider-prefix reuse, cleanup or a
 cross-protocol conversion. Authentication and destination overrides retain
 their existing admission rules.
 
+Responses client-executed tool discovery retains the `tool_search` declaration,
+`tool_search_call` (object arguments and a nonempty `call_id`), and
+`tool_search_output` (the matching ID and in-place callable definitions).
+Returned functions, custom tools and namespaces remain scoped to that history
+position. Hosted execution and destination or credential overrides require their
+existing authority. A delivered discovery call can continue its routing turn
+when the original prefix, carrier, call ID and any replayed arguments match.
+Streamed JSON argument text and the completed object must agree. Incomplete or
+ambiguous evidence leaves forwarding available without conferring tool handoff.
+
+For a published source and model, endpoint selection prefers its configured
+ingress-matching protocol with representable reasoning controls, then its
+permitted conversion faces in declared order. Each selection uses its bound
+destination and credentials. When a Responses-only field prevents conversion
+to Chat or Messages, the candidate receipt records the field-specific exclusion.
+If protocol projection exhausts the route, the Gateway retains
+`400 CLIENT_PROTOCOL_UNREPRESENTABLE` and may identify the first known field
+and candidate upstream protocol in `detail`. Field values are never included.
+
 Protocol adapters SHALL derive continuity from their supported typed history,
 using the existing common history representation and prefix comparison. In Chat
 assistant history, textual `reasoning` is an alias of `reasoning_content`. A sole

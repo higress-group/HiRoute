@@ -428,9 +428,7 @@ fn encode_native_responses_tool_setup(
     // The canonical tool order omits declaration positions and retains only
     // the first hosted declaration. Include those wire semantics in retry proof
     // without hashing the function schemas already accounted for above.
-    if request.web_search.is_some()
-        && let Some(tools) = body.get("tools").and_then(Value::as_array)
-    {
+    if let Some(tools) = body.get("tools").and_then(Value::as_array) {
         encode_native_search(tools, setup)?;
     }
     if let Some(input) = body.get("input").and_then(Value::as_array) {
@@ -450,9 +448,7 @@ fn encode_native_responses_tool_setup(
             setup.usize(index);
             let tools = item.get("tools")?.as_array()?;
             setup.usize(tools.len());
-            if request.web_search.is_some() {
-                encode_native_search(tools, setup)?;
-            }
+            encode_native_search(tools, setup)?;
         }
     }
     Some(())
@@ -461,8 +457,11 @@ fn encode_native_responses_tool_setup(
 fn encode_native_search(tools: &[Value], setup: &mut Encoder<'_>) -> Option<()> {
     for (index, tool) in tools.iter().enumerate() {
         setup.items(1)?;
-        if tool.get("type").and_then(Value::as_str) == Some("web_search") {
-            setup.tag(b"native-web-search");
+        if matches!(
+            tool.get("type").and_then(Value::as_str),
+            Some("web_search" | "tool_search")
+        ) {
+            setup.tag(b"native-search-declaration");
             setup.usize(index);
             setup.json(tool)?;
         }
@@ -934,6 +933,7 @@ mod tests {
         ModelRequestIRV1 {
             native_body: None,
             native_only: false,
+            responses_client_tool_search: false,
             native_history: None,
             schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
             ingress_protocol: IngressProtocol::Responses,

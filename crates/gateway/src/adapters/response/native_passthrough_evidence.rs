@@ -1,7 +1,11 @@
 //! Bounded evidence for the gateway's own completion claim, not a wire schema.
 
 use hiroute_diagnostics::event::NativeCompletionReason as Reason;
-use hiroute_gateway_core::runtime::body::MemoryRole;
+use hiroute_gateway_core::runtime::body::{MemoryRole, StreamBudget};
+
+#[path = "discovery_arguments.rs"]
+mod discovery_arguments;
+use discovery_arguments::DiscoveryArguments;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
@@ -16,6 +20,7 @@ pub(super) struct ResponseDeltaEvidence {
     item_id: [u8; 32],
     hash: Sha256,
     prefix_length: usize,
+    discovery: Option<DiscoveryArguments>,
     saw_delta: bool,
     done_digest: Option<[u8; 32]>,
 }
@@ -204,7 +209,11 @@ impl ProjectionState {
                 .range((index, 0, "")..)
                 .take_while(|((delta_index, _, _), _)| *delta_index == index)
                 .filter(|((_, _, kind), _)| reasoning_delta(kind))
-                .all(|((_, position, kind), delta)| delta.mismatch(item, *position, kind).is_none())
+                .all(|((_, position, kind), delta)| {
+                    delta
+                        .mismatch(item, *position, kind, &self.budget)
+                        .is_none()
+                })
     }
 
     pub(super) fn reconcile_response_items(
@@ -335,6 +344,11 @@ impl ProjectionState {
                     item_id: Sha256::digest(identity.as_bytes()).into(),
                     hash: Sha256::new(),
                     prefix_length,
+                    discovery: (kind == "function_call_arguments"
+                        && self.tools.get(&index).is_some_and(|tool| {
+                            tool.carrier == super::NativeToolCarrier::ClientToolSearch
+                        }))
+                    .then(DiscoveryArguments::default),
                     saw_delta: false,
                     done_digest: None,
                 },
@@ -354,11 +368,29 @@ impl ProjectionState {
                 self.response_items_uncertain = true;
                 self.completion_diagnostic.note(Reason::DeltaAfterDone);
             }
-            known.hash.update(delta.as_bytes());
+            if let Some(discovery) = &mut known.discovery {
+                if discovery.append(delta.as_bytes(), &self.budget).is_none() {
+                    self.response_items_uncertain = true;
+                    self.completion_diagnostic.note(Reason::EvidenceBudget);
+                }
+            } else {
+                known.hash.update(delta.as_bytes());
+            }
             known.saw_delta = true;
         }
         if let Some(completed) = completed {
-            let digest: [u8; 32] = Sha256::digest(completed.as_bytes()).into();
+            let digest = if known.discovery.is_some() {
+                let Some(digest) =
+                    DiscoveryArguments::object_digest(completed.as_bytes(), &self.budget)
+                else {
+                    self.response_items_uncertain = true;
+                    self.completion_diagnostic.note(Reason::InvalidDelta);
+                    return delta.is_some();
+                };
+                digest
+            } else {
+                Sha256::digest(completed.as_bytes()).into()
+            };
             if known.done_digest.replace(digest).is_some() {
                 self.response_items_uncertain = true;
                 self.completion_diagnostic.note(Reason::DuplicateDone);
@@ -389,7 +421,7 @@ impl ProjectionState {
                 None => Some(Reason::MissingOutput),
                 Some(output) => match output.get(index as usize) {
                     None => Some(Reason::MissingOutputItem),
-                    Some(Value::Object(item)) => known.mismatch(item, position, kind),
+                    Some(Value::Object(item)) => known.mismatch(item, position, kind, &self.budget),
                     Some(_) => Some(Reason::DeltaFinalType),
                 },
             };
@@ -402,10 +434,17 @@ impl ProjectionState {
 }
 
 impl ResponseDeltaEvidence {
-    fn mismatch(&self, item: &Map<String, Value>, position: u32, kind: &str) -> Option<Reason> {
+    fn mismatch(
+        &self,
+        item: &Map<String, Value>,
+        position: u32,
+        kind: &str,
+        budget: &StreamBudget,
+    ) -> Option<Reason> {
         let expected_type = match kind {
             "output_text" | "refusal" => "message",
             "reasoning_summary_text" | "reasoning_text" => "reasoning",
+            "function_call_arguments" if self.discovery.is_some() => "tool_search_call",
             "function_call_arguments" => "function_call",
             "custom_tool_call_input" => "custom_tool_call",
             _ => unreachable!("tracked delta kind"),
@@ -418,6 +457,19 @@ impl ResponseDeltaEvidence {
             self.item_id != digest
         }) {
             return Some(Reason::DeltaFinalIdentity);
+        }
+        if let Some(discovery) = &self.discovery {
+            let Some(args) = item.get("arguments").and_then(Value::as_object) else {
+                return Some(Reason::DeltaFinalType);
+            };
+            let terminal = digest_item(args);
+            if self.saw_delta && discovery.digest(budget) != Some(terminal) {
+                return Some(Reason::DeltaFinalText);
+            }
+            return self
+                .done_digest
+                .filter(|done| done != &terminal)
+                .map(|_| Reason::DoneFinalText);
         }
         let prefix = if self.saw_delta {
             self.prefix_length

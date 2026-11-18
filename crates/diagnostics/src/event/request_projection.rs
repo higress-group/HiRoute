@@ -35,8 +35,34 @@ pub enum RequestProjectionOutcome {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RequestProjectionReason {
+    ResponsesToolSearchUnsupported,
+    ResponsesIncludeUnsupported,
+    ResponsesClientMetadataUnsupported,
+    ResponsesReasoningSummaryUnsupported,
+    ResponsesReasoningContextUnsupported,
+    ResponsesStoreUnsupported,
+    ResponsesPromptCacheKeyUnsupported,
     MessagePhaseOmitted,
     MessagePhaseUnsupported,
     ItemLifecycleUnsupported,
     NativeSemanticsUnsupported,
+}
+
+impl std::fmt::Display for RequestProjectionReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let field = match self {
+            Self::ResponsesToolSearchUnsupported => "tool_search",
+            Self::ResponsesIncludeUnsupported => "include",
+            Self::ResponsesClientMetadataUnsupported => "client_metadata",
+            Self::ResponsesReasoningSummaryUnsupported => "reasoning.summary",
+            Self::ResponsesReasoningContextUnsupported => "reasoning.context",
+            Self::ResponsesStoreUnsupported => "store",
+            Self::ResponsesPromptCacheKeyUnsupported => "prompt_cache_key",
+            other => return write!(f, "{other:?}"),
+        };
+        write!(
+            f,
+            "Responses {field} has no equivalent on this upstream protocol"
+        )
+    }
 }

@@ -1121,7 +1121,20 @@ impl ProductionGatewayRuntime {
                 || planner_output.ledger.ordered_candidates.is_empty()
             {
                 let (status, code) = no_eligible_response(&planner_output.ledger.evaluations);
-                return write_typed_error_phase(session, status, code, "planner").await;
+                let detail = if code == "CLIENT_PROTOCOL_UNREPRESENTABLE" {
+                    planner_output.ledger.evaluations.iter().find_map(|item| {
+                        let field = item.first_exclusion?.projection_field()?;
+                        let facts = planner_input
+                            .candidates
+                            .iter()
+                            .find(|fact| fact.candidate_id == item.candidate_id)?;
+                        let protocol = facts.protocol_profile.capability.upstream_protocol;
+                        Some(serde_json::json!({"field": field, "upstream_protocol": protocol}))
+                    })
+                } else {
+                    None
+                };
+                return write_error_detail(session, status, code, "planner", detail).await;
             }
             let fact_by_id = planner_input
                 .candidates
@@ -1630,7 +1643,13 @@ fn no_eligible_response(
     }
     if !evaluations.is_empty()
         && evaluations.iter().all(|item| {
-            item.first_exclusion == Some(ExclusionReasonCodeV1::ProtocolPathUnavailable)
+            item.first_exclusion.is_some_and(|reason| {
+                matches!(
+                    reason,
+                    ExclusionReasonCodeV1::ProtocolPathUnavailable
+                        | ExclusionReasonCodeV1::ToolInterfaceUnsupported
+                ) || reason.projection_field().is_some()
+            })
         })
     {
         return (StatusCode::BAD_REQUEST, "CLIENT_PROTOCOL_UNREPRESENTABLE");
@@ -1668,6 +1687,13 @@ mod no_eligible_tests {
         );
         assert_eq!(
             no_eligible_response(&[excluded(Reason::ProtocolPathUnavailable)]),
+            (StatusCode::BAD_REQUEST, "CLIENT_PROTOCOL_UNREPRESENTABLE")
+        );
+        assert_eq!(
+            no_eligible_response(&[
+                excluded(Reason::ResponsesToolSearchUnsupported),
+                excluded(Reason::ToolInterfaceUnsupported)
+            ]),
             (StatusCode::BAD_REQUEST, "CLIENT_PROTOCOL_UNREPRESENTABLE")
         );
         assert_eq!(
@@ -2080,13 +2106,26 @@ async fn write_typed_error_phase(
     code: &'static str,
     phase: &'static str,
 ) -> Result<SessionReuse, TransportError> {
+    write_error_detail(session, status, code, phase, None).await
+}
+
+async fn write_error_detail(
+    session: &mut dyn GatewaySession,
+    status: StatusCode,
+    code: &'static str,
+    phase: &'static str,
+    detail: Option<serde_json::Value>,
+) -> Result<SessionReuse, TransportError> {
     super::dispatch::note_run_request_failure(status.as_u16(), code);
-    let body = serialize_body(serde_json::json!({
+    let mut error = serde_json::json!({
         "schema_version": "hiroute.gateway.error/v1",
         "code": code,
         "phase": phase,
-    }))?;
-    write_response(session, status, body, None).await
+    });
+    if let Some(detail) = detail {
+        error["detail"] = detail;
+    }
+    write_response(session, status, serialize_body(error)?, None).await
 }
 
 async fn write_response(

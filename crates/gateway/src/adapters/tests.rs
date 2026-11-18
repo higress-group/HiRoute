@@ -24,6 +24,9 @@ use crate::server::request_plan::IngressProtocol;
 #[path = "tests/native_responses.rs"]
 mod native_responses;
 
+#[path = "tests/client_tool_search.rs"]
+mod client_tool_search;
+
 #[path = "tests/native_search.rs"]
 mod native_search;
 

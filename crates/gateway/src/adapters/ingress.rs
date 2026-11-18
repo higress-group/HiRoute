@@ -19,6 +19,7 @@ mod chat_reasoning;
 #[derive(Default)]
 struct DecodeContext<'a> {
     native_only: std::cell::Cell<bool>,
+    client_tool_search: std::cell::Cell<bool>,
     unknown_generation: std::cell::Cell<usize>,
     replay: Option<&'a ReplayStore>,
 }
@@ -40,7 +41,7 @@ impl DecodeContext<'_> {
         NativeHistoryItem {
             native_index,
             modeled: before == self.unknown_generation.get(),
-            goal_context: false,
+            handoff: NativeHandoffItem::None,
         }
     }
 }
@@ -87,6 +88,7 @@ fn decode_request_fields(
         IngressProtocol::Messages => decode_messages(context, body),
     }?;
     request.native_only = context.native_only.get();
+    request.responses_client_tool_search = context.client_tool_search.get();
     Ok(request)
 }
 
@@ -155,7 +157,7 @@ fn decode_responses(
                 let internal_metadata =
                     responses_options::internal_chat_message_metadata(context, item)?;
                 let item_type = item.get("type").and_then(Value::as_str);
-                let mut goal_context = false;
+                let mut handoff = NativeHandoffItem::None;
                 if item_type == Some("web_search_call") {
                     let mut native_item = item.clone();
                     native_item
@@ -201,8 +203,7 @@ fn decode_responses(
                     {
                         context.mark_native_only();
                     }
-                    goal_context =
-                        decode_responses_input(context, item, &mut messages, item_status)?;
+                    handoff = decode_responses_input(context, item, &mut messages, item_status)?;
                     if let Some(status) = item_status {
                         responses_item_statuses.insert(message_index, status.into());
                     }
@@ -222,7 +223,7 @@ fn decode_responses(
                     );
                 }
                 let mut native_item = context.history_item(Some(native_index), before);
-                native_item.goal_context = goal_context;
+                native_item.handoff = handoff;
                 native_history.push(native_item);
             }
         }
@@ -239,6 +240,7 @@ fn decode_responses(
     Ok(ModelRequestIRV1 {
         native_body: None,
         native_only: false,
+        responses_client_tool_search: false,
         native_history: Some(native_history),
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: IngressProtocol::Responses,
@@ -318,6 +320,7 @@ fn decode_chat(context: &DecodeContext, body: &Value) -> Result<ModelRequestIRV1
     Ok(ModelRequestIRV1 {
         native_body: None,
         native_only: false,
+        responses_client_tool_search: false,
         native_history: Some(native_history),
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: IngressProtocol::ChatCompletions,
@@ -613,6 +616,7 @@ fn decode_messages(
     Ok(ModelRequestIRV1 {
         native_body: None,
         native_only: false,
+        responses_client_tool_search: false,
         native_history: Some(native_history),
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: IngressProtocol::Messages,

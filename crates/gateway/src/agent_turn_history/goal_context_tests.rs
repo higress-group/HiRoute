@@ -1,5 +1,6 @@
 use super::*;
 use crate::server::core_runtime::adapters::decode_ingress_request;
+use crate::server::core_runtime::model_ir::NativeHandoffItem;
 use crate::server::core_runtime::model_ir::{ModelEvent, ModelStreamEventV1, ResponseItemStatus};
 use hiroute_gateway_core::runtime::body::MemoryRole;
 use serde_json::Value;
@@ -89,14 +90,11 @@ fn goal_context_handoff_keeps_the_delivered_tool_turn_and_frozen_decision() {
         assert!(request.native_only);
         let layout = request.native_history_layout().unwrap();
         let goal_index = if goal_before_result { 2 } else { 3 };
-        assert!(layout[goal_index].goal_context);
+        assert!(layout[goal_index].handoff == NativeHandoffItem::GoalContext);
         assert!(!layout[goal_index].modeled);
-        assert!(
-            layout
-                .iter()
-                .enumerate()
-                .all(|(index, item)| item.goal_context == (index == goal_index))
-        );
+        assert!(layout.iter().enumerate().all(|(index, item)| (item.handoff
+            == NativeHandoffItem::GoalContext)
+            == (index == goal_index)));
         let matched = pending(&store, &scope, &request, &replay, 1, 1)
             .expect("known goal context must not hide a genuine tool callback");
         assert!(Arc::ptr_eq(&matched, &handoff));

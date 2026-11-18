@@ -418,7 +418,7 @@ fn production_responses_to_chat_tools_complete_two_turns_and_fallback_before_att
             && record
                 .pointer("/fact/exclusion_reason")
                 .and_then(Value::as_str)
-                == Some("PROTOCOL_PATH_UNAVAILABLE")
+                == Some("RESPONSES_INCLUDE_UNSUPPORTED")
     }));
     assert!(facts.iter().any(|record| {
         record.pointer("/fact/kind").and_then(Value::as_str) == Some("attempt_started")

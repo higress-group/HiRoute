@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "responses_tool_search.rs"]
+mod tool_search;
+
 pub(super) fn decode_additional_tools<'a>(
     context: &DecodeContext,
     item: &'a Value,
@@ -42,7 +45,7 @@ pub(super) fn decode_responses_input(
     value: &Value,
     messages: &mut Vec<CanonicalMessage>,
     item_status: Option<&str>,
-) -> Result<bool, ModelIrError> {
+) -> Result<NativeHandoffItem, ModelIrError> {
     let object = value
         .as_object()
         .ok_or(ModelIrError::InvalidField("input[]"))?;
@@ -79,6 +82,15 @@ pub(super) fn decode_responses_input(
                 )?,
                 name: optional_string(object, "name")?,
             });
+        }
+        "tool_search_call" | "tool_search_output" => {
+            let handoff = tool_search::history(context, object, item_type.as_str(), item_status)?;
+            messages.push(CanonicalMessage {
+                role: MessageRole::Assistant,
+                content: Vec::new(),
+                name: None,
+            });
+            return Ok(handoff);
         }
         "agent_message" => {
             decode_agent_message(context, object)?;
@@ -165,7 +177,11 @@ pub(super) fn decode_responses_input(
                 content: Vec::new(),
                 name: None,
             });
-            return Ok(goal_context);
+            return Ok(if goal_context {
+                NativeHandoffItem::GoalContext
+            } else {
+                NativeHandoffItem::None
+            });
         }
         "function_call_output" => {
             ensure_keys(
@@ -292,7 +308,7 @@ pub(super) fn decode_responses_input(
             )));
         }
     }
-    Ok(false)
+    Ok(NativeHandoffItem::None)
 }
 
 fn decode_agent_message(
@@ -490,6 +506,7 @@ fn decode_tool_declarations(
                     .order
                     .push(ResponsesToolOrderEntryV1::Namespace { index });
             }
+            "tool_search" => tool_search::declaration(context, object)?,
             "web_search" => {
                 ensure_keys(
                     context,

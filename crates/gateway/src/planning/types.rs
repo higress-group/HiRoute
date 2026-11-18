@@ -356,6 +356,13 @@ pub enum PlannedBranchV1 {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ExclusionReasonCodeV1 {
+    ResponsesToolSearchUnsupported,
+    ResponsesIncludeUnsupported,
+    ResponsesClientMetadataUnsupported,
+    ResponsesReasoningSummaryUnsupported,
+    ResponsesReasoningContextUnsupported,
+    ResponsesStoreUnsupported,
+    ResponsesPromptCacheKeyUnsupported,
     ProtocolPathUnavailable,
     VisionUnsupported,
     ImageSourceUnsupported,
@@ -374,6 +381,21 @@ pub enum ExclusionReasonCodeV1 {
     RatingGuardExcluded,
     StaticPlanExcluded,
     DuplicateCandidate,
+}
+
+impl ExclusionReasonCodeV1 {
+    pub(crate) fn projection_field(self) -> Option<&'static str> {
+        match self {
+            Self::ResponsesToolSearchUnsupported => Some("tool_search"),
+            Self::ResponsesIncludeUnsupported => Some("include"),
+            Self::ResponsesClientMetadataUnsupported => Some("client_metadata"),
+            Self::ResponsesReasoningSummaryUnsupported => Some("reasoning.summary"),
+            Self::ResponsesReasoningContextUnsupported => Some("reasoning.context"),
+            Self::ResponsesStoreUnsupported => Some("store"),
+            Self::ResponsesPromptCacheKeyUnsupported => Some("prompt_cache_key"),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
