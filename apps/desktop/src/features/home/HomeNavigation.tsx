@@ -1,5 +1,16 @@
+import { useSyncExternalStore } from 'react';
 import { HiRouteMark, UiIcon, type Language } from '../../ui';
 import type { HomeNavigationItem } from './types';
+
+// Match the collapsed sidebar breakpoint in shell.css.
+const compactSidebarQuery = '(max-width: 1060px)';
+const isCompactSidebar = () => window.matchMedia(compactSidebarQuery).matches;
+
+function subscribeToSidebarLayout(onChange: () => void) {
+  const layout = window.matchMedia(compactSidebarQuery);
+  layout.addEventListener('change', onChange);
+  return () => layout.removeEventListener('change', onChange);
+}
 
 export function HomeNavigation({
   language,
@@ -33,22 +44,10 @@ export function HomeNavigation({
     : language === 'zh' ? '服务状态' : 'Service status');
   const settings = language === 'zh' ? '设置' : 'Settings';
   const updateLabel = language === 'zh' ? '有新版本' : 'New version available';
-  const settingsItem = (open: () => void, compactUpdate = false) => {
-    const label = compactUpdate ? `${settings} · ${updateLabel}` : settings;
-    const layout = compactUpdate ? 'sidebar-settings-update' : 'sidebar-settings';
-    return <button
-      className={`nav-item ${layout}${current === 'settings' ? ' active' : ''}`}
-      type="button"
-      aria-current={current === 'settings' ? 'page' : undefined}
-      aria-label={label}
-      title={label}
-      onClick={open}
-    >
-      <UiIcon name="settings" />
-      <span>{settings}</span>
-      {compactUpdate && <i className="sidebar-update-dot" aria-hidden="true" />}
-    </button>;
-  };
+  const compactSidebar = useSyncExternalStore(subscribeToSidebarLayout, isCompactSidebar);
+  const compactUpdate = compactSidebar && Boolean(onOpenUpdates);
+  const settingsLabel = compactUpdate ? `${settings} · ${updateLabel}` : settings;
+  const openSettings = compactUpdate ? onOpenUpdates : onOpenSettings;
 
   return (
     <aside className="sidebar">
@@ -87,8 +86,18 @@ export function HomeNavigation({
             <span className="sidebar-update-pill">{language === 'zh' ? updateLabel : 'Update'}<UiIcon name="chevronRight" /></span>
           </button>}
         </div>}
-        {onOpenSettings && settingsItem(onOpenSettings)}
-        {onOpenUpdates && settingsItem(onOpenUpdates, true)}
+        {openSettings && <button
+          className={`nav-item sidebar-settings${current === 'settings' ? ' active' : ''}`}
+          type="button"
+          aria-current={current === 'settings' ? 'page' : undefined}
+          aria-label={settingsLabel}
+          title={settingsLabel}
+          onClick={openSettings}
+        >
+          <UiIcon name="settings" />
+          <span>{settings}</span>
+          {compactUpdate && <i className="sidebar-update-dot" aria-hidden="true" />}
+        </button>}
       </div>
     </aside>
   );

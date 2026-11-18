@@ -27,17 +27,41 @@ export async function runShellHostScenarios(client,baseUrl,output) {
 
   const updateUrl = new URL('console-entry.html?case=ready&host=shell-console&native-shell=1&update=discover&language=en&theme=dark', baseUrl);
   await navigate(client, updateUrl.href, { width: 755, height: 600 });
-  await waitFor(client, "Boolean(document.querySelector('.sidebar-settings-update')?.getClientRects().length)");
+  await waitFor(client, "Boolean(document.querySelector('.sidebar-settings')?.getClientRects().length)");
+  await evaluate(client, `(() => {
+    window.settingsGearBeforeDiscovery = document.querySelector('.sidebar-settings');
+    document.querySelector('.sidebar .nav button:last-child').focus();
+  })()`);
+  await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+  await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+  assert(await evaluate(client, `document.activeElement === window.settingsGearBeforeDiscovery
+    && document.activeElement.getAttribute('aria-label') === 'Settings'
+    && document.activeElement.matches(':focus-visible')`),
+    'The unmarked Settings gear did not take focus');
+  await screenshot('shell-update-sidebar-focused-before-discovery-en-dark-755.png');
+  await waitFor(client, "window.consoleComponent.hostRequests.some(({command}) => command === 'update_check')");
+  await evaluate(client, 'window.consoleComponent.releaseUpdateDiscovery()');
+  await waitFor(client, "Boolean(document.querySelector('.sidebar-update-dot')?.getClientRects().length)");
   assert(await evaluate(client, `(() => {
-    const button = document.querySelector('.sidebar-settings-update');
-    return button.getAttribute('aria-label') === 'Settings · New version available'
-      && button.querySelector('.sidebar-update-dot').getClientRects().length
+    const gear = window.settingsGearBeforeDiscovery;
+    return document.activeElement === gear && gear.matches(':focus-visible') && gear.getClientRects().length
+      && gear.getAttribute('aria-label') === 'Settings · New version available'
+      && gear.querySelector('.sidebar-update-dot')?.getClientRects().length
       && !document.querySelector('.sidebar-update-entry').getClientRects().length
-      && !document.querySelector('.sidebar-settings').getClientRects().length
       && window.consoleComponent.hostRequests.filter(({command}) => command === 'update_check').length === 1;
-  })()`), 'The narrow Windows sidebar did not replace the shortcut with a labeled gear marker');
+  })()`), 'Update discovery replaced the compact Settings gear or lost its keyboard focus');
   await screenshot('shell-update-sidebar-en-dark-755.png');
-  await evaluate(client, "document.querySelector('.sidebar-settings-update').focus()");
+
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1200, height: 813, deviceScaleFactor: 1, mobile: false });
+  await waitFor(client, `window.settingsGearBeforeDiscovery.getAttribute('aria-label') === 'Settings'
+    && Boolean(document.querySelector('.sidebar-update-entry')?.getClientRects().length)`);
+  assert(await evaluate(client, 'document.activeElement === window.settingsGearBeforeDiscovery'),
+    'Expanding the sidebar lost focus on Settings');
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 755, height: 600, deviceScaleFactor: 1, mobile: false });
+  await waitFor(client, "window.settingsGearBeforeDiscovery.getAttribute('aria-label') === 'Settings · New version available'");
+  assert(await evaluate(client, 'document.activeElement === window.settingsGearBeforeDiscovery'),
+    'Collapsing the sidebar lost focus on Settings');
+
   await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r', unmodifiedText: '\r' });
   await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
   await waitFor(client, `(() => {

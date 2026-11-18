@@ -23,7 +23,8 @@ const pollIntervalMs = 1000;
 
 export function useDesktopUpdates(settingsActive: boolean, onServiceChanged: () => Promise<void>) {
   const [view, setView] = useState<UpdateView | null>(null);
-  const [error, setError] = useState('');
+  const [statusError, setStatusError] = useState('');
+  const [actionError, setActionError] = useState('');
   const [actionPending, setActionPending] = useState(false);
   const [cancelPending, setCancelPending] = useState(false);
   const pending = useRef({ action: false, cancel: false });
@@ -45,11 +46,12 @@ export function useDesktopUpdates(settingsActive: boolean, onServiceChanged: () 
     pending.current[key] = true;
     const setPending = key === 'cancel' ? setCancelPending : setActionPending;
     setPending(true);
-    setError('');
+    setActionError('');
     try {
       setView(await invoke<UpdateView>(command));
+      setStatusError('');
     } catch (failure) {
-      setError(safeDiagnosticCode(failure, 'UPGRADE_UNAVAILABLE'));
+      setActionError(safeDiagnosticCode(failure, 'UPGRADE_UNAVAILABLE'));
     } finally {
       commandRevision.current += 1;
       pending.current[key] = false;
@@ -67,13 +69,16 @@ export function useDesktopUpdates(settingsActive: boolean, onServiceChanged: () 
         const value = await invoke<UpdateView>('update_status');
         if (!current || commandRevision.current !== revision) return;
         setView(value);
+        setStatusError('');
         if (startupCheck.current) {
           startupCheck.current = false;
           // The native host can already have an update or a staged package after a UI reconnect.
           if (value.phase === 'idle' && value.can_install) void act('update_check');
         }
       } catch (failure) {
-        if (current && commandRevision.current === revision) setError(safeDiagnosticCode(failure, 'UPGRADE_STATUS_UNAVAILABLE'));
+        if (current && commandRevision.current === revision) {
+          setStatusError(safeDiagnosticCode(failure, 'UPGRADE_STATUS_UNAVAILABLE'));
+        }
       } finally {
         if (current && observing) timer = window.setTimeout(read, pollIntervalMs);
       }
@@ -86,5 +91,5 @@ export function useDesktopUpdates(settingsActive: boolean, onServiceChanged: () 
     };
   }, [act, observing]);
 
-  return { view, error, busy, actionPending, cancelPending, act };
+  return { view, statusError, actionError, busy, actionPending, cancelPending, act };
 }

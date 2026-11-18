@@ -147,7 +147,42 @@ export const interactionConsistencyScenarios = [
     await until(() => !entry() && all('.settings-updates').some(group => group.textContent.includes('已是最新稳定版本')),
       'A newer check removes the shortcut when the installed version is current');
   }),
-  scenario('desktop.interactions.update-download-cancel', ['interaction-consistency'], 'A pending macOS download permits cancellation while duplicate download and cancel requests are blocked', async () => {
+  scenario('desktop.interactions.update-status-recovers', ['interaction-consistency', 'native-updates'], 'A successful update status read clears the read error and preserves command errors', async () => {
+    const c = window.productShell;
+    await seedInteractionAudit(c, { state: 'home', language: 'zh' });
+    const view = {
+      ...c.fixtureResponse('update_status', {}),
+      phase: 'available',
+      available: { version: '0.5.1', notes: { zh: '示例更新说明', en: 'Example release notes' }, size: 1000 },
+    };
+    let reads = 0;
+    let recoverRead;
+    c.handlers.update_status = () => {
+      reads += 1;
+      if (reads === 1) throw { code: 'UPGRADE_STATUS_UNAVAILABLE' };
+      if (reads === 2) return new Promise(resolve => { recoverRead = () => resolve(structuredClone(view)); });
+      return structuredClone(view);
+    };
+
+    const updates = () => all('.settings-updates')[0];
+    const error = () => updates()?.querySelector('.settings-inline-error')?.textContent ?? '';
+    await until(() => reads === 1, 'Failed background status read');
+    all('.sidebar-settings')[0].click();
+    await until(() => recoverRead && error().includes('UPGRADE_STATUS_UNAVAILABLE'), 'Read error before the retry resolves');
+    const readErrorMessage = error();
+    recoverRead();
+    await until(() => updates()?.textContent.includes('可升级到 0.5.1'), 'Recovered available version');
+    assert(!error(), 'The successful status read left a stale error in Settings');
+    assert(readErrorMessage.includes('暂时无法读取版本状态'), 'The UI reported a failed status read as an upgrade failure');
+
+    c.handlers.update_download = () => { throw { code: 'UPGRADE_DOWNLOAD_FAILED' }; };
+    all('.settings-updates button').find(button => button.textContent === '下载更新').click();
+    await until(() => error().includes('UPGRADE_DOWNLOAD_FAILED'), 'Rejected download command');
+    view.available.notes.zh = '已重新读取的更新说明';
+    await until(() => updates()?.textContent.includes(view.available.notes.zh), 'Fresh status read after the command failure');
+    assert(error().includes('UPGRADE_DOWNLOAD_FAILED'), 'Status polling cleared a real command error');
+  }),
+  scenario('desktop.interactions.update-download-cancel', ['interaction-consistency', 'native-updates'], 'A pending macOS download permits cancellation while duplicate download and cancel requests are blocked', async () => {
     for (const phase of ['downloading','verifying']) {
       await fresh('settings-general');
       const c=window.productShell;

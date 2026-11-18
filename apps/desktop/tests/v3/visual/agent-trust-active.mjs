@@ -153,7 +153,9 @@ try {
       await waitFor(client, 'Boolean(window.productShell)', { timeout: 7000 });
       const catalog = await evaluate(client, "import('/product-shell-scenarios.mjs').then(module => module.productShellScenarioCatalog)");
       const requested = process.env.HIROUTE_BROWSER_SCENARIOS?.split(',');
-      const applicable = hostTransport === 'console' ? catalog.filter(item => !item.capabilities.includes('native-recovery')) : catalog;
+      const applicable = hostTransport === 'console'
+        ? catalog.filter(item => !item.capabilities.some(capability => capability === 'native-recovery' || capability === 'native-updates'))
+        : catalog;
       const required = productShellRequired.filter(id => applicable.some(item => item.id === id));
       const selected = selectScenarios(applicable, subscriptionProxyOnly
         ? { capability: 'subscription-proxy', requiredIds: focusedRequirements['subscription-proxy'] }

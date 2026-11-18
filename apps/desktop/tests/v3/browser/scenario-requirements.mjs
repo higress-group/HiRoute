@@ -72,6 +72,7 @@ export const focusedRequirements = {
 export const productShellRequired = [
   'desktop.interactions.tab-focus-return',
   'desktop.interactions.sidebar-update',
+  'desktop.interactions.update-status-recovers',
   'desktop.interactions.update-download-cancel',
   'desktop.interactions.route-dirty-cancel',
   'desktop.interactions.route-save-isolation',

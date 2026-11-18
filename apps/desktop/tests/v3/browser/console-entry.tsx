@@ -15,6 +15,7 @@ const state = query.get('case') ?? 'login';
 let holdDesktop = query.get('startup') === 'held';
 const pendingDesktopReads: (() => void)[] = [];
 const pendingHostCancels: (() => void)[] = [];
+let finishUpdateDiscovery: (() => void) | undefined;
 localStorage.setItem('hiroute.language', query.get('language') ?? 'zh');
 localStorage.setItem('hiroute.theme', query.get('theme') ?? 'light');
 sessionStorage.clear();
@@ -33,6 +34,7 @@ const control = {
   releaseDesktop: () => { holdDesktop = false; for (const release of pendingDesktopReads.splice(0)) release(); },
   pendingHostCancels: () => pendingHostCancels.length,
   releaseHostCancels: () => { for (const release of pendingHostCancels.splice(0)) release(); },
+  releaseUpdateDiscovery: () => finishUpdateDiscovery?.(),
 };
 if (query.get('host') === 'shell-console') {
   const unavailable = query.get('update') === 'catalog-unavailable';
@@ -46,7 +48,10 @@ if (query.get('host') === 'shell-console') {
         if (command==='login_start_set') control.loginEnabled=Boolean(args.enabled);
         if (command === 'update_check' && discover && view.phase === 'idle') {
           view.phase = 'checking';
-          window.setTimeout(() => { view.available = release; view.phase = 'available'; }, 80);
+          finishUpdateDiscovery = () => {
+            view.available = release;
+            view.phase = 'available';
+          };
         }
         if (command==='update_cancel') {
           if (query.has('hold-cancel')) await new Promise<void>(resolve => pendingHostCancels.push(resolve));

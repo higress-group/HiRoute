@@ -11,7 +11,7 @@ export function UpdatesSettings({ active, language, headingRef, onServiceChanged
   onUpdateAvailabilityChange?: (available: boolean) => void;
 }) {
   const text = (zh: string, en: string) => language === 'zh' ? zh : en;
-  const { view, error, busy, actionPending, cancelPending, act } = useDesktopUpdates(active, onServiceChanged);
+  const { view, statusError, actionError, busy, actionPending, cancelPending, act } = useDesktopUpdates(active, onServiceChanged);
   const updateAvailable = view !== null && view.can_install && view.available !== null
     && (view.phase === 'available' || view.phase === 'ready');
   useEffect(() => onUpdateAvailabilityChange?.(updateAvailable), [onUpdateAvailabilityChange, updateAvailable]);
@@ -20,7 +20,8 @@ export function UpdatesSettings({ active, language, headingRef, onServiceChanged
   const recovery = view?.recovery;
   const checkFailed = view?.phase === 'check_failed' || (view?.phase === 'failed' && !view.available);
   const windowsCatalogUnavailable = platform === 'windows' && view?.error === 'UPGRADE_CATALOG_UNAVAILABLE';
-  const status = !view ? text('正在读取版本信息…', 'Reading version information…')
+  const status = !view
+    ? statusError ? text('版本信息暂不可用', 'Version information is temporarily unavailable') : text('正在读取版本信息…', 'Reading version information…')
     : view.phase === 'checking' ? text('正在检查官网发布版本…', 'Checking official releases…')
     : checkFailed ? windowsCatalogUnavailable ? text('Windows 更新目录暂不可用，可稍后重试检查。', 'The Windows update catalog is unavailable. Try checking again later.') : text('检查更新失败，可稍后重试。', 'Could not check for updates. Try again later.')
     : view.phase === 'current' ? text('已是最新稳定版本', 'The latest stable version is installed')
@@ -32,7 +33,7 @@ export function UpdatesSettings({ active, language, headingRef, onServiceChanged
     : view.phase === 'installing' ? text('正在停止服务并安装，完成后会重新打开 HiRoute。', 'Stopping the service and installing. HiRoute will reopen when complete.')
     : view.phase === 'failed' ? text('升级未完成，请查看错误及启动页中的恢复说明。', 'The upgrade did not complete. See the error and startup recovery instructions.')
     : text('从官网获取稳定版本', 'Stable releases from the official website');
-  const code = view?.error || error;
+  const code = view?.error || actionError;
   const canDiscard = host === 'shell-console' && view?.available && ['ready', 'failed'].includes(view.phase);
   const canCancel = view && ['downloading', 'verifying', 'waiting'].includes(view.phase);
   const restartRequired = recovery === 'stop_pending' || recovery === 'restart_required';
@@ -57,6 +58,7 @@ export function UpdatesSettings({ active, language, headingRef, onServiceChanged
     {['UPGRADE_KEY_UNAVAILABLE', 'UPGRADE_RECOVERY_PACKAGE_INVALID', 'UPGRADE_RECOVERY_PACKAGE_MISSING', 'UPGRADE_PREFLIGHT_INVALID', 'UPGRADE_PREFLIGHT_REFUSED'].includes(code ?? '') && <div className="settings-inline-error">{text('升级前提校验未通过。请保留当前程序和全部数据，核对原密钥、配套旧包及本机启动诊断；修复缺失或损坏的材料后再升级。无法取得必要材料时请寻求支持，不要反复重试或直接覆盖安装。', 'Upgrade prerequisites could not be verified. Keep the current program and all data. Check original keys, the matching complete previous package and local startup diagnostics. Correct missing or damaged material before upgrading. Obtain support if essential material is unavailable; repeated retries or manual overwrite cannot reconstruct it.')}</div>}
     {code === 'UPGRADE_INSUFFICIENT_SPACE' && <div className="settings-inline-error">{text('数据所在磁盘缺少恢复与启动空间。请保留封存历史和旧包，释放无关文件后再重试。', 'The storage volume lacks recovery/startup space. Keep sealed history and old packages, free unrelated files, then retry.')}</div>}
     {code && <div className="settings-inline-error" role="status">{checkFailed ? text(`检查未完成（${code}）。请恢复连接后再检查。`, `The check did not complete (${code}). Try again after restoring connectivity.`) : text(`升级未完成（${code}）。请保留原数据和完整旧包，按启动页的具体指引处理。缺少材料、空间或权限的问题解决前，请勿覆盖安装或直接降级。`, `The update did not complete (${code}). Keep the original data and complete previous package and follow the specific startup instructions. Resolve missing material, space or access before replacing the program or downgrading.`)}</div>}
+    {statusError && !code && <div className="settings-inline-error" role="status">{text(`暂时无法读取版本状态（${statusError}）。`, `Could not read update status (${statusError}).`)}</div>}
     {view?.diagnostic && <div className="settings-inline-error" role="status">{[
       view.diagnostic.step,
       view.diagnostic.io_kind,
