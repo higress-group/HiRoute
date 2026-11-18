@@ -271,11 +271,15 @@ fn execute_control(
         Err(code) => return request_input::diagnostics::failure(code, Some(request_id)),
     };
     let client = match LocalControlClient::cli_from_environment().map(|client| {
-        client.with_timeout(
-            globals
-                .timeout
-                .unwrap_or_else(|| std::time::Duration::from_secs(30)),
-        )
+        client.with_timeout(globals.timeout.unwrap_or_else(|| {
+            if descriptor.command_id == "compute.connection.apply"
+                && payload["spec"]["command_id"] == "compute.subscription.check.apply"
+            {
+                std::time::Duration::from_secs(60)
+            } else {
+                std::time::Duration::from_secs(30)
+            }
+        }))
     }) {
         Ok(client) => client,
         Err(_) => return failure(ErrorCode::DaemonUnavailable, Some(request_id)),

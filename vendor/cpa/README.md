@@ -6,7 +6,7 @@ bootstrap and Codex account model discovery. Build with `scripts/build-cpa.py`.
 
 The managed artifact uses upstream v8.0.48. Its model discovery patch retains the
 upstream auth/config publication fence and boolean reconciliation result. A
-same-account generation handoff shares one five-second discovery budget; a
+same-account generation handoff shares a single one-minute discovery budget; a
 superseded publication is reported as discarded rather than successful.
 The upstream flat configuration reader remains the managed configuration boundary.
 Environment routing explicitly keeps the managed parent's uppercase-first proxy
@@ -71,8 +71,9 @@ membership from the account directory.
 
 Remote membership replaces the bundled membership for access-token accounts.
 Existing bundled metadata can enrich matching IDs. Registration still applies
-normal exclusions, OAuth aliases and account prefixes. Discovery has a five
-second deadline and a 16 MiB response bound; redirects are rejected. Failure
+normal exclusions, OAuth aliases and account prefixes. Discovery has a one-minute
+deadline, shared by headers, the complete response body and generation handoff,
+and a 16 MiB response bound; shorter caller deadlines still apply and redirects are rejected. Failure
 leaves the existing registered catalog unchanged, without logging tokens or
 upstream response bodies. An initial failure does not create model entries.
 This does not add polling or a new catalog cache. Inference does not discover
@@ -80,15 +81,15 @@ models. Successful listing is not proof that inference succeeds.
 
 An enabled newer generation of the same registration can supersede an in-flight
 lookup. The stale result is discarded and the registration owner can discover
-once for the latest access-bearing generation, sharing the original five-second
+once for the latest access-bearing generation, sharing the original one-minute
 deadline. Removal, disable, lost access and a different registration epoch cannot
 request this handoff. Transport failure alone does not retry. Continued churn
 remains bounded and observable; an old account cannot populate a replacement.
 
 HiRoute's saved-source maintenance separately recovers an empty directory after a
 current, quiescent transient failure. It may issue one existing control PATCH after
-rechecking the exact enabled source, sharing the original 20-second control budget;
-CPA's five-second discovery deadline remains unchanged. Repeated failures back off
+rechecking the exact enabled source, sharing the original one-minute control budget;
+CPA's one-minute discovery deadline remains bounded by that caller. Repeated failures back off
 from five seconds to one minute. Passive reads and inference do not initiate this
 retry. Authentication/authorization rejection, invalid catalogs, successful empty
 lists and missing diagnostics remain unavailable without an automatic refresh.
@@ -101,7 +102,7 @@ existing auth update path. This keeps remote directory availability out of
 unchanged preview/publication reads while retaining all account pin checks.
 When the directory is empty and the whole registration is quiescent with a
 consistent terminal observation, a pin read fails immediately instead of polling
-that empty result for 20 seconds. The existing response's `registration_pending`
+that empty result for the remaining control budget. The existing response's `registration_pending`
 flag covers the whole registration, including the gap before a bounded handoff.
 Queued auth updates and reconciliation passes share that same scope.
 Two observations bracket the local catalog read; any intervening transition makes
@@ -124,7 +125,7 @@ process exit loses it. Retention starts when this artifact starts, so it cannot
 recover historical failures from an older process. Older concurrent attempts
 cannot overwrite the latest attempt. No new endpoint or maintenance channel is
 introduced. Transport retry settings are unchanged; generation handoff shares
-the original five-second discovery deadline.
+the original one-minute discovery deadline.
 In-flight registration counts are separate from the retained history, survive
 history eviction and are deleted when the last overlapping registration exits.
 

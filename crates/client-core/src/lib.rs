@@ -53,7 +53,7 @@ impl std::fmt::Debug for Transport {
 pub struct Client {
     transport: Transport,
     name: String,
-    timeout: Duration,
+    timeout: Option<Duration>,
     diagnostics: Option<DiagnosticContext>,
 }
 
@@ -72,7 +72,7 @@ impl Client {
         Self {
             transport: Transport::LocalEndpoint(endpoint),
             name: name.into(),
-            timeout: Duration::from_secs(30),
+            timeout: None,
             diagnostics: None,
         }
     }
@@ -83,7 +83,7 @@ impl Client {
         Self {
             transport: Transport::InProcess(dispatcher),
             name: name.into(),
-            timeout: Duration::from_secs(30),
+            timeout: None,
             diagnostics: None,
         }
     }
@@ -94,7 +94,7 @@ impl Client {
         }
     }
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
-        self.timeout = timeout;
+        self.timeout = Some(timeout);
         self
     }
     /// Attach the host's diagnostic context. The client only records bounded transport
@@ -173,7 +173,7 @@ impl Client {
         let request = PrivateRequest(request);
         let mut sent = false;
         let deadline = tokio::time::Instant::now()
-            .checked_add(self.timeout)
+            .checked_add(self.timeout.unwrap_or_else(|| Duration::from_secs(30)))
             .ok_or_else(|| ClientFailure::before_send(FailureCode::Deadline))?;
         let operation = async {
             let endpoint = match &self.transport {
