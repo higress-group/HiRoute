@@ -6,7 +6,6 @@ import subprocess
 import sys
 
 from model_feed_product import restart
-from publication_process import judgment_fixture
 from recommended_model_product import Provider, TrialProduct
 from standalone_headless_product import apply_from_preview, apply_plan, plan_change, wire
 
@@ -75,16 +74,13 @@ def run(repository):
             expected_output = 64_000 if case['manual'] else 128_000
             assert saved['capabilities']['context_tokens'] == {'value': expected_input, 'basis': 'user_declared'}, saved
             assert saved['capabilities']['max_output_tokens'] == {'value': expected_output, 'basis': 'user_declared'}, saved
-            editor = {
-                'schema': 'hiroute.plan-editor/v2', 'display_name': stage, 'purpose': 'Verify exact input and output budgets',
-                'mode': 'fixed_model', 'candidates': [{'binding_id': saved['binding_id']}],
-                'smart': {'economy': [], 'primary': [], 'judgment': judgment_fixture(), 'reselect_on_user_message': False,
-                          'classifier': {'kind': 'local_rules'}, 'complex_keywords': []},
-                'free': {'candidates': [], 'primary': [], 'primary_fallback': False}, 'requirements': {},
-                'delegation_enabled': False,
-                'limits': {'maximum_attempts': 1, 'request_timeout_ms': 30000, 'attempt_timeout_ms': 30000,
-                           'context_window_tokens': 750_000 if case['manual'] else 900_000},
-            }
+            # Use the same authoring policy as the form/CLI, including its reasoning defaults.
+            authoring = product.cli('routing', 'options', '--request-stdin', payload={'authoring': {
+                'display_name': stage, 'purpose': 'Verify exact input and output budgets',
+                'mode': 'fixed_model', 'candidates': [{'binding_id': saved['binding_id']}]}})['data']['authoring']
+            assert not authoring['required_choices'], authoring
+            editor = authoring['editor']
+            editor['limits']['context_window_tokens'] = 750_000 if case['manual'] else 900_000
             created, _, _ = apply_plan(product, plan_change('create', editor, creation_key=stage), stage + '-publish')
             plan_id = created['plan_head']['reference']['plan_id']
             frozen = product.cli('routing', 'show', plan_id)['data']
@@ -93,14 +89,19 @@ def run(repository):
             assert_limits(limits, case['modelId'], expected_input, expected_output)
             observations.append({'case': stage, 'model': case['modelId'], 'protocol': case['protocol'],
                                  'input': expected_input, 'output': expected_output, 'capability': limits,
-                                 'plan': plan_id, 'reference': frozen['head']['reference']})
+                                 'source': source['source_id'], 'plan': plan_id, 'reference': frozen['head']['reference']})
+            print(json.dumps({'case': stage, 'state': 'published', 'input': expected_input, 'output': expected_output}), flush=True)
         restart(product)
+        sources = {s['source_id']: s for s in product.cli('compute', 'list')['data']['sources']}
         for row in observations:
             frozen = product.cli('routing', 'show', row['plan'])['data']
             assert frozen['head']['reference'] == row['reference'], row
+            member, = sources[row['source']]['models']
+            assert member['capabilities']['context_tokens'] == {'value': row['input'], 'basis': 'user_declared'}, member
+            assert member['capabilities']['max_output_tokens'] == {'value': row['output'], 'basis': 'user_declared'}, member
         assert {r['model'] for r in provider.requests if r['method'] == 'POST'} == {'gpt-6.2-astra', 'gpt-6.2-sol'}
         print(json.dumps({'scenario': 'registered-input-limits', 'state': 'green', 'revision': product.sha,
-                          'cases': [{k: v for k, v in row.items() if k not in ('capability', 'plan', 'reference')} for row in observations]}), flush=True)
+                          'cases': [{k: v for k, v in row.items() if k not in ('capability', 'source', 'plan', 'reference')} for row in observations]}), flush=True)
     except Exception:
         print(json.dumps({'scenario': 'registered-input-limits', 'state': 'red', 'revision': product.sha, 'stage': stage}), flush=True)
         raise

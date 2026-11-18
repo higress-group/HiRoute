@@ -106,7 +106,9 @@ class Provider:
                              'usage': {'prompt_tokens': 4, 'completion_tokens': 3, 'total_tokens': 7}}
                 elif self.path.endswith('/responses'):
                     value = {'id': 'resp_trial', 'object': 'response', 'status': 'completed', 'model': body['model'],
-                             'output': [{'id': 'msg_trial', 'type': 'message', 'role': 'assistant', 'status': 'completed',
+                             'output': [{'id': 'probe', 'type': 'function_call', 'call_id': 'probe', 'name': 'hiroute_probe',
+                                         'arguments': '{"value":"ok"}', 'status': 'completed'}] if probe else
+                                       [{'id': 'msg_trial', 'type': 'message', 'role': 'assistant', 'status': 'completed',
                                          'content': [{'type': 'output_text', 'text': 'native product answer', 'annotations': []}]}],
                              'usage': {'input_tokens': 4, 'output_tokens': 3, 'total_tokens': 7}}
                 else:
