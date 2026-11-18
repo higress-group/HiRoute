@@ -948,26 +948,25 @@ fn qwen4_max_metadata_exposes_registered_intents_without_qualifying_accounts() {
         .filter(|capability| capability.upstream_model_id == "qwen4-max")
         .collect();
     assert_eq!(capabilities.len(), 3);
-    for profile in ["endpoint.bailian.payg.cn.v1"] {
-        let matching: Vec<_> = capabilities
+    let profile = "endpoint.bailian.payg.cn.v1";
+    let matching: Vec<_> = capabilities
+        .iter()
+        .filter(|capability| capability.endpoint_profile_id == profile)
+        .collect();
+    assert_eq!(matching.len(), 3);
+    let offers: Vec<_> = catalog
+        .model_data()
+        .offers
+        .iter()
+        .filter(|offer| offer.endpoint_profile_id == profile)
+        .collect();
+    assert_eq!(offers.len(), 1);
+    assert!(
+        offers[0]
+            .model_configuration_ids
             .iter()
-            .filter(|capability| capability.endpoint_profile_id == profile)
-            .collect();
-        assert_eq!(matching.len(), 3);
-        let offers: Vec<_> = catalog
-            .model_data()
-            .offers
-            .iter()
-            .filter(|offer| offer.endpoint_profile_id == profile)
-            .collect();
-        assert_eq!(offers.len(), 1);
-        assert!(
-            offers[0]
-                .model_configuration_ids
-                .iter()
-                .any(|id| id == "model.catalog.qwen-4-max")
-        );
-    }
+            .any(|id| id == "model.catalog.qwen-4-max")
+    );
 }
 
 #[test]
