@@ -66,10 +66,10 @@ try {
       } else if (state.startsWith('trial-')) {
         await navigate(client, `${base}new-model-trial.html?native=1&view=${state === 'trial-entry' ? 'home&published-recommendations=1' : 'quickstart'}&lang=${language}&theme=dark`, { width: 1200, height: 900 });
         await waitFor(client, 'Boolean(document.querySelector(".new-models"))');
-        const action = state === 'trial-entry' ? t('开始配置', 'Start configuration') : t('接入并试用', 'Connect and try');
+        const action = state === 'trial-entry' ? t('开始配置', 'Start configuration') : t('试用其他模型', 'Try another model');
         await waitFor(client, `[...document.querySelectorAll('.new-models button')].some(n => !n.disabled && n.textContent.trim() === ${JSON.stringify(action)})`);
         if (state === 'trial-setup') {
-          await click(t('接入并试用', 'Connect and try'));
+          await click(action);
           await waitFor(client, 'Boolean(document.querySelector(".trial-setup"))');
         }
       } else {

@@ -1,0 +1,40 @@
+{
+  "schema": "hiroute.documentation-review/v1",
+  "tag": "v0.6.4",
+  "product_revision": "faf7a98a44437cb27e4a0d0b93720e2a96347188",
+  "guides": {
+    "status": "updated",
+    "summary": "Reviewed the 0.6.4 changes against v0.6.3. The bilingual READMEs and trial guides explain recommendation setup, connection selection, and publishing a replacement draft. The model guides cover the independent API input limit, and the Codex instructions describe the model-list wait. Both installation guides explain the Desktop update shortcut and the compact sidebar. The local model routing guide and Quickstart handoffs match the candidate commands and navigation.",
+    "reviewed_files": [
+      "README.md",
+      "README.zh-CN.md",
+      "apps/website/content/guides/codex-model-routing.en.md",
+      "apps/website/content/guides/codex-model-routing.zh.md",
+      "apps/website/content/guides/install-macos.en.md",
+      "apps/website/content/guides/install-macos.zh.md",
+      "apps/website/content/guides/install-windows.en.md",
+      "apps/website/content/guides/install-windows.zh.md",
+      "apps/website/content/guides/local-model-routing.en.md",
+      "apps/website/content/guides/local-model-routing.zh.md",
+      "apps/website/content/guides/model-trial.en.md",
+      "apps/website/content/guides/model-trial.zh.md",
+      "apps/website/content/guides/models.en.md",
+      "apps/website/content/guides/models.zh.md",
+      "apps/website/content/guides/quickstart.en.md",
+      "apps/website/content/guides/quickstart.zh.md"
+    ],
+    "content_sha256": "22fad010be7632f4672b6ea474578e395d857911794d092980382ba9ff0b99d8"
+  },
+  "screenshots": {
+    "status": "updated",
+    "summary": "Recaptured and inspected Chinese and English dark-mode images of the recommendation entry and first trial step at 1200 by 900. The captures show Start configuration and the first setup step entered through Try another model. The capture revision has the same file tree as the frozen candidate. The Codex discovery deadline changes the wait before the existing result screen. The installation guides describe the sidebar shortcut in text.",
+    "reviewed_files": [
+      "apps/website/docs/guide-assets.md",
+      "apps/website/public/guide-assets/trial-entry-en.webp",
+      "apps/website/public/guide-assets/trial-entry-zh.webp",
+      "apps/website/public/guide-assets/trial-setup-en.webp",
+      "apps/website/public/guide-assets/trial-setup-zh.webp"
+    ],
+    "content_sha256": "35ebe13e336990e194229bea358d209b01dcfc63b619d168901fb17826f3cb88"
+  }
+}
