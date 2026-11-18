@@ -435,6 +435,34 @@ fn responses_client_tool_search_commits_its_native_id_and_arguments() {
 }
 
 #[test]
+fn discovery_nonempty_added_argument_snapshot_must_agree_with_terminal() {
+    for (added, expected) in [
+        (json!({}), NativeTerminalOutcome::Complete),
+        (json!({"query":"second"}), NativeTerminalOutcome::Complete),
+        (json!({"query":"first"}), NativeTerminalOutcome::Unknown),
+    ] {
+        let call = json!({"type":"tool_search_call","id":"ts","call_id":"c","execution":"client","arguments":{"query":"second"},"status":"completed"});
+        let mut start = call.clone();
+        start["arguments"] = added;
+        start["status"] = json!("in_progress");
+        let events = [
+            json!({"type":"response.created","response":{"id":"r","model":"p"}}),
+            json!({"type":"response.output_item.added","output_index":0,"item":start}),
+            json!({"type":"response.output_item.done","output_index":0,"item":call}),
+            json!({"type":"response.completed","response":{"id":"r","model":"p","status":"completed","output":[call]}}),
+        ];
+        let mut stream = projector(IngressProtocol::Responses, true);
+        let mut units = Vec::new();
+        for event in events {
+            units.extend(feed_fragmented(&mut stream, &sse(None, &event), 7));
+        }
+        units.extend(stream.feed(&[], true).unwrap());
+        assert_eq!(units.iter().find_map(|u| u.terminal), Some(expected));
+        assert_eq!(unit_json(&units[1])["item"], start);
+    }
+}
+
+#[test]
 fn discovery_argument_deltas_must_match_the_completed_object_and_identity() {
     for (delta, id, complete) in [
         (r#"{ "z": 2, "a": 1 }"#, "ts", true),

@@ -187,6 +187,23 @@ impl ProjectionState {
             self.response_items_uncertain = true;
             self.completion_diagnostic.note(Reason::ItemIdentity);
         }
+        if item.get("type").and_then(Value::as_str) == Some("tool_search_call")
+            && item.get("execution").and_then(Value::as_str) == Some("client")
+        {
+            let args = item.get("arguments").and_then(Value::as_object);
+            // An empty added object starts the stream. Once actual arguments
+            // have been delivered their values must agree with later snapshots.
+            if let Some(expected) = known.added_discovery_arguments {
+                if args.map(digest_item) != Some(expected) {
+                    self.response_items_uncertain = true;
+                    self.completion_diagnostic
+                        .note_output(Reason::ItemSnapshot, index);
+                }
+            } else if !done {
+                known.added_discovery_arguments =
+                    args.filter(|args| !args.is_empty()).map(digest_item);
+            }
+        }
         known.identity = identity;
         known.reasoning_done = reasoning_done;
         if done {
@@ -240,6 +257,13 @@ impl ProjectionState {
             };
             let reason = if known.identity != response_item_identity(item) {
                 Some(Reason::ItemIdentity)
+            } else if known.added_discovery_arguments.is_some_and(|expected| {
+                item.get("arguments")
+                    .and_then(Value::as_object)
+                    .map(digest_item)
+                    != Some(expected)
+            }) {
+                Some(Reason::ItemSnapshot)
             } else if known.done.is_some_and(|digest| digest != digest_item(item)) {
                 if allow_done_replay
                     && let Some(done) = &known.reasoning_done

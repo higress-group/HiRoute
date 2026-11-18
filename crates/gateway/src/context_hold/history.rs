@@ -428,8 +428,11 @@ fn encode_native_responses_tool_setup(
     // The canonical tool order omits declaration positions and retains only
     // the first hosted declaration. Include those wire semantics in retry proof
     // without hashing the function schemas already accounted for above.
+    if let Some(choice) = body.get("tool_choice").and_then(Value::as_object) {
+        native_tool_extensions(choice, &["type", "name"], &[], setup)?;
+    }
     if let Some(tools) = body.get("tools").and_then(Value::as_array) {
-        encode_native_search(tools, setup)?;
+        encode_native_tools(tools, setup)?;
     }
     if let Some(input) = body.get("input").and_then(Value::as_array) {
         if request
@@ -448,23 +451,79 @@ fn encode_native_responses_tool_setup(
             setup.usize(index);
             let tools = item.get("tools")?.as_array()?;
             setup.usize(tools.len());
-            encode_native_search(tools, setup)?;
+            encode_native_tools(tools, setup)?;
         }
     }
     Some(())
 }
 
-fn encode_native_search(tools: &[Value], setup: &mut Encoder<'_>) -> Option<()> {
+fn encode_native_tools(tools: &[Value], setup: &mut Encoder<'_>) -> Option<()> {
     for (index, tool) in tools.iter().enumerate() {
         setup.items(1)?;
-        if matches!(
-            tool.get("type").and_then(Value::as_str),
-            Some("web_search" | "tool_search")
-        ) {
-            setup.tag(b"native-search-declaration");
-            setup.usize(index);
-            setup.json(tool)?;
+        let object = tool.as_object()?;
+        match object.get("type")?.as_str()? {
+            "tool_search" | "web_search" => {
+                setup.tag(b"native-search-declaration");
+                setup.usize(index);
+                setup.json(tool)?;
+            }
+            "namespace" => {
+                native_tool_extensions(
+                    object,
+                    &["type", "name", "description", "tools"],
+                    &[index],
+                    setup,
+                )?;
+                for (child_index, child) in object.get("tools")?.as_array()?.iter().enumerate() {
+                    setup.items(1)?;
+                    native_callable_extensions(child.as_object()?, &[index, child_index], setup)?;
+                }
+            }
+            _ => native_callable_extensions(object, &[index], setup)?,
         }
+    }
+    Some(())
+}
+
+fn native_callable_extensions(
+    object: &serde_json::Map<String, Value>,
+    position: &[usize],
+    setup: &mut Encoder<'_>,
+) -> Option<()> {
+    let modeled: &[&str] = match object.get("type")?.as_str()? {
+        "function" => &["type", "name", "description", "parameters", "strict"],
+        "custom" => &["type", "name", "description", "format"],
+        _ => return None,
+    };
+    native_tool_extensions(object, modeled, position, setup)
+}
+
+// Hash only native fields that the canonical setup above has not consumed.
+// Framing records the original location of deferred declarations and choices.
+fn native_tool_extensions(
+    object: &serde_json::Map<String, Value>,
+    modeled: &[&str],
+    position: &[usize],
+    setup: &mut Encoder<'_>,
+) -> Option<()> {
+    setup.items(object.len())?;
+    let mut extras: Vec<_> = object
+        .iter()
+        .filter(|(key, _)| !modeled.contains(&key.as_str()))
+        .collect();
+    if extras.is_empty() {
+        return Some(());
+    }
+    extras.sort_unstable_by(|a, b| a.0.cmp(b.0));
+    setup.tag(b"responses-native-tool-fields");
+    setup.usize(position.len());
+    for index in position {
+        setup.usize(*index);
+    }
+    setup.usize(extras.len());
+    for (key, value) in extras {
+        setup.string(key);
+        setup.json(value)?;
     }
     Some(())
 }

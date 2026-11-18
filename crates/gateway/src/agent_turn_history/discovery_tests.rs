@@ -70,6 +70,19 @@ fn retry_setup_distinguishes_discovery_schemas_and_positions() {
     };
     let initial = setup(json!([discovery, plain]));
     assert_ne!(initial, setup(json!([plain, discovery])));
+    let mut eager = plain.clone();
+    eager["defer_loading"] = json!(false);
+    let mut deferred = eager.clone();
+    deferred["defer_loading"] = json!(true);
+    assert_ne!(
+        setup(json!([discovery, eager])),
+        setup(json!([discovery, deferred]))
+    );
+    let namespace = |child: Value| json!({"type":"namespace","name":"shipping","tools":[child]});
+    assert_ne!(
+        setup(json!([discovery, namespace(eager)])),
+        setup(json!([discovery, namespace(deferred)]))
+    );
     let mut changed = discovery;
     changed["parameters"]["required"] = json!(["query"]);
     assert_ne!(initial, setup(json!([changed, plain])));

@@ -356,6 +356,7 @@ struct ResponseItemEvidence {
     identity: Option<[u8; 32]>,
     done: Option<[u8; 32]>,
     added_text: Vec<evidence::AddedTextPrefix>,
+    added_discovery_arguments: Option<[u8; 32]>,
     reasoning_done: Option<evidence::ReasoningDoneEvidence>,
 }
 
