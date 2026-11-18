@@ -63,7 +63,9 @@ export async function readRecommendationConnections(model: AvailableModel, reque
         revision: member.revision, modelRef: member.model_ref });
     }
   }
-  if (!requestModelIds) for (const connection of setup.management.retained_api_connections) {
+  // The routing owner has already admitted these retained API bindings. Exact
+  // catalog identity remains valid alongside source-local product matching.
+  for (const connection of setup.management.retained_api_connections) {
     if (candidates.get(connection.binding_id)?.model_configuration_id !== model.model_configuration_id
       || connection.model_configuration_id !== model.model_configuration_id
       || ready.some(item => item.bindingId === connection.binding_id)) continue;

@@ -57,3 +57,26 @@ catalogs readable by line-oriented review and credential scanners. Strings and
 canonical semantic digests are unchanged; byte digests and bundle manifests bind
 the exact emitted bytes. Python preparation and the Rust producer use the same
 format. Existing artifact-size and structural validation still apply.
+
+GPT-6.2 Astra and Sol have separate Responses and Chat Completions bindings;
+only Responses advertises tools. Their documented total context, input limit and
+output limit are independent. The model pages reject `none` effort but do not
+establish an exhaustive effort directory or provider default, so the catalog does
+not supply render profiles. API documentation does not establish subscription access.
+
+Their prices preserve the whole-request 272,000-input-token boundary, Standard,
+Batch and Fast tiers, and separate 30-minute and Responses-only 12-hour writes.
+Cache writes are total rates, not input surcharges. Ultrafast's dated promotion,
+background completion windows, regional uplifts and tool charges are outside these
+schedules. Unsupported conditions remain unknown in the installed price evaluator.
+
+The [GPT-6.2 migration guide](https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6.2-astra)
+requires callers to review unsupported sampling/log-probability fields and replace
+`prompt_cache_retention` with `prompt_cache_options.ttl`. Native Gateway projection
+preserves caller fields; it does not perform this model-specific migration.
+Top-level `instructions` follow `input` on GPT-6.2; reusable instructions belong in
+an initial developer message. Prefix edits, model downgrades and end-user or
+organization changes can cause the provider to drop reasoning items. Preserving
+the native wire does not guarantee provider-side reasoning reuse across routing
+changes. See [prefix preservation](https://developers.openai.com/api/docs/guides/keep-prefix-unchanged)
+and [cache billing](https://developers.openai.com/api/docs/guides/prompt-caching).

@@ -708,6 +708,10 @@ hosts to loopback TLS and keeps the released registry, binaries and source code 
 Token Plan remains in the current UI's checked source-local recommendation flow; it cannot
 gain a new Offer authority through a feed in an older client. The recommendation browser
 scenarios cover this flow when the shared recommendation has `needs_connection` availability.
+The same scenarios retain authenticated API bindings admitted by the routing owner, using
+exact catalog identity and routable-candidate checks. They cover reuse for a trial, replacement
+without changing a published route, mismatched/unavailable bindings and a binding revision
+changing before draft save; reusing these connections does not check or save a new source.
 Use `--source-local --option bailian.token-plan.cn.v1` with the current client to run that
 actual console path through the same provider fixture and published-route execution. An
 optional `--baseline-feed` captures the released client's disabled card before it accepts

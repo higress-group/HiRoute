@@ -927,7 +927,7 @@
         "entitlement_id": "api-key",
         "inventory_protocol_endpoint_id": "endpoint.openai.platform.global.v1.responses",
         "inventory_strategy": "remote_models",
-        "last_verified_at": 1794268800,
+        "last_verified_at": 1794960000,
         "logical_endpoint_group": "openai-platform",
         "protocol_endpoints": [
           {
@@ -961,7 +961,7 @@
         "revision": 1,
         "service_offering_id": "platform-api",
         "usage_scope": "account",
-        "verification_evidence": "sha256:a61e834aa7ad890bb58cf36b094600230afc9315fe4b8ef79a4b2a0888b0500c"
+        "verification_evidence": "sha256:f32df895231f09f1540e5ecfaad0f9d2d297f4530e9abec2c3ec797b45aedc10"
       },
       {
         "endpoint_profile_id": "endpoint.openrouter.free.global.v1",
@@ -3685,13 +3685,17 @@
             "needs-runtime-qualification"
           ],
           "documented_upstream_model_ids": [
-            "gpt-6.1-terra"
+            "gpt-6.1-terra",
+            "gpt-6.2-astra",
+            "gpt-6.2-sol"
           ],
           "evidence_refs": [
             "source-022",
             "source-023",
             "source-199",
-            "source-214"
+            "source-214",
+            "source-openai-gpt-6-2-astra-20261118",
+            "source-openai-gpt-6-2-sol-20261118"
           ],
           "interfaces": [
             {
@@ -4227,7 +4231,7 @@
           "restriction": "General platform credentials"
         }
       ],
-      "as_of": "2026-11-16",
+      "as_of": "2026-11-18",
       "canonical_models": [
         {
           "canonical_identity": "claude-fable-5-1",
@@ -6188,6 +6192,112 @@
           "upstream_id_state": null,
           "upstream_ids": [
             "gpt-6.1-terra"
+          ]
+        },
+        {
+          "canonical_identity": "gpt-6.2-astra",
+          "capabilities": {
+            "cache": "supported",
+            "computer": "supported",
+            "file": "supported",
+            "streaming": "supported",
+            "structured_output": "supported",
+            "tool": "supported",
+            "web": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1050000
+          },
+          "context_variants": [],
+          "data_note": "Total context and independent input/output limits are distinct. Tools require Responses; Chat Completions supports text generation without tools. API documentation does not establish Codex or ChatGPT subscription access. Prices retain Standard, Batch and Fast conditions; Ultrafast, background completion windows, regional processing and tool fees must not inherit these rates.",
+          "display_name": "GPT-6.2 Astra",
+          "evidence_refs": [
+            "source-openai-gpt-6-2-astra-20261118",
+            "source-openai-gpt-6-2-migration-20261118"
+          ],
+          "identity_stability": "unknown",
+          "lifecycle": "active",
+          "max_input_tokens": 922000,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 128000
+          },
+          "modalities": {
+            "audio_input": "unsupported",
+            "audio_output": "unsupported",
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported",
+            "video_input": "unsupported"
+          },
+          "model_key": "gpt-6.2-astra",
+          "publisher": "OpenAI",
+          "reasoning": {
+            "default": null,
+            "kind": "model-documented",
+            "note": "Reasoning is supported and none is rejected on both APIs. The migration guide recommends low or medium; it does not establish the complete accepted effort set or provider default. Leave render profiles and default unresolved.",
+            "profiles": []
+          },
+          "source_stability_note": "direct-provider-model-documentation; snapshot permanence not established",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "gpt-6.2-astra"
+          ]
+        },
+        {
+          "canonical_identity": "gpt-6.2-sol",
+          "capabilities": {
+            "cache": "supported",
+            "computer": "supported",
+            "file": "supported",
+            "streaming": "supported",
+            "structured_output": "supported",
+            "tool": "supported",
+            "web": "supported"
+          },
+          "context_tokens": {
+            "state": "known",
+            "value": 1050000
+          },
+          "context_variants": [],
+          "data_note": "Total context and independent input/output limits are distinct. Tools require Responses; Chat Completions supports text generation without tools. API documentation does not establish Codex or ChatGPT subscription access. Prices retain Standard, Batch and Fast conditions; Ultrafast, background completion windows, regional processing and tool fees must not inherit these rates.",
+          "display_name": "GPT-6.2 Sol",
+          "evidence_refs": [
+            "source-openai-gpt-6-2-migration-20261118",
+            "source-openai-gpt-6-2-sol-20261118"
+          ],
+          "identity_stability": "unknown",
+          "lifecycle": "active",
+          "max_input_tokens": 922000,
+          "max_output_note": null,
+          "max_output_scope": null,
+          "max_output_tokens": {
+            "state": "known",
+            "value": 128000
+          },
+          "modalities": {
+            "audio_input": "unsupported",
+            "audio_output": "unsupported",
+            "image_input": "supported",
+            "text_input": "supported",
+            "text_output": "supported",
+            "video_input": "unsupported"
+          },
+          "model_key": "gpt-6.2-sol",
+          "publisher": "OpenAI",
+          "reasoning": {
+            "default": null,
+            "kind": "model-documented",
+            "note": "Reasoning is supported and none is rejected on both APIs. The migration guide recommends low or medium; it does not establish the complete accepted effort set or provider default. Leave render profiles and default unresolved.",
+            "profiles": []
+          },
+          "source_stability_note": "direct-provider-model-documentation; snapshot permanence not established",
+          "upstream_id_state": null,
+          "upstream_ids": [
+            "gpt-6.2-sol"
           ]
         },
         {
@@ -11151,6 +11261,98 @@
         },
         {
           "availability": {
+            "condition": "Documented API model; project, region, usage tier and exact protocol need runtime qualification. Tool calling requires Responses and is unsupported on Chat Completions. No Codex or ChatGPT subscription entitlement is established.",
+            "state": "conditional"
+          },
+          "binding_key": "openai-platform-global/gpt-6.2-astra/gpt-6.2-astra",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-openai-gpt-6-2-astra-20261118",
+            "source-openai-gpt-6-2-migration-20261118"
+          ],
+          "interface_candidates": [
+            "openai-platform-global/openai-responses"
+          ],
+          "lifecycle": "active",
+          "model_key": "gpt-6.2-astra",
+          "product_key": "openai-platform-global",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "versioned-id",
+          "upstream_model_id": "gpt-6.2-astra"
+        },
+        {
+          "availability": {
+            "condition": "Documented API model; project, region, usage tier and exact protocol need runtime qualification. Tool calling requires Responses and is unsupported on Chat Completions. No Codex or ChatGPT subscription entitlement is established.",
+            "state": "conditional"
+          },
+          "binding_key": "openai-platform-global/gpt-6.2-astra/gpt-6.2-astra/chat-completions",
+          "capability_overrides": {
+            "tool": false
+          },
+          "evidence_refs": [
+            "source-openai-gpt-6-2-astra-20261118",
+            "source-openai-gpt-6-2-migration-20261118"
+          ],
+          "interface_candidates": [
+            "openai-platform-global/openai-chat"
+          ],
+          "lifecycle": "active",
+          "model_key": "gpt-6.2-astra",
+          "product_key": "openai-platform-global",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "versioned-id",
+          "upstream_model_id": "gpt-6.2-astra"
+        },
+        {
+          "availability": {
+            "condition": "Documented API model; project, region, usage tier and exact protocol need runtime qualification. Tool calling requires Responses and is unsupported on Chat Completions. No Codex or ChatGPT subscription entitlement is established.",
+            "state": "conditional"
+          },
+          "binding_key": "openai-platform-global/gpt-6.2-sol/gpt-6.2-sol",
+          "capability_overrides": {},
+          "evidence_refs": [
+            "source-openai-gpt-6-2-migration-20261118",
+            "source-openai-gpt-6-2-sol-20261118"
+          ],
+          "interface_candidates": [
+            "openai-platform-global/openai-responses"
+          ],
+          "lifecycle": "active",
+          "model_key": "gpt-6.2-sol",
+          "product_key": "openai-platform-global",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "versioned-id",
+          "upstream_model_id": "gpt-6.2-sol"
+        },
+        {
+          "availability": {
+            "condition": "Documented API model; project, region, usage tier and exact protocol need runtime qualification. Tool calling requires Responses and is unsupported on Chat Completions. No Codex or ChatGPT subscription entitlement is established.",
+            "state": "conditional"
+          },
+          "binding_key": "openai-platform-global/gpt-6.2-sol/gpt-6.2-sol/chat-completions",
+          "capability_overrides": {
+            "tool": false
+          },
+          "evidence_refs": [
+            "source-openai-gpt-6-2-migration-20261118",
+            "source-openai-gpt-6-2-sol-20261118"
+          ],
+          "interface_candidates": [
+            "openai-platform-global/openai-chat"
+          ],
+          "lifecycle": "active",
+          "model_key": "gpt-6.2-sol",
+          "product_key": "openai-platform-global",
+          "protocol_qualification": "runtime-required",
+          "replaced_by_upstream_id": null,
+          "upstream_identity_role": "versioned-id",
+          "upstream_model_id": "gpt-6.2-sol"
+        },
+        {
+          "availability": {
             "condition": "Documented decision interface; account and request-shape eligibility require runtime qualification.",
             "state": "conditional"
           },
@@ -14209,6 +14411,60 @@
           "digest_state": "captured",
           "locator": "https://docs.mistral.ai/models/mistral-large-3-25-12",
           "source_key": "source-mistral3-lifecycle",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "developers.openai.com",
+          "bytes_digest": "sha256:41fd5ad72dc74045ffb0fbe33e8213a879cc018a473b1e022b7be8fa04057625",
+          "collected_on": "2026-11-18",
+          "digest_state": "captured",
+          "locator": "https://developers.openai.com/api/docs/guides/prompt-caching.md",
+          "source_key": "source-openai-caching-20261118",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "developers.openai.com",
+          "bytes_digest": "sha256:89611cfc6a48262e6e73d2bca8e9aed9c6694b9ae2955a12d16f0d949081d639",
+          "collected_on": "2026-11-18",
+          "digest_state": "captured",
+          "locator": "https://developers.openai.com/api/docs/models/gpt-6.2-astra.md",
+          "source_key": "source-openai-gpt-6-2-astra-20261118",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "developers.openai.com",
+          "bytes_digest": "sha256:dae79e0da343370b181a1662b01da4017413b82df5702da4b30f3b86b147d40c",
+          "collected_on": "2026-11-18",
+          "digest_state": "captured",
+          "locator": "https://developers.openai.com/api/docs/guides/latest-model.md?model=gpt-6.2-astra",
+          "source_key": "source-openai-gpt-6-2-migration-20261118",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "developers.openai.com",
+          "bytes_digest": "sha256:3c1aa626387fc854be2560f16620f0c913f4a2aa97e8208d4239efd3279fe913",
+          "collected_on": "2026-11-18",
+          "digest_state": "captured",
+          "locator": "https://developers.openai.com/api/docs/models/gpt-6.2-sol.md",
+          "source_key": "source-openai-gpt-6-2-sol-20261118",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "developers.openai.com",
+          "bytes_digest": "sha256:34a378d311d9e59437559630389de721f2dc09e0ea2bb5b884a36ddd29ceea44",
+          "collected_on": "2026-11-18",
+          "digest_state": "captured",
+          "locator": "https://developers.openai.com/api/docs/guides/keep-prefix-unchanged.md",
+          "source_key": "source-openai-prefix-20261118",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "developers.openai.com",
+          "bytes_digest": "sha256:427698a0c4f1cf4abb2569cb0f9a4ca7fcacfa2f45d61a75f221f0b590ac5114",
+          "collected_on": "2026-11-18",
+          "digest_state": "captured",
+          "locator": "https://developers.openai.com/api/docs/pricing.md",
+          "source_key": "source-openai-pricing-20261118",
           "source_kind": "provider-documentation"
         },
         {
@@ -107452,7 +107708,7 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:e79b376f0cfa4635fb54c70073d15ada01ea04f5378c8792f2d6bac93dc1bcfb"
+      "source_catalog_digest": "sha256:dbeac5f9ce25d32e0b8e891478d70397e2e0bf29a1690b654f03d0a6db05ded6"
     },
     "rating_snapshot": {
       "digest": "sha256:3903b9b5f5b0c6111d7dd2e752d9538390d32e72950c3a0edee8d025449f4919",
@@ -109587,7 +109843,7 @@
     "schema": "hiroute.release-model-data/v2"
   },
   "official_model_data": {
-    "data_revision": 19,
+    "data_revision": 20,
     "pricing_facts": [
       {
         "pricing_key": "anthropic-platform/claude-fable-5-2/claude-fable-5-2",
@@ -110737,6 +110993,566 @@
         ],
         "evidence_refs": [
           "source-214"
+        ]
+      },
+      {
+        "pricing_key": "openai-platform-global/gpt-6.2-astra/gpt-6.2-astra",
+        "product_key": "openai-platform-global",
+        "model_key": "gpt-6.2-astra",
+        "upstream_model_id": "gpt-6.2-astra",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "batch-long-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "batch",
+              "processing": "non-regional"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "8",
+              "output": "30",
+              "cache-read": "0.4"
+            }
+          },
+          {
+            "schedule_key": "batch-long-context-cache-write-1800s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "batch",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 1800
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "10"
+            }
+          },
+          {
+            "schedule_key": "batch-long-context-cache-write-43200s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "batch",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 43200,
+              "protocol": "openai-responses"
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "20"
+            }
+          },
+          {
+            "schedule_key": "batch-short-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "batch",
+              "processing": "non-regional"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "4",
+              "output": "20",
+              "cache-read": "0.2"
+            }
+          },
+          {
+            "schedule_key": "batch-short-context-cache-write-1800s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "batch",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 1800
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "5"
+            }
+          },
+          {
+            "schedule_key": "batch-short-context-cache-write-43200s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "batch",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 43200,
+              "protocol": "openai-responses"
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "10"
+            }
+          },
+          {
+            "schedule_key": "fast-long-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "fast",
+              "processing": "non-regional"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "32",
+              "output": "120",
+              "cache-read": "1.6"
+            }
+          },
+          {
+            "schedule_key": "fast-long-context-cache-write-1800s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "fast",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 1800
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "40"
+            }
+          },
+          {
+            "schedule_key": "fast-long-context-cache-write-43200s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "fast",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 43200,
+              "protocol": "openai-responses"
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "80"
+            }
+          },
+          {
+            "schedule_key": "fast-short-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "fast",
+              "processing": "non-regional"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "16",
+              "output": "80",
+              "cache-read": "0.8"
+            }
+          },
+          {
+            "schedule_key": "fast-short-context-cache-write-1800s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "fast",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 1800
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "20"
+            }
+          },
+          {
+            "schedule_key": "fast-short-context-cache-write-43200s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "fast",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 43200,
+              "protocol": "openai-responses"
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "40"
+            }
+          },
+          {
+            "schedule_key": "standard-long-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "standard",
+              "processing": "non-regional"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "16",
+              "output": "60",
+              "cache-read": "0.8"
+            }
+          },
+          {
+            "schedule_key": "standard-long-context-cache-write-1800s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "standard",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 1800
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "20"
+            }
+          },
+          {
+            "schedule_key": "standard-long-context-cache-write-43200s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "standard",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 43200,
+              "protocol": "openai-responses"
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "40"
+            }
+          },
+          {
+            "schedule_key": "standard-short-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "standard",
+              "processing": "non-regional"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "8",
+              "output": "40",
+              "cache-read": "0.4"
+            }
+          },
+          {
+            "schedule_key": "standard-short-context-cache-write-1800s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "standard",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 1800
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "10"
+            }
+          },
+          {
+            "schedule_key": "standard-short-context-cache-write-43200s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "standard",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 43200,
+              "protocol": "openai-responses"
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "20"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-openai-caching-20261118",
+          "source-openai-gpt-6-2-astra-20261118",
+          "source-openai-pricing-20261118"
+        ]
+      },
+      {
+        "pricing_key": "openai-platform-global/gpt-6.2-sol/gpt-6.2-sol",
+        "product_key": "openai-platform-global",
+        "model_key": "gpt-6.2-sol",
+        "upstream_model_id": "gpt-6.2-sol",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "batch-long-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "batch",
+              "processing": "non-regional"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "2",
+              "output": "7.5",
+              "cache-read": "0.1"
+            }
+          },
+          {
+            "schedule_key": "batch-long-context-cache-write-1800s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "batch",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 1800
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "2.5"
+            }
+          },
+          {
+            "schedule_key": "batch-long-context-cache-write-43200s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "batch",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 43200,
+              "protocol": "openai-responses"
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "5"
+            }
+          },
+          {
+            "schedule_key": "batch-short-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "batch",
+              "processing": "non-regional"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "1",
+              "output": "5",
+              "cache-read": "0.05"
+            }
+          },
+          {
+            "schedule_key": "batch-short-context-cache-write-1800s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "batch",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 1800
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "1.25"
+            }
+          },
+          {
+            "schedule_key": "batch-short-context-cache-write-43200s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "batch",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 43200,
+              "protocol": "openai-responses"
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "2.5"
+            }
+          },
+          {
+            "schedule_key": "fast-long-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "fast",
+              "processing": "non-regional"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "8",
+              "output": "30",
+              "cache-read": "0.4"
+            }
+          },
+          {
+            "schedule_key": "fast-long-context-cache-write-1800s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "fast",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 1800
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "10"
+            }
+          },
+          {
+            "schedule_key": "fast-long-context-cache-write-43200s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "fast",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 43200,
+              "protocol": "openai-responses"
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "20"
+            }
+          },
+          {
+            "schedule_key": "fast-short-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "fast",
+              "processing": "non-regional"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "4",
+              "output": "20",
+              "cache-read": "0.2"
+            }
+          },
+          {
+            "schedule_key": "fast-short-context-cache-write-1800s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "fast",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 1800
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "5"
+            }
+          },
+          {
+            "schedule_key": "fast-short-context-cache-write-43200s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "fast",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 43200,
+              "protocol": "openai-responses"
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "10"
+            }
+          },
+          {
+            "schedule_key": "standard-long-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "standard",
+              "processing": "non-regional"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "4",
+              "output": "15",
+              "cache-read": "0.2"
+            }
+          },
+          {
+            "schedule_key": "standard-long-context-cache-write-1800s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "standard",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 1800
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "5"
+            }
+          },
+          {
+            "schedule_key": "standard-long-context-cache-write-43200s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "minimum_input_tokens": 272001,
+              "service_tier": "standard",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 43200,
+              "protocol": "openai-responses"
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "10"
+            }
+          },
+          {
+            "schedule_key": "standard-short-context",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "standard",
+              "processing": "non-regional"
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "2",
+              "output": "10",
+              "cache-read": "0.1"
+            }
+          },
+          {
+            "schedule_key": "standard-short-context-cache-write-1800s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "standard",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 1800
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "2.5"
+            }
+          },
+          {
+            "schedule_key": "standard-short-context-cache-write-43200s",
+            "condition": {
+              "kind": "prompt-token-threshold",
+              "maximum_input_tokens": 272000,
+              "service_tier": "standard",
+              "processing": "non-regional",
+              "cache_ttl_seconds": 43200,
+              "protocol": "openai-responses"
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "5"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-openai-caching-20261118",
+          "source-openai-gpt-6-2-sol-20261118",
+          "source-openai-pricing-20261118"
         ]
       },
       {

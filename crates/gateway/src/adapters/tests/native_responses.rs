@@ -2,6 +2,89 @@ use super::*;
 use serde_json::Value;
 
 #[test]
+fn gpt62_native_forwarding_keeps_prefix_cache_controls_and_tier_without_migration() {
+    for model in ["gpt-6.2-astra", "gpt-6.2-sol"] {
+        for ingress in [IngressProtocol::Responses, IngressProtocol::ChatCompletions] {
+            for cache in [
+                json!({"prompt_cache_retention":"24h"}),
+                json!({"prompt_cache_options":{"ttl":"12h","mode":"explicit"}}),
+            ] {
+                let mut body = match ingress {
+                    IngressProtocol::Responses => json!({"model":"alias",
+                        "instructions":"Current request guidance",
+                        "input":[
+                            {"role":"developer","content":"Stable instructions"},
+                            {"role":"user","content":"First question"},
+                            {"type":"reasoning","id":"rs_synthetic","summary":[],
+                             "encrypted_content":"synthetic-opaque-state"},
+                            {"role":"assistant","content":"First answer"},
+                            {"role":"user","content":"Continue"}],
+                        "include":["reasoning.encrypted_content","message.output_text.logprobs"]}),
+                    IngressProtocol::ChatCompletions => json!({"model":"alias",
+                        "messages":[{"role":"developer","content":"Stable instructions"},
+                            {"role":"user","content":"First question"}]}),
+                    _ => unreachable!(),
+                };
+                body.as_object_mut()
+                    .unwrap()
+                    .extend(cache.as_object().unwrap().clone());
+                for (field, value) in [
+                    ("temperature", json!(0.2)),
+                    ("top_p", json!(0.8)),
+                    ("logprobs", json!(true)),
+                    ("top_logprobs", json!(2)),
+                    ("service_tier", json!("priority")),
+                    ("safety_identifier", json!("synthetic-user")),
+                ] {
+                    body[field] = value;
+                }
+                let request = decode_ingress_request(ingress, &body).unwrap();
+                let mut profile = exact_state_profile(ingress, ingress);
+                profile.capability.native_model = model.into();
+                let projected = project_candidate_request(&request, &profile).unwrap();
+                let wire: Value = serde_json::from_slice(&projected.bytes).unwrap();
+                assert_eq!(wire["model"], model);
+                for field in [
+                    "input",
+                    "messages",
+                    "instructions",
+                    "include",
+                    "temperature",
+                    "top_p",
+                    "logprobs",
+                    "top_logprobs",
+                    "prompt_cache_retention",
+                    "prompt_cache_options",
+                    "service_tier",
+                    "safety_identifier",
+                ] {
+                    assert_eq!(
+                        wire.get(field),
+                        body.get(field),
+                        "{model} {ingress:?} {field}"
+                    );
+                }
+                for upstream in [
+                    IngressProtocol::Responses,
+                    IngressProtocol::ChatCompletions,
+                    IngressProtocol::Messages,
+                ] {
+                    if upstream != ingress {
+                        assert!(
+                            project_candidate_request(
+                                &request,
+                                &exact_state_profile(ingress, upstream)
+                            )
+                            .is_err()
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn empty_output_probability_metadata_is_modeled_without_trusting_unknown_state() {
     for value in [
         None,

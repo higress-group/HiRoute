@@ -226,6 +226,40 @@ mod tests {
     }
 
     #[test]
+    fn gpt62_does_not_infer_render_profiles_or_a_provider_default() {
+        let catalog = catalog();
+        for model in ["gpt-6.2-astra", "gpt-6.2-sol"] {
+            let facts = catalog
+                .model_metadata()
+                .canonical_models
+                .iter()
+                .find(|m| m.model_key == model)
+                .unwrap();
+            assert!(facts.reasoning.profiles.is_empty());
+            assert!(facts.reasoning.default.is_none());
+            for protocol in [
+                UpstreamProtocol::Responses,
+                UpstreamProtocol::ChatCompletions,
+            ] {
+                let (provenance, target, authentication) =
+                    scope(&catalog, "openai.platform.global.v1", protocol);
+                assert!(
+                    missing_api_reasoning_default(
+                        &catalog,
+                        &provenance,
+                        &target,
+                        &authentication,
+                        model,
+                        &unknown(),
+                        None,
+                    )
+                    .is_none()
+                );
+            }
+        }
+    }
+
+    #[test]
     fn terra_uses_direct_facts_without_granting_executable_entitlement() {
         let catalog = catalog();
         let metadata = catalog.model_metadata();

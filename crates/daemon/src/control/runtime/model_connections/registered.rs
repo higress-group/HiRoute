@@ -678,7 +678,7 @@ mod tests {
                 .iter()
                 .map(|model| model.upstream_model_id.as_str())
                 .collect::<Vec<_>>(),
-            ["qwen3-max-2026-01-23"]
+            ["qwen3-max-2026-01-23", "qwen4-max"]
         );
         assert!(matches!(
             &bailian.models[0].capabilities.native_reasoning,
@@ -686,6 +686,22 @@ mod tests {
                 value: Some(NativeReasoningCapabilityV1::Toggle { parameter }),
                 basis: NativeCandidateFactBasisV1::RegisteredCatalog,
             } if parameter == "enable_thinking"
+        ));
+        let qwen4 = bailian
+            .models
+            .iter()
+            .find(|model| model.upstream_model_id == "qwen4-max")
+            .unwrap();
+        assert_eq!(
+            qwen4.catalog_configuration_id.as_deref(),
+            Some("model.catalog.qwen-4-max")
+        );
+        assert!(matches!(
+            &qwen4.capabilities.native_reasoning,
+            NativeCandidateFactValueV1 {
+                value: Some(NativeReasoningCapabilityV1::Fixed { profile }),
+                basis: NativeCandidateFactBasisV1::RegisteredCatalog,
+            } if profile == "provider-default"
         ));
 
         let deepseek = runtime
