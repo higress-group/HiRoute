@@ -60,7 +60,9 @@ manually.
 
 ## Manual upgrade and removal
 
-Prefer **Settings → Updates**. The updater verifies the complete DMG/App, asks the
+Select **Update** in the sidebar or the purple-marked gear in a narrow window to
+open **Settings → General → Updates**. You can check for releases in the same
+section. The updater verifies the complete DMG/App, asks the
 verified candidate to check storage/recovery prerequisites before replacement,
 waits for current calls/tasks, and retains the complete previous App and handoff.
 Waiting can be cancelled. Storage startup repeats admission under its writer lock.

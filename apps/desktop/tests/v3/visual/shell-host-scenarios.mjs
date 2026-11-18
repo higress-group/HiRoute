@@ -17,13 +17,65 @@ export async function runShellHostScenarios(client,baseUrl,output) {
     }
     if(state==='expired')return;
     await waitFor(client,'Boolean(document.querySelector(".sidebar"))');
-    await evaluate(client,`[...document.querySelectorAll('.sidebar button')].find(b=>b.textContent.trim()===${JSON.stringify(language==='zh'?'设置':'Settings')}).click()`);
+    await evaluate(client,"[...document.querySelectorAll('.sidebar-foot .nav-item')].find(button=>button.getClientRects().length).click()");
     try { await waitFor(client,'document.querySelector(".settings-group")?.textContent.includes("Windows") && Boolean(document.querySelector(".settings-group button[aria-pressed]"))'); }
     catch(error) { await writeFile(path.join(output,'shell-ui-failure.json'),JSON.stringify(await evaluate(client,'({text:document.body.innerText,capabilities:window.consoleComponent.capabilities(),requests:window.consoleComponent.hostRequests,errors:window.consoleComponent.errors})'),null,2));await screenshot('shell-ui-failure.png');throw error; }
     await waitFor(client,'window.consoleComponent.hostRequests.some(r=>r.command==="update_status")');
     const page=await evaluate(client,'(()=>{const b=document.querySelector(".main .page").getBoundingClientRect();return{banner:!!document.querySelector(".console-transport-bar"),top:b.top,bottom:b.bottom};})()');
     assert(!page.banner&&page.top<90&&page.bottom<=height+1,'Windows host notice displaced the product page: '+JSON.stringify(page));
   };
+
+  const updateUrl = new URL('console-entry.html?case=ready&host=shell-console&native-shell=1&update=discover&language=en&theme=dark', baseUrl);
+  await navigate(client, updateUrl.href, { width: 755, height: 600 });
+  await waitFor(client, "Boolean(document.querySelector('.sidebar-settings')?.getClientRects().length)");
+  await evaluate(client, `(() => {
+    window.settingsGearBeforeDiscovery = document.querySelector('.sidebar-settings');
+    document.querySelector('.sidebar .nav button:last-child').focus();
+  })()`);
+  await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+  await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Tab', code: 'Tab', windowsVirtualKeyCode: 9 });
+  assert(await evaluate(client, `document.activeElement === window.settingsGearBeforeDiscovery
+    && document.activeElement.getAttribute('aria-label') === 'Settings'
+    && document.activeElement.matches(':focus-visible')`),
+    'The unmarked Settings gear did not take focus');
+  await screenshot('shell-update-sidebar-focused-before-discovery-en-dark-755.png');
+  await waitFor(client, "window.consoleComponent.hostRequests.some(({command}) => command === 'update_check')");
+  await evaluate(client, 'window.consoleComponent.releaseUpdateDiscovery()');
+  await waitFor(client, "Boolean(document.querySelector('.sidebar-update-dot')?.getClientRects().length)");
+  assert(await evaluate(client, `(() => {
+    const gear = window.settingsGearBeforeDiscovery;
+    return document.activeElement === gear && gear.matches(':focus-visible') && gear.getClientRects().length
+      && gear.getAttribute('aria-label') === 'Settings · New version available'
+      && gear.querySelector('.sidebar-update-dot')?.getClientRects().length
+      && !document.querySelector('.sidebar-update-entry').getClientRects().length
+      && window.consoleComponent.hostRequests.filter(({command}) => command === 'update_check').length === 1;
+  })()`), 'Update discovery replaced the compact Settings gear or lost its keyboard focus');
+  await screenshot('shell-update-sidebar-en-dark-755.png');
+
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1200, height: 813, deviceScaleFactor: 1, mobile: false });
+  await waitFor(client, `window.settingsGearBeforeDiscovery.getAttribute('aria-label') === 'Settings'
+    && Boolean(document.querySelector('.sidebar-update-entry')?.getClientRects().length)`);
+  assert(await evaluate(client, 'document.activeElement === window.settingsGearBeforeDiscovery'),
+    'Expanding the sidebar lost focus on Settings');
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 755, height: 600, deviceScaleFactor: 1, mobile: false });
+  await waitFor(client, "window.settingsGearBeforeDiscovery.getAttribute('aria-label') === 'Settings · New version available'");
+  assert(await evaluate(client, 'document.activeElement === window.settingsGearBeforeDiscovery'),
+    'Collapsing the sidebar lost focus on Settings');
+
+  await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r', unmodifiedText: '\r' });
+  await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+  await waitFor(client, `(() => {
+    const heading = document.querySelector('.settings-updates h2');
+    return document.activeElement === heading
+      && heading.getBoundingClientRect().top >= heading.closest('.page-content').getBoundingClientRect().top;
+  })()`);
+  assert(await evaluate(client, `document.querySelector('.settings-updates').innerText.includes('Version 0.4.0 is available')
+    && !window.consoleComponent.requests.some(({path}) => path.includes('update_'))
+    && !window.consoleComponent.hostRequests.some(({command}) => ['update_download', 'update_install', 'update_cancel'].includes(command))`),
+    'The Windows shortcut changed updater state or sent a maintenance command through console HTTP');
+  const updateScreenshot = await screenshot('shell-update-destination-en-dark-755.png');
+  results.push({ id: 'shell.sidebar-update-entry', state: 'green', screenshot: updateScreenshot });
+
   for(const language of ['zh','en'])for(const theme of ['light','dark'])for(const [width,height]of [[1200,813],[755,600]]) {
     for(const phase of ['ready','waiting','failed','catalog-unavailable']){
       await open(language,theme,width,height,phase);

@@ -48,6 +48,14 @@ Recheck action at both supported window sizes. Incomplete installation has a
 neutral heading and exact version/build installer repair, without storage retry
 or an unrelated recovery location.
 
+`desktop.interactions.sidebar-update` checks one background catalog check for
+the idle native updater, confirmed availability, guarded navigation and focus
+on the Updates heading. The browser console variant checks that the update
+controls and host requests are absent. `desktop.interactions.update-status-recovers`
+checks that a successful status read clears an earlier read error and retains a
+rejected download error. `--shell-host-only` covers Windows discovery, focus
+retention on the compact Settings gear, and keyboard activation of the shortcut.
+
 Start with the user capability, then choose the smallest layer that can observe its
 contract. Node state tests explain decision rules; browser scenarios exercise the
 production React components and their wiring through synthetic IPC. Neither layer

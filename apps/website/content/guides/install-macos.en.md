@@ -87,7 +87,9 @@ The Terminal entry connects to HiRoute's local service. Keep Desktop installed a
 
 ## Update and recover
 
-Open **Settings → Updates** and select **Check for updates**. HiRoute gets stable releases from the official website, verifies the complete DMG and App, and checks upgrade prerequisites. Installation waits for current calls and tasks, and you can select **Cancel update** while it waits. Agent routing pauses during installation. HiRoute keeps the complete previous App and attempts to restore it if the update fails.
+Select **Update** in the sidebar when it appears. In a narrow window, select the **Settings** gear marked with a purple dot. Both open **Settings → General → Updates**, where you can review the version and choose **Download update**. You can also open the section and select **Check for updates**.
+
+HiRoute gets stable releases from the official website, verifies the complete DMG and App, and checks upgrade prerequisites. Installation waits for current calls and tasks, and you can select **Cancel update** while it waits. Agent routing pauses during installation. HiRoute keeps the complete previous App and attempts to restore it if the update fails.
 
 A Core storage upgrade preserves configuration, credentials, routing and compatible HiRoute history. An Observation format change can retire older HiRoute history and start a new history generation. The recovery guide for the detected batch identifies the data and matching App needed for restoration.
 

@@ -125,6 +125,9 @@ export function DesktopApp() {
   const [trialModelsOpen, setTrialModelsOpen] = useState(false);
   const trialOpen = Boolean(trialIntent) && !trialModelsOpen;
   const [page, setPage] = useState<Page>('home');
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [openUpdatesRequest, setOpenUpdatesRequest] = useState(0);
+  const settingsActive = page === 'settings' && !trialOpen;
   const [observationConnectionLost, setObservationConnectionLost] = useState(false);
   const authorityLost = useRef(false);
   const checkingNativeStatus = useRef(false);
@@ -427,6 +430,12 @@ export function DesktopApp() {
     if (!await allowPageChange(next, replaceTarget)) return false;
     openPage(next);
     return true;
+  }
+
+  async function openSettings(showUpdates = false) {
+    if (!await leaveTrial() || !await allowPageChange('settings')) return;
+    if (showUpdates) setOpenUpdatesRequest(request => request + 1);
+    openPage('settings');
   }
 
   async function switchModelTab(next: 'general' | 'decisions') {
@@ -779,7 +788,8 @@ export function DesktopApp() {
         serviceCheckFailed={servicePresentation.checkFailed}
         onRetryService={() => void home.refreshDesktop()}
         onNavigate={id => void navigate(id)}
-        onOpenSettings={() => void (async () => { if (await leaveTrial()) await openPageSafely('settings'); })()}
+        onOpenSettings={() => void openSettings()}
+        onOpenUpdates={host.updates && updateAvailable ? () => void openSettings(true) : undefined}
       />
       <main className="main">
         <HostNotices language={language} />
@@ -927,14 +937,16 @@ export function DesktopApp() {
             language={language}
             onOpenAgents={() => void openPageSafely('agents')}
           />}</div>}
-        <div hidden={trialOpen || page !== 'settings'}><SettingsPage
-          active={!trialOpen && page === 'settings'}
+        <div hidden={!settingsActive}><SettingsPage
+          active={settingsActive}
           language={language}
           languagePreference={preferences.languagePreference}
           theme={preferences.theme}
           serviceLabel={settingsServiceLabel}
           serviceReady={servicePresentation.state === 'ready'}
           onServiceChanged={home.refreshDesktop}
+          onUpdateAvailabilityChange={setUpdateAvailable}
+          openUpdatesRequest={openUpdatesRequest}
           onLanguageChange={preferences.setLanguage}
           onThemeChange={preferences.setTheme}
           onOpenSessions={() => {

@@ -67,6 +67,10 @@ HRESULT. If standalone rollback also fails, its error details are shown
 separately. A service startup failure can include the Task and Control status.
 The diagnostic omits account names, file paths, and raw logs.
 
+In Desktop, select **Update** in the sidebar or the purple-marked gear in a
+narrow window to open **Settings → General → Updates**. The section controls
+checking, downloading and installing updates.
+
 The interactive installer shows Install, Upgrade or Repair on its first screen.
 The optional controls show the fixed installation path and the login, notification
 area and desktop shortcut choices. To upgrade a running Desktop from a downloaded

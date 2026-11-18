@@ -15,6 +15,7 @@ const state = query.get('case') ?? 'login';
 let holdDesktop = query.get('startup') === 'held';
 const pendingDesktopReads: (() => void)[] = [];
 const pendingHostCancels: (() => void)[] = [];
+let finishUpdateDiscovery: (() => void) | undefined;
 localStorage.setItem('hiroute.language', query.get('language') ?? 'zh');
 localStorage.setItem('hiroute.theme', query.get('theme') ?? 'light');
 sessionStorage.clear();
@@ -33,21 +34,31 @@ const control = {
   releaseDesktop: () => { holdDesktop = false; for (const release of pendingDesktopReads.splice(0)) release(); },
   pendingHostCancels: () => pendingHostCancels.length,
   releaseHostCancels: () => { for (const release of pendingHostCancels.splice(0)) release(); },
+  releaseUpdateDiscovery: () => finishUpdateDiscovery?.(),
 };
 if (query.get('host') === 'shell-console') {
   const unavailable = query.get('update') === 'catalog-unavailable';
-  const view = { current_version:'0.3.1',phase:unavailable?'check_failed':query.get('update')??'ready',available:unavailable?null:{version:'0.4.0',notes:{zh:'更新说明',en:'Release notes'},size:1000},downloaded_bytes:unavailable?0:1000,active_calls:1,active_tasks:2,error:unavailable?'UPGRADE_CATALOG_UNAVAILABLE':query.get('update')==='failed'?'UPGRADE_INSTALL_FAILED':null,can_install:true,diagnostic:query.get('update')==='failed'?{step:'open-update-installer',io_kind:'Uncategorized',windows_error:32,hresult:null,process_exit:null}:null,package_ready:!unavailable,recovery:query.get('update')==='failed'?'service_available':null };
+  const discover = query.get('update') === 'discover';
+  const release = { version: '0.4.0', notes: { zh: '更新说明', en: 'Release notes' }, size: 1000 };
+  const view = { current_version:'0.3.1',phase:unavailable?'check_failed':discover?'idle':query.get('update')??'ready',available:unavailable||discover?null:release,downloaded_bytes:unavailable||discover?0:1000,active_calls:1,active_tasks:2,error:unavailable?'UPGRADE_CATALOG_UNAVAILABLE':query.get('update')==='failed'?'UPGRADE_INSTALL_FAILED':null,can_install:true,diagnostic:query.get('update')==='failed'?{step:'open-update-installer',io_kind:'Uncategorized',windows_error:32,hresult:null,process_exit:null}:null,package_ready:!unavailable&&!discover,recovery:query.get('update')==='failed'?'service_available':null };
   const shell = { capabilities:()=>({...browserCapabilities,host:'shell-console' as const,platform:'windows',updates:true,login_start:true}),
     call:async <T,>(command:string,args:Record<string,unknown>={})=>{
       if (command.startsWith('update_') || command.startsWith('login_start_') || ['open_in_browser','restart_service','reconnect'].includes(command)) {
         control.hostRequests.push({command,args});
         if (command==='login_start_set') control.loginEnabled=Boolean(args.enabled);
+        if (command === 'update_check' && discover && view.phase === 'idle') {
+          view.phase = 'checking';
+          finishUpdateDiscovery = () => {
+            view.available = release;
+            view.phase = 'available';
+          };
+        }
         if (command==='update_cancel') {
           if (query.has('hold-cancel')) await new Promise<void>(resolve => pendingHostCancels.push(resolve));
           if (view.phase==='ready' || view.phase==='failed') { view.phase='available';view.package_ready=false;view.downloaded_bytes=0;view.error=null;view.diagnostic=null; } else { view.phase='ready'; }
           view.active_calls=0;view.active_tasks=0;
         }
-        return (command.startsWith('update_')?view:command.startsWith('login_start_')?{enabled:control.loginEnabled}:null) as T;
+        return (command.startsWith('update_')?structuredClone(view):command.startsWith('login_start_')?{enabled:control.loginEnabled}:null) as T;
       }
       return consoleTransport.call<T>(command,args);
     },

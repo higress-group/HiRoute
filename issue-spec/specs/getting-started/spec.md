@@ -190,6 +190,22 @@ Worker, task, and session views, and paired with a readable name. Known Agents u
 their actual logos. Provider branding cannot imply a model-specific identity;
 unknown objects use a neutral fallback rather than a fabricated brand.
 
+### Requirement: Desktop makes confirmed updates reachable from the sidebar
+
+Each Desktop UI session with an installed, update-capable host SHALL request one
+background catalog check if the native updater is idle. The check uses the same
+native release selection as **Check for updates** in Settings.
+
+The sidebar SHALL offer a shortcut when the updater reports a newer stable
+release as available or a package for the release as ready. In the compact
+sidebar, the Settings gear SHALL carry the update mark and serve as the shortcut.
+The user starts downloads and installation from the existing Updates controls.
+
+#### Scenario: Open Updates from the sidebar
+
+- **WHEN** the user activates the update shortcut and the current editor allows navigation
+- **THEN** Desktop opens Settings, selects General, and scrolls to and focuses the Updates heading.
+
 ### Requirement: Upgrade preparation keeps the running application available
 
 Desktop MUST select a newer stable release for the current architecture from the
