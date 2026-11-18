@@ -4,5 +4,5 @@
   "version": "8.0.48-hiroute.2",
   "built_at": "2026-10-31T00:00:00Z",
   "patch": "local-management-stdin.patch",
-  "patch_sha256": "b1d2ad669d6194331bad09d6cb3ff25e667e33a2eb950cfce596d05ec6ccba1d"
+  "patch_sha256": "6aa08ee6c10029d4c03a131d8bce7c368ebf5e5f5b18891b46bbc2bd7e34b722"
 }

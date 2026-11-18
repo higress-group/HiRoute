@@ -82,7 +82,14 @@ the model IDs returned for the same account through managed and native discovery
 using the selected stable Codex CLI.
 
 Registration/update, not ordinary inference, owns this lookup. Refresh has an
-independent bounded 20-second control budget covering remote discovery and readback.
+independent bounded one-minute control budget covering remote discovery and readback.
+The upstream directory request, including response-body reading and any same-account
+generation handoff, MUST share a one-minute maximum deadline and respect a shorter
+caller deadline. A valid response that takes longer than five seconds MUST remain
+eligible to complete within that budget.
+Desktop/console subscription-check calls and the corresponding CLI Apply MUST
+default to one minute instead of ending at the generic 30-second call timeout;
+an explicit caller timeout remains authoritative.
 Missing version, timeout, or invalid directory cannot manufacture remote results:
 a prior registered directory remains available, while a first failed lookup creates
 no static substitute candidates. Discovery success does not prove inference.
@@ -111,6 +118,14 @@ A nonempty retained directory keeps its existing pin and authorization checks.
 - **WHEN** an approved lease temporarily cannot obtain a client version or directory
 - **THEN** failure MUST remain explicit and bounded; a later refresh uses the actual
   selected engine and current account results without inventing membership.
+
+#### Scenario: A valid directory response downloads slowly
+
+- **WHEN** the account directory returns HTTP 200 but its valid response body takes
+  longer than five seconds to download within the one-minute control budget
+- **THEN** the explicit check uses the complete returned directory rather than
+  failing at the former five-second deadline; caller cancellation and shorter
+  deadlines still stop the lookup without publishing partial model membership.
 
 #### Scenario: Authorization changes while its directory is being discovered
 

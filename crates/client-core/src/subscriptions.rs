@@ -89,13 +89,17 @@ impl Client {
         request: ComputeConnectionApplyRequestV1,
         protected_grant: ProtectedClientGrantV2,
     ) -> Result<MachineEnvelopeV2<ApplyResultV1>, ClientFailure> {
-        self.call_typed(protected_request(
-            APPLY_SUBSCRIPTION_CHECK_OPERATION_V2,
-            request_id,
-            &request,
-            protected_grant,
-        )?)
-        .await
+        // This synchronous check can spend a minute downloading the directory.
+        // An explicitly configured caller timeout remains authoritative.
+        self.clone()
+            .with_timeout(self.timeout.unwrap_or(std::time::Duration::from_secs(60)))
+            .call_typed(protected_request(
+                APPLY_SUBSCRIPTION_CHECK_OPERATION_V2,
+                request_id,
+                &request,
+                protected_grant,
+            )?)
+            .await
     }
 
     pub async fn subscription_check_result(
@@ -196,6 +200,54 @@ mod tests {
             },
             idempotency_key: key.to_owned(),
         }
+    }
+
+    struct DelayedApproval(std::time::Duration);
+
+    impl crate::ControlDispatch for DelayedApproval {
+        fn dispatch(
+            &self,
+            request: LocalControlWireRequestV2,
+        ) -> MachineEnvelopeV2<serde_json::Value> {
+            assert_eq!(request.operation_id, APPLY_SUBSCRIPTION_CHECK_OPERATION_V2);
+            assert!(request.protected_grant.is_some());
+            std::thread::sleep(self.0);
+            MachineEnvelopeV2::failed(
+                ErrorV1::new(ErrorCode::ActionRequired),
+                Some(request.request_id),
+            )
+        }
+    }
+
+    #[tokio::test]
+    async fn subscription_check_outlives_the_generic_thirty_second_call_budget() {
+        let client = Client::in_process(
+            "test",
+            std::sync::Arc::new(DelayedApproval(std::time::Duration::from_secs(31))),
+        );
+        let result = client
+            .apply_subscription_check("slow-check", apply_request("slow-check"), grant())
+            .await
+            .expect("a slow check must reach the actual daemon result");
+        assert_eq!(result.error.unwrap().code, ErrorCode::ActionRequired);
+    }
+
+    #[tokio::test]
+    async fn subscription_check_respects_an_explicit_shorter_call_budget() {
+        let client = Client::in_process(
+            "test",
+            std::sync::Arc::new(DelayedApproval(std::time::Duration::from_millis(100))),
+        )
+        .with_timeout(std::time::Duration::from_millis(20));
+        let result = client
+            .apply_subscription_check("short-check", apply_request("short-check"), grant())
+            .await
+            .unwrap_err();
+        assert_eq!(result.code, FailureCode::Deadline);
+        assert_eq!(
+            result.submission,
+            crate::SubmissionState::MayHaveReachedServer
+        );
     }
 
     #[test]

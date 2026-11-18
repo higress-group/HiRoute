@@ -319,6 +319,8 @@ fn production_control_budget_covers_synchronous_refresh_and_pin_readback() {
             .discover_with_timeout(true, Duration::from_secs(5))
             .is_err()
     );
+    // A valid directory body can outlive the previous 20-second control budget.
+    fixture.patch_delay_ms.store(20_200, Ordering::SeqCst);
     let accounts = fixture
         .discover_with_timeout(true, crate::MANAGED_CPA_CONTROL_TIMEOUT)
         .unwrap();
