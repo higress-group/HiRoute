@@ -1,5 +1,8 @@
 use super::*;
 
+#[path = "responses_tool_search.rs"]
+mod tool_search;
+
 pub(super) fn decode_additional_tools<'a>(
     context: &DecodeContext,
     item: &'a Value,
@@ -42,7 +45,7 @@ pub(super) fn decode_responses_input(
     value: &Value,
     messages: &mut Vec<CanonicalMessage>,
     item_status: Option<&str>,
-) -> Result<(), ModelIrError> {
+) -> Result<NativeHandoffItem, ModelIrError> {
     let object = value
         .as_object()
         .ok_or(ModelIrError::InvalidField("input[]"))?;
@@ -79,6 +82,15 @@ pub(super) fn decode_responses_input(
                 )?,
                 name: optional_string(object, "name")?,
             });
+        }
+        "tool_search_call" | "tool_search_output" => {
+            let handoff = tool_search::history(context, object, item_type.as_str(), item_status)?;
+            messages.push(CanonicalMessage {
+                role: MessageRole::Assistant,
+                content: Vec::new(),
+                name: None,
+            });
+            return Ok(handoff);
         }
         "agent_message" => {
             decode_agent_message(context, object)?;
@@ -130,6 +142,45 @@ pub(super) fn decode_responses_input(
                     encrypted_function_args,
                 }],
                 name: None,
+            });
+        }
+        "function_call_output"
+            if !object.contains_key("call_id")
+                && object.get("name").and_then(Value::as_str) == Some("goal_objective")
+                && object.get("namespace").and_then(Value::as_str) == Some("agent") =>
+        {
+            let before = context.unknown_generation.get();
+            ensure_keys(
+                context,
+                object,
+                &[
+                    "type",
+                    "name",
+                    "namespace",
+                    "output",
+                    "id",
+                    "status",
+                    "internal_chat_message_metadata_passthrough",
+                ],
+                "responses goal context",
+            )?;
+            if !object.get("output").is_some_and(Value::is_string) {
+                return Err(ModelIrError::InvalidField("output"));
+            }
+            let goal_context = before == context.unknown_generation.get()
+                && item_status.is_none_or(|status| status == "completed");
+            // Codex appends this context after the real create_goal result. It
+            // has no call identity and cannot become an executable ToolResult.
+            context.mark_native_only();
+            messages.push(CanonicalMessage {
+                role: MessageRole::Assistant,
+                content: Vec::new(),
+                name: None,
+            });
+            return Ok(if goal_context {
+                NativeHandoffItem::GoalContext
+            } else {
+                NativeHandoffItem::None
             });
         }
         "function_call_output" => {
@@ -257,7 +308,7 @@ pub(super) fn decode_responses_input(
             )));
         }
     }
-    Ok(())
+    Ok(NativeHandoffItem::None)
 }
 
 fn decode_agent_message(
@@ -420,6 +471,7 @@ fn decode_tool_declarations(
                     .push(ResponsesToolOrderEntryV1::Tool { index });
             }
             "namespace" => {
+                ensure_absent(object, &["execution"], "responses namespace execution")?;
                 ensure_keys(
                     context,
                     object,
@@ -454,9 +506,26 @@ fn decode_tool_declarations(
                     .order
                     .push(ResponsesToolOrderEntryV1::Namespace { index });
             }
+            "tool_search" => tool_search::declaration(context, object)?,
             "web_search" => {
-                let search = serde_json::from_value(value.clone())
-                    .map_err(|_| ModelIrError::InvalidField("web_search"))?;
+                ensure_keys(
+                    context,
+                    object,
+                    &["type", "external_web_access"],
+                    "responses hosted search",
+                )?;
+                let external_web_access = match object.get("external_web_access") {
+                    Some(Value::Bool(value)) => Some(*value),
+                    None | Some(Value::Null) => None,
+                    Some(_) => {
+                        context.mark_native_only();
+                        None
+                    }
+                };
+                let search = WebSearchToolV1 {
+                    kind: WebSearchToolKind::WebSearch,
+                    external_web_access,
+                };
                 if decoded.web_search.is_some() {
                     // The typed field supplies hosted-tool admission. Only the
                     // native body describes every declaration's controls.

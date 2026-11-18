@@ -489,7 +489,7 @@ fn send(fixture: &RuntimeFixture, turn: &str, input: &[Value], streaming: bool) 
     response["output"].as_array().unwrap().clone()
 }
 
-fn completed_stream(body: &[u8]) -> Value {
+pub(super) fn completed_stream(body: &[u8]) -> Value {
     std::str::from_utf8(body)
         .unwrap()
         .lines()

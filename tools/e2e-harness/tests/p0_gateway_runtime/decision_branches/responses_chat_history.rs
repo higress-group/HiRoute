@@ -580,6 +580,73 @@ fn unsupported_phase_control_and_unfinished_history_exclude_chat_with_safe_reaso
 }
 
 #[test]
+fn responses_only_fields_explain_chat_and_messages_exclusions_before_dial() {
+    for target in [IngressProtocol::ChatCompletions, IngressProtocol::Messages] {
+        let regular = NativeProvider::start(vec![]);
+        let primary = NativeProvider::start(vec![]);
+        let decider = NativeProvider::start(vec![reply(SIMPLE); 3]);
+        let fixture = RuntimeFixture::launch_builtin_branches_with_diagnostics(
+            &[&regular, &primary, &decider],
+            true,
+        );
+        let mut publication = fixture.publication();
+        for (candidate, provider) in publication.aliases[0]
+            .candidates
+            .iter_mut()
+            .zip([&regular, &primary])
+        {
+            *candidate = hiroute_e2e::gateway_fixture::sealed_native_candidate(
+                candidate.local_id,
+                &candidate.stable_target_key,
+                &candidate.credential_refs,
+                provider.authority(),
+                &candidate.upstream_model_id,
+                &[
+                    (IngressProtocol::Responses, target),
+                    (IngressProtocol::ChatCompletions, target),
+                    (IngressProtocol::Messages, target),
+                ],
+            );
+        }
+        publication.publication_revision += 1;
+        fixture.publish(&mut publication);
+        for (field, key, value) in [
+            (
+                "tool_search",
+                "tools",
+                json!([{"type":"tool_search","execution":"client"}]),
+            ),
+            ("include", "include", json!(["reasoning.encrypted_content"])),
+            (
+                "client_metadata",
+                "client_metadata",
+                json!({"private":"never_echo_this_value"}),
+            ),
+        ] {
+            let mut body = json!({"model":MODEL,"stream":false,"input":"Lookup"});
+            body[key] = value;
+            let response = request(
+                fixture.address,
+                "POST",
+                "/v1/responses",
+                &[("X-HiRoute-Token", TOKEN), ("session-id", field)],
+                &serde_json::to_vec(&body).unwrap(),
+            );
+            assert_eq!(response.status, 400);
+            let error: Value = serde_json::from_slice(&response.body).unwrap();
+            assert_eq!(error["code"], "CLIENT_PROTOCOL_UNREPRESENTABLE");
+            assert_eq!(error["phase"], "planner");
+            assert_eq!(
+                error["detail"],
+                json!({"field":field,"upstream_protocol":target})
+            );
+            assert!(!error.to_string().contains("never_echo_this_value"));
+        }
+        assert_eq!((regular.calls(), primary.calls()), (0, 0));
+    }
+}
+
+#[test]
 fn concurrent_frozen_dsh_replays_keep_independent_chat_projections() {
     let regular = NativeProvider::start(vec![reply(CHAT_OK); 2]);
     let primary = NativeProvider::start(vec![]);

@@ -78,7 +78,7 @@ pub enum ProtocolAdapterError {
     ClientUnrepresentable(String),
     #[error("tool interface cannot be projected: {0}")]
     ToolInterfaceUnrepresentable(String),
-    #[error("request projection is unsupported: {reason:?}, canonical message {message_index:?}")]
+    #[error("request projection is unsupported: {reason}, canonical message {message_index:?}")]
     RequestUnrepresentable {
         reason: hiroute_diagnostics::event::RequestProjectionReason,
         message_index: Option<usize>,

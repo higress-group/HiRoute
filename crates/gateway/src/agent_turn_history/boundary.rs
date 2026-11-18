@@ -593,7 +593,7 @@ impl BoundaryHasher {
     }
 }
 
-fn text_digest(
+pub(super) fn text_digest(
     text: &str,
     replay: Option<&ReplayStore>,
     budget: &mut FingerprintBudget,
@@ -650,6 +650,15 @@ pub(super) fn tool_digest(
         hash.update(text_digest(namespace, replay, budget)?);
     }
     hash.update(text_digest(name, replay, budget)?);
+    argument_digest(hash, args, replay, budget)
+}
+
+pub(super) fn argument_digest(
+    mut hash: RuntimeHash,
+    args: &serde_json::Value,
+    replay: Option<&ReplayStore>,
+    budget: &mut FingerprintBudget,
+) -> Option<[u8; 32]> {
     // Canonical JSON includes arguments and their types, never only the tool name.
     struct Sink<'a>(&'a mut RuntimeHash);
     impl Write for Sink<'_> {

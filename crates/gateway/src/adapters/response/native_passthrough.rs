@@ -356,6 +356,7 @@ struct ResponseItemEvidence {
     identity: Option<[u8; 32]>,
     done: Option<[u8; 32]>,
     added_text: Vec<evidence::AddedTextPrefix>,
+    added_discovery_arguments: Option<[u8; 32]>,
     reasoning_done: Option<evidence::ReasoningDoneEvidence>,
 }
 
@@ -630,7 +631,7 @@ impl ProjectionState {
                 if outcome == NativeTerminalOutcome::Complete {
                     replayed_reasoning = replayed_done;
                     if matches!(self.authority, ToolIdDelivery::Active) && tracks_tool_batch() {
-                        self.tool_batch = self.completed_tool_batch(response);
+                        self.tool_batch = self.completed_tool_batch(response, true);
                     }
                 }
                 if expected.1 == NativeTerminalOutcome::Failed {
@@ -659,13 +660,19 @@ impl ProjectionState {
         })
     }
 
-    fn completed_tool_batch(&self, response: &Map<String, Value>) -> Option<ChargedToolBatch> {
+    fn completed_tool_batch(
+        &self,
+        response: &Map<String, Value>,
+        streamed: bool,
+    ) -> Option<ChargedToolBatch> {
         let batch = DeliveredToolBatch::from_completed_output(
             response.get("output")?.as_array()?,
             |index| {
-                self.response_items
-                    .get(&(index as u32))
-                    .is_some_and(|item| item.done.is_some())
+                !streamed
+                    || self
+                        .response_items
+                        .get(&(index as u32))
+                        .is_some_and(|item| item.done.is_some())
             },
         )?;
         let charge = self
@@ -875,6 +882,12 @@ impl ProjectionState {
         if let Some((_, capture)) = &mut self.reasoning_capture {
             capture.observe_completed(object);
         }
+        if terminal == NativeTerminalOutcome::Complete
+            && matches!(self.authority, ToolIdDelivery::Active)
+            && tracks_tool_batch()
+        {
+            self.tool_batch = self.completed_tool_batch(object, false);
+        }
         self.set_terminal(terminal)?;
         Ok(ProjectionMetadata {
             semantic,
@@ -1083,6 +1096,14 @@ impl ProjectionState {
                 )?;
                 item.insert("call_id".into(), Value::String(logical));
             }
+            Some("tool_search_call")
+                if item.get("execution").and_then(Value::as_str) == Some("client") =>
+            {
+                let id = string_field(item, "call_id")?;
+                let logical =
+                    self.project_tool(index, id, NativeToolCarrier::ClientToolSearch, None, "")?;
+                item.insert("call_id".into(), Value::String(logical));
+            }
             Some("web_search_call") => {
                 let native_id = string_field(item, "id")?.to_owned();
                 let logical = self.project_tool(
@@ -1163,11 +1184,13 @@ impl ProjectionState {
                 Some(emitted_name) => self.chat_identity(&emitted_name)?,
                 None => existing
                     .as_ref()
-                    .map(|tool| ChatToolIdentity {
-                        emitted_name: tool.name.clone(),
-                        kind: tool.carrier.kind(),
-                        namespace: tool.namespace.clone(),
-                        local_name: tool.name.clone(),
+                    .and_then(|tool| {
+                        Some(ChatToolIdentity {
+                            emitted_name: tool.name.clone(),
+                            kind: tool.carrier.call_kind()?,
+                            namespace: tool.namespace.clone(),
+                            local_name: tool.name.clone(),
+                        })
                     })
                     .ok_or_else(|| {
                         ModelIrError::MissingToolIdentity(format!("chat index {index}"))

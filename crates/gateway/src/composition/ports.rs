@@ -348,6 +348,35 @@ fn build_planner_input(
     })
 }
 
+fn projection_exclusion(
+    reason: hiroute_diagnostics::event::RequestProjectionReason,
+) -> ExclusionReasonCodeV1 {
+    use hiroute_diagnostics::event::RequestProjectionReason as Reason;
+    match reason {
+        Reason::ResponsesToolSearchUnsupported => {
+            ExclusionReasonCodeV1::ResponsesToolSearchUnsupported
+        }
+        Reason::ResponsesIncludeUnsupported => ExclusionReasonCodeV1::ResponsesIncludeUnsupported,
+        Reason::ResponsesClientMetadataUnsupported => {
+            ExclusionReasonCodeV1::ResponsesClientMetadataUnsupported
+        }
+        Reason::ResponsesReasoningSummaryUnsupported => {
+            ExclusionReasonCodeV1::ResponsesReasoningSummaryUnsupported
+        }
+        Reason::ResponsesReasoningContextUnsupported => {
+            ExclusionReasonCodeV1::ResponsesReasoningContextUnsupported
+        }
+        Reason::ResponsesStoreUnsupported => ExclusionReasonCodeV1::ResponsesStoreUnsupported,
+        Reason::ResponsesPromptCacheKeyUnsupported => {
+            ExclusionReasonCodeV1::ResponsesPromptCacheKeyUnsupported
+        }
+        Reason::MessagePhaseOmitted
+        | Reason::MessagePhaseUnsupported
+        | Reason::ItemLifecycleUnsupported
+        | Reason::NativeSemanticsUnsupported => ExclusionReasonCodeV1::ProtocolPathUnavailable,
+    }
+}
+
 struct CandidateProjectionFacts {
     template: Option<adapters::PreparedNativeTemplate>,
     target_serialized_bytes: u64,
@@ -396,7 +425,7 @@ fn project_candidate_facts_with_history(
                         })
             }
         };
-    if tool_interface_unrepresentable {
+    if tool_interface_unrepresentable && !request.responses_client_tool_search {
         return Ok(CandidateProjectionFacts {
             // Planner consumes the typed exclusion before context sizing.
             target_serialized_bytes: 1,
@@ -433,7 +462,7 @@ fn project_candidate_facts_with_history(
             message_index,
         }) => Ok(CandidateProjectionFacts {
             target_serialized_bytes: 1,
-            exclusion: Some(ExclusionReasonCodeV1::ProtocolPathUnavailable),
+            exclusion: Some(projection_exclusion(reason)),
             rejection: Some((reason, message_index)),
             template: None,
         }),

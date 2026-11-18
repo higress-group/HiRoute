@@ -492,7 +492,6 @@ fn native_messages_tool_delivery_hints_survive_without_authorizing_unknown_tools
         ("eager_input_streaming", json!("true")),
         ("endpoint", json!("http://untrusted.invalid")),
         ("mcp_servers", json!([])),
-        ("defer_loading", json!(true)),
         ("type", json!("computer_20250124")),
     ] {
         let mut invalid = body.clone();

@@ -637,6 +637,13 @@ pub enum CostClassV1 {
 #[derive(schemars::JsonSchema, Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum ExclusionReasonCodeV1 {
+    ResponsesToolSearchUnsupported,
+    ResponsesIncludeUnsupported,
+    ResponsesClientMetadataUnsupported,
+    ResponsesReasoningSummaryUnsupported,
+    ResponsesReasoningContextUnsupported,
+    ResponsesStoreUnsupported,
+    ResponsesPromptCacheKeyUnsupported,
     ProtocolPathUnavailable,
     VisionUnsupported,
     ImageSourceUnsupported,

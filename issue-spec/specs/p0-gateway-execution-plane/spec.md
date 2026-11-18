@@ -92,7 +92,8 @@ into top-level `tools`. Append those declarations after existing top-level
 tools in input order. Preserve repetitions, namespaces, native field values,
 schema types, and call/result history. The upstream interprets repeated
 definitions and named choices on both same-protocol paths. A candidate that
-would lift a declaration following history is excluded. An incompatible schema
+would lift a declaration following history or discard unknown declaration-envelope
+fields is excluded; a native-item path retains those fields. An incompatible schema
 excludes the adapter that requires its schema dialect and leaves native replay
 available. Positioned declarations with item metadata also exclude cross-protocol
 mappings. Legacy metadata-free declarations remain available to those mappings.
@@ -112,8 +113,9 @@ with no invented strict value, unpacked precisely on return. Nonempty grammar/fo
 or inexact wrapper cannot map. Messages has no namespace/custom support. Native
 requests do not acquire this target-specific name constraint or conversion proof.
 Tool choice none/auto/required_any/required_named stays distinct; named choice retains
-function/custom kind and name. Gateway typed input rejects missing/unknown kind or
-extra fields. Product canonical Function omits default tool_kind while Custom writes
+function/custom kind and name. Gateway typed input rejects missing/unknown kinds.
+Ordinary extension fields remain native-only under the request-routing contract.
+Product canonical Function omits default tool_kind while Custom writes
 custom, preserving released Function fact/receipt digests without loosening input.
 
 ### Requirement: Historical tools and reasoning do not require delivery registries
@@ -123,6 +125,25 @@ restart, memory expiry, and candidate changes. Conversion changes an ID only for
 proven target format and rejects collisions. Past delivery/memory membership/current
 candidate cannot grant or deny future request authority. Current grant/route/credential
 checks are independent. Output delivery counters reflect actual accepted frames only.
+
+Codex's additional goal context is a native Responses `function_call_output` with
+`name=goal_objective`, `namespace=agent`, string `output`, and no `call_id` field.
+It is retained as an unmodeled, non-executable native history item. It SHALL NOT
+create a canonical ToolResult, tool identity, user input, execution authority,
+semantic-prefix evidence or cleanup permission. Same-protocol forwarding retains
+the original item; Chat and Messages conversion requires an explicit equivalent
+and is currently excluded. The real `create_goal` call/result keeps its own ID.
+Every other executable tool result still requires its protocol's nonempty call ID;
+an absent, null or invalid identity cannot be repaired or attached to another call.
+
+Ingress records a request-local marker for this fully recognized goal context.
+Tool-result suffix matching may skip that marked non-executable item before or
+after real tool results. The marker supplies no call or result evidence. Handoff
+still requires the original request prefix, a unique predecessor in the same
+Plan and compatible native turn, and a complete one-to-one match between the
+delivered call IDs and real result IDs. Replayed calls must retain their identity
+and arguments. Unknown context fields or unfinished context status cannot select
+this exception. Native replay and history fingerprints retain the original item.
 
 Native Responses history preserves message.phase, supported turn metadata, reasoning
 fields/summary, nonempty encrypted_content, and legitimate completed item states;

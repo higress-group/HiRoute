@@ -64,6 +64,20 @@ pub(super) fn project_additional_responses_tools(
     if prefix == 0 {
         return Ok(());
     }
+    // Lifting discards the envelope. Unknown provider controls must stay with
+    // the native item rather than disappear during a same-protocol adaptation.
+    if input[..prefix].iter().any(|item| {
+        item.as_object().is_some_and(|envelope| {
+            envelope
+                .keys()
+                .any(|key| !matches!(key.as_str(), "type" | "id" | "role" | "tools"))
+        })
+    }) {
+        return Err(ProtocolAdapterError::RequestUnrepresentable {
+            reason: RequestProjectionReason::NativeSemanticsUnsupported,
+            message_index: None,
+        });
+    }
     let mut declarations = Vec::new();
     for item in input.drain(..prefix) {
         let Value::Object(mut envelope) = item else {

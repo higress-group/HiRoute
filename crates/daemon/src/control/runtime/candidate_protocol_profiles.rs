@@ -110,37 +110,33 @@ pub(super) fn protocol_profiles(
         UpstreamProtocol::ChatCompletions,
         UpstreamProtocol::Messages,
     ] {
-        let face = if runtime_kind == ConnectorRuntimeKind::CpaBridge {
-            protocol_faces
-                .iter()
-                .find(|face| face.protocol == ingress)
-                .or_else(|| {
-                    (ingress == UpstreamProtocol::Messages)
-                        .then(|| {
-                            protocol_faces
-                                .iter()
-                                .find(|face| face.protocol == UpstreamProtocol::Responses)
-                        })
-                        .flatten()
-                })
-        } else {
-            protocol_faces
-                .iter()
-                .find(|face| face.protocol == ingress)
-                .or_else(|| protocol_faces.first())
-        };
-        let Some(face) = face else {
+        // Only consider faces prepared for this exact source, model and credential pool.
+        // A native wire match must also be able to render this binding's reasoning controls.
+        let native = protocol_faces
+            .iter()
+            .filter(|face| face.protocol == ingress);
+        let conversions = protocol_faces.iter().filter(|face| {
+            face.protocol != ingress
+                && match runtime_kind {
+                    ConnectorRuntimeKind::BuiltinNative => true,
+                    ConnectorRuntimeKind::CpaBridge => {
+                        ingress == UpstreamProtocol::Messages
+                            && face.protocol == UpstreamProtocol::Responses
+                    }
+                }
+        });
+        let Some((face, reasoning_profiles)) = native.chain(conversions).find_map(|face| {
+            let profiles = match runtime_kind {
+                ConnectorRuntimeKind::CpaBridge => {
+                    cpa_reasoning_profiles(reasoning, capability.upstream_protocol, face.protocol)
+                }
+                ConnectorRuntimeKind::BuiltinNative => reasoning_profiles(reasoning, face.protocol),
+            }?;
+            (!profiles.is_empty()).then_some((face, profiles))
+        }) else {
             continue;
         };
         let upstream_protocol = face.protocol;
-        let reasoning_profiles = if runtime_kind == ConnectorRuntimeKind::CpaBridge {
-            cpa_reasoning_profiles(reasoning, capability.upstream_protocol, upstream_protocol)
-        } else {
-            reasoning_profiles(reasoning, upstream_protocol)
-        };
-        let Some(reasoning_profiles) = reasoning_profiles else {
-            continue;
-        };
         let preferred_profile = match &reasoning.capability {
             NativeReasoningCapabilityV1::Discrete {
                 default_profile: Some(profile),

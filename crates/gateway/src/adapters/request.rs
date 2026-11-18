@@ -875,26 +875,40 @@ fn validate_responses_options(
     }
     // These controls share an explicit Chat wire representation. All other
     // Responses options remain native; do not treat an empty value as absent.
-    for (field, unsupported) in [
+    use hiroute_diagnostics::event::RequestProjectionReason as Reason;
+    for (reason, unsupported) in [
         (
-            "store",
+            Reason::ResponsesStoreUnsupported,
             options
                 .store
                 .is_some_and(|store| store || target != IngressProtocol::ChatCompletions),
         ),
         (
-            "prompt_cache_key",
+            Reason::ResponsesPromptCacheKeyUnsupported,
             options.prompt_cache_key.is_some() && target != IngressProtocol::ChatCompletions,
         ),
-        ("include", options.include.is_some()),
-        ("client_metadata", options.client_metadata.is_some()),
-        ("reasoning.summary", options.reasoning_summary.is_some()),
-        ("reasoning.context", options.reasoning_context.is_some()),
+        (
+            Reason::ResponsesIncludeUnsupported,
+            options.include.is_some(),
+        ),
+        (
+            Reason::ResponsesClientMetadataUnsupported,
+            options.client_metadata.is_some(),
+        ),
+        (
+            Reason::ResponsesReasoningSummaryUnsupported,
+            options.reasoning_summary.is_some(),
+        ),
+        (
+            Reason::ResponsesReasoningContextUnsupported,
+            options.reasoning_context.is_some(),
+        ),
     ] {
         if unsupported {
-            return Err(ProtocolAdapterError::ClientUnrepresentable(format!(
-                "Responses option {field} has no equivalent on this upstream protocol"
-            )));
+            return Err(ProtocolAdapterError::RequestUnrepresentable {
+                reason,
+                message_index: None,
+            });
         }
     }
     Ok(())

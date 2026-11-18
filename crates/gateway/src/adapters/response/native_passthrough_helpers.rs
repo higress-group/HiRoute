@@ -12,13 +12,14 @@ use super::{
 pub(super) enum NativeToolCarrier {
     Call(ToolKindV1),
     WebSearch,
+    ClientToolSearch,
 }
 
 impl NativeToolCarrier {
-    pub(super) fn kind(self) -> ToolKindV1 {
+    pub(super) fn call_kind(self) -> Option<ToolKindV1> {
         match self {
-            Self::Call(kind) => kind,
-            Self::WebSearch => ToolKindV1::Function,
+            Self::Call(kind) => Some(kind),
+            Self::WebSearch | Self::ClientToolSearch => None,
         }
     }
 }
@@ -150,6 +151,7 @@ pub(super) fn responses_output_is_semantic(response: &Map<String, Value>) -> boo
 pub(super) fn response_item_is_semantic(item: &Map<String, Value>) -> bool {
     match item.get("type").and_then(Value::as_str) {
         Some("function_call" | "custom_tool_call" | "web_search_call") => true,
+        Some("tool_search_call") => item.get("execution").and_then(Value::as_str) == Some("client"),
         Some("message") => item
             .get("content")
             .and_then(Value::as_array)

@@ -226,3 +226,107 @@ fn native_messages_only_preserves_explicit_responses_conversion() {
     assert_eq!(responses.connector.request_path, endpoint.request_path);
     assert!(responses.path_id.starts_with("responses-to-messages-"));
 }
+
+#[test]
+fn same_model_uses_its_native_endpoint_first_then_a_renderable_saved_face() {
+    let mut fact = source_local_fact(GatewayAuthenticationSemanticsV1::None);
+    let mut chat = fact.target.clone();
+    chat.upstream_protocol = UpstreamProtocol::ChatCompletions;
+    chat.request_path = "/explicit/chat/completions".into();
+    chat.protocol_profile_id = "profile/chat".into();
+    let responses = std::mem::replace(&mut fact.target, chat);
+    fact.additional_native_endpoints
+        .push(hiroute_domain::ComputeNativeEndpointV3 {
+            target: responses.clone(),
+            authentication: GatewayAuthenticationSemanticsV1::None,
+            recheck: None,
+        });
+    let candidate = materialize_management_candidate(&fact, None).unwrap();
+    let face = candidate
+        .protocol_profiles
+        .iter()
+        .find(|profile| profile.ingress_protocol == UpstreamProtocol::Responses)
+        .unwrap();
+    assert_eq!(
+        face.capability.upstream_protocol,
+        UpstreamProtocol::Responses
+    );
+    assert_eq!(face.capability.native_model, fact.upstream_model_id);
+    assert_eq!(face.connector.request_path, responses.request_path);
+    assert_eq!(
+        face.native_target
+            .as_ref()
+            .unwrap()
+            .credential_destination_ref,
+        responses.credential_destination().unwrap()
+    );
+
+    // The plan's explicit Messages reasoning control has just one valid renderer.
+    let catalog = crate::release_catalog::current_fixture_catalog();
+    let model = catalog.model_data().model("model.zhipu.glm-5.3").unwrap();
+    let cap = catalog
+        .model_data()
+        .model_endpoint_capabilities
+        .iter()
+        .find(|value| value.capability_id == "cap.zhipu.glm-5.3.coding-plan.messages")
+        .unwrap();
+    let reasoning = ModelNativeReasoningV1 {
+        model_configuration_id: model.model_configuration_id.clone(),
+        capability: hiroute_domain::NativeReasoningCapabilityV1::Discrete {
+            parameter: "claude_adaptive_effort".into(),
+            profiles: vec!["high".into()],
+            default_profile: None,
+        },
+        native_render_convention: None,
+    };
+    let connector = ProtocolConnectorFacts {
+        provider_id: "provider".into(),
+        endpoint_id: "endpoint".into(),
+        entitlement_id: "entitlement".into(),
+        connector_id: "connector".into(),
+        connector_revision: "1".into(),
+    };
+    let faces = [
+        UpstreamProtocol::ChatCompletions,
+        UpstreamProtocol::Responses,
+        UpstreamProtocol::Messages,
+    ]
+    .map(|protocol| ProtocolFace {
+        tool_override: None,
+        protocol,
+        request_path: format!("/explicit/{protocol:?}"),
+        authentication: GatewayAuthenticationSemanticsV1::None,
+        required_headers: vec![],
+        native_target: None,
+        adapter_ref: None,
+        adapter_revision: None,
+    });
+    let profiles = protocol_profiles(
+        &connector,
+        model,
+        cap,
+        &reasoning,
+        &fact.upstream_model_id,
+        ConnectorRuntimeKind::BuiltinNative,
+        &faces,
+    )
+    .unwrap();
+    assert!(
+        profiles
+            .iter()
+            .any(|p| p.ingress_protocol == UpstreamProtocol::Responses
+                && p.connector.upstream_protocol == UpstreamProtocol::Messages)
+    );
+    assert!(
+        protocol_profiles(
+            &connector,
+            model,
+            cap,
+            &reasoning,
+            &fact.upstream_model_id,
+            ConnectorRuntimeKind::BuiltinNative,
+            &faces[..2]
+        )
+        .is_none()
+    );
+}

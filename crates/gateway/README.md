@@ -288,6 +288,36 @@ delivery expands them once per child and charges the full repeated wire length.
 [Listener regressions](../../tools/e2e-harness/tests/p0_gateway_protocol/responses_chat_tools.rs)
 cover described namespaces, tool continuation and unsupported-tool fallback.
 
+Native Responses, Chat Completions and Messages retain ordinary extension fields
+on recognized tool declarations and tool-call/result history. Their typed view
+marks unknown semantics native-only, so prefix cleanup and cross-protocol
+conversion cannot drop them. Provider feature metadata does not veto native
+delivery. Tool-kind, execution-carrier and gateway-authority checks remain at
+their owning boundaries. [Adapter cases](src/adapters/tests/native_tool_extensions.rs)
+cover all three protocols, model changes and capability metadata.
+Unknown `additional_tools` envelope controls remain on their native item;
+endpoints requiring a top-level lift are excluded when it would discard them.
+
+The typed Responses search adapter reads and renders `find_in_page`, including
+completed actions without a URL. It reads the released `find` spelling for
+compatibility. Native replay retains the incoming action and fields.
+Unknown search actions, additional history fields and unfinished search states
+retain their native item with unmodeled history. Ordinary `web_search` controls
+also remain intact and visible to network authorization. The upstream validates
+these native payloads; semantic comparison, prefix cleanup and cross-protocol
+conversion require modeled data. The [adapter regressions](src/adapters/tests/native_search.rs)
+and [listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/responses_options.rs)
+cover native delivery and upstream errors.
+
+For client-executed Responses tool discovery the gateway forwards the declaration,
+call ID, object arguments and discovered tools in their original positions.
+A complete result can continue the same routing turn. Native endpoints are
+selected from the model binding's configured targets. When a Chat or Messages
+conversion cannot represent discovery or another Responses-only field, its
+candidate receipt identifies the field. A route exhausted by these exclusions
+returns `400 CLIENT_PROTOCOL_UNREPRESENTABLE` with the first known field and
+upstream protocol in `detail`. [Discovery round-trip tests](src/adapters/tests/client_tool_search.rs).
+
 Same-protocol Responses forwarding preserves provider tool names and namespaces
 even when they disagree across snapshots of the same call. The call ID and
 native carrier (function, custom or provider-run web search) must remain stable.
@@ -533,6 +563,21 @@ Position metadata is ephemeral and cannot authorize provider affinity or cleanup
 The [cross-protocol coverage cases](src/agent_turn_history/boundary/coverage_tests.rs)
 and [retained-peer stages](src/core_runtime/decision_history/retained_peer_tests.rs)
 exercise fresh recovery without removing old input.
+Codex also appends a `function_call_output` named `agent.goal_objective` without
+`call_id` as additional context. [Ingress](src/adapters/responses_ingress.rs)
+preserves that exact form as unmodeled native context; it adds no ToolResult or
+user intent. Native Responses replay retains the original item, while Chat and
+Messages candidates are excluded without an equivalent mapping. Ordinary tool
+results retain strict call identity. Ingress marks fully recognized goal context
+for the [tool-result suffix matcher](src/agent_turn_history/tool_continuation.rs),
+which can skip it before or after genuine results when finding a unique delivered
+tool predecessor. The real call/result set, arguments, request prefix, Plan and
+native turn still establish the handoff. Extra context fields and unfinished
+context stay outside that exception. [Handoff cases](src/agent_turn_history/goal_context_tests.rs),
+[adapter cases](src/adapters/tests/goal_context.rs)
+and [listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/codex_goal_context.rs)
+cover goal continuation, large Replay-backed text and protocol fallback.
+
 Native Codex peer `agent_message` items use the
 [Responses ingress](src/adapters/responses_ingress.rs) native-only path: same-protocol
 forwarding preserves author/recipient, text and ciphertext. Cross-protocol conversion

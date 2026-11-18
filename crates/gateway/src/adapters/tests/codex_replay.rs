@@ -170,12 +170,55 @@ fn additional_tools_validates_optional_metadata_and_keeps_repeated_declarations(
         projected.body["tools"],
         json!([conflict["tools"][0], conflict["input"][0]["tools"][0]])
     );
-    let mut unknown = body;
-    unknown["input"][0]["future_control"] = json!(true);
+}
+
+#[test]
+fn additional_tools_extensions_remain_native_and_cannot_be_lifted_lossily() {
+    let body = json!({"model":"route","input":[
+        {"type":"additional_tools","id":"at_lookup","role":"developer",
+         "tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}],
+         "future_control":true},
+        {"role":"user","content":"use the lookup tool"}
+    ]});
+    let request = decode_ingress_request(IngressProtocol::Responses, &body).unwrap();
+    assert!(request.native_only);
+    assert!(crate::context_hold::visible_history(&request, &[0; 32]).is_none());
+    let native = exact_state_profile(IngressProtocol::Responses, IngressProtocol::Responses);
     assert_eq!(
-        decode_ingress_request(IngressProtocol::Responses, &unknown).unwrap_err(),
-        ModelIrError::UnsupportedField("additional_tools.future_control".into())
+        project_candidate_request(&request, &native).unwrap().body["input"],
+        body["input"]
     );
+    let template = project_candidate_request_template(&request, &native).unwrap();
+    let rendered: serde_json::Value = serde_json::from_slice(&template.bytes).unwrap();
+    assert_eq!(rendered["input"], body["input"]);
+    let mut standard = native.clone();
+    standard.adapter_revision = hiroute_domain::STANDARD_RESPONSES_JSON_ADAPTER_V1.into();
+    for profile in [codex_subscription_profile(), standard] {
+        assert!(matches!(
+            project_candidate_request(&request, &profile),
+            Err(ProtocolAdapterError::RequestUnrepresentable {
+                reason:
+                    hiroute_diagnostics::event::RequestProjectionReason::NativeSemanticsUnsupported,
+                message_index: None,
+            })
+        ));
+        assert!(project_candidate_request_template(&request, &profile).is_err());
+    }
+    for target in [IngressProtocol::ChatCompletions, IngressProtocol::Messages] {
+        assert!(
+            project_candidate_request(
+                &request,
+                &exact_state_profile(IngressProtocol::Responses, target)
+            )
+            .is_err()
+        );
+    }
+    assert_eq!(request.native_body, Some(body.clone()));
+    for field in ["api_key", "base_url", "headers"] {
+        let mut denied = body.clone();
+        denied["input"][0][field] = json!("not-authorized");
+        assert!(decode_ingress_request(IngressProtocol::Responses, &denied).is_err());
+    }
 }
 
 #[test]

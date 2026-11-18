@@ -19,6 +19,7 @@ mod chat_reasoning;
 #[derive(Default)]
 struct DecodeContext<'a> {
     native_only: std::cell::Cell<bool>,
+    client_tool_search: std::cell::Cell<bool>,
     unknown_generation: std::cell::Cell<usize>,
     replay: Option<&'a ReplayStore>,
 }
@@ -40,6 +41,7 @@ impl DecodeContext<'_> {
         NativeHistoryItem {
             native_index,
             modeled: before == self.unknown_generation.get(),
+            handoff: NativeHandoffItem::None,
         }
     }
 }
@@ -86,6 +88,7 @@ fn decode_request_fields(
         IngressProtocol::Messages => decode_messages(context, body),
     }?;
     request.native_only = context.native_only.get();
+    request.responses_client_tool_search = context.client_tool_search.get();
     Ok(request)
 }
 
@@ -154,20 +157,30 @@ fn decode_responses(
                 let internal_metadata =
                     responses_options::internal_chat_message_metadata(context, item)?;
                 let item_type = item.get("type").and_then(Value::as_str);
+                let mut handoff = NativeHandoffItem::None;
                 if item_type == Some("web_search_call") {
                     let mut native_item = item.clone();
                     native_item
                         .as_object_mut()
                         .ok_or(ModelIrError::InvalidField("web_search_call"))?
                         .remove("internal_chat_message_metadata_passthrough");
-                    let call = WebSearchCallV1::from_wire(&native_item)?;
-                    if !matches!(
-                        call.status,
-                        WebSearchStatus::Completed | WebSearchStatus::Failed
-                    ) {
-                        return Err(ModelIrError::InvalidField("unfinished search history"));
+                    checked_object(
+                        context,
+                        &native_item,
+                        &["type", "id", "status", "action"],
+                        "responses search history",
+                    )?;
+                    match WebSearchCallV1::from_wire(&native_item) {
+                        Ok(call)
+                            if matches!(
+                                call.status,
+                                WebSearchStatus::Completed | WebSearchStatus::Failed
+                            ) =>
+                        {
+                            responses_search_history.insert(messages.len(), call);
+                        }
+                        _ => context.mark_native_only(),
                     }
-                    responses_search_history.insert(messages.len(), call);
                     messages.push(CanonicalMessage {
                         role: MessageRole::Assistant,
                         content: Vec::new(),
@@ -190,7 +203,7 @@ fn decode_responses(
                     {
                         context.mark_native_only();
                     }
-                    decode_responses_input(context, item, &mut messages, item_status)?;
+                    handoff = decode_responses_input(context, item, &mut messages, item_status)?;
                     if let Some(status) = item_status {
                         responses_item_statuses.insert(message_index, status.into());
                     }
@@ -209,7 +222,9 @@ fn decode_responses(
                         responses_options::reasoning_history(context, item)?,
                     );
                 }
-                native_history.push(context.history_item(Some(native_index), before));
+                let mut native_item = context.history_item(Some(native_index), before);
+                native_item.handoff = handoff;
+                native_history.push(native_item);
             }
         }
         Some(_) => return Err(ModelIrError::InvalidField("input")),
@@ -225,6 +240,7 @@ fn decode_responses(
     Ok(ModelRequestIRV1 {
         native_body: None,
         native_only: false,
+        responses_client_tool_search: false,
         native_history: Some(native_history),
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: IngressProtocol::Responses,
@@ -304,6 +320,7 @@ fn decode_chat(context: &DecodeContext, body: &Value) -> Result<ModelRequestIRV1
     Ok(ModelRequestIRV1 {
         native_body: None,
         native_only: false,
+        responses_client_tool_search: false,
         native_history: Some(native_history),
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: IngressProtocol::ChatCompletions,
@@ -599,6 +616,7 @@ fn decode_messages(
     Ok(ModelRequestIRV1 {
         native_body: None,
         native_only: false,
+        responses_client_tool_search: false,
         native_history: Some(native_history),
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: IngressProtocol::Messages,
@@ -712,7 +730,7 @@ fn decode_messages_content(
                     checked_object(context, caller, &["type"], "messages tool_use caller")?;
                 // Direct calls retain ordinary tool semantics. Programmatic callers carry
                 // execution authority that cannot be silently dropped during projection.
-                if required_string(caller, "type")? != "direct" {
+                if caller.len() != 1 || required_string(caller, "type")? != "direct" {
                     return Err(ModelIrError::UnsupportedValue(
                         "messages tool_use caller type".into(),
                     ));
@@ -968,10 +986,20 @@ fn decode_messages_tools(
     value: Option<&Value>,
 ) -> Result<Vec<CanonicalTool>, ModelIrError> {
     decode_tools(value, |object| {
+        match object.get("type") {
+            None | Some(Value::Null) => {}
+            Some(Value::String(kind)) if kind == "custom" => {}
+            Some(_) => {
+                return Err(ModelIrError::UnsupportedValue(
+                    "messages hosted Tool".into(),
+                ));
+            }
+        }
         ensure_keys(
             context,
             object,
             &[
+                "type",
                 "name",
                 "description",
                 "input_schema",
@@ -1203,25 +1231,23 @@ fn ensure_keys(
 ) -> Result<(), ModelIrError> {
     let allowed = keys.iter().copied().collect::<BTreeSet<_>>();
     for key in object.keys().filter(|key| !allowed.contains(key.as_str())) {
-        // Execution-bearing tool declarations and gateway authority are not
-        // opaque payload extensions. They must remain visible to authorization.
-        if label.to_ascii_lowercase().contains("tool")
-            || matches!(
-                key.as_str(),
-                "authorization"
-                    | "api_key"
-                    | "base_url"
-                    | "endpoint"
-                    | "headers"
-                    | "credentials"
-                    | "mcp_servers"
-                    | "container"
-                    | "computer"
-                    | "web_search_options"
-                    | "conversation"
-                    | "previous_response_id"
-            )
-        {
+        // Tool kinds and execution carriers are checked at their owning decoder.
+        // Ordinary provider fields remain native payload; gateway authority stays local.
+        if matches!(
+            key.as_str(),
+            "authorization"
+                | "api_key"
+                | "base_url"
+                | "endpoint"
+                | "headers"
+                | "credentials"
+                | "mcp_servers"
+                | "container"
+                | "computer"
+                | "web_search_options"
+                | "conversation"
+                | "previous_response_id"
+        ) {
             return Err(ModelIrError::UnsupportedField(format!("{label}.{key}")));
         }
         context.mark_native_only();

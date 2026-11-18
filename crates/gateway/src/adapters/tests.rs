@@ -24,11 +24,23 @@ use crate::server::request_plan::IngressProtocol;
 #[path = "tests/native_responses.rs"]
 mod native_responses;
 
+#[path = "tests/client_tool_search.rs"]
+mod client_tool_search;
+
+#[path = "tests/native_search.rs"]
+mod native_search;
+
+#[path = "tests/native_tool_extensions.rs"]
+mod native_tool_extensions;
+
 #[path = "tests/native_image_replay.rs"]
 mod native_image_replay;
 
 #[path = "tests/codex_replay.rs"]
 mod codex_replay;
+
+#[path = "tests/goal_context.rs"]
+mod goal_context;
 
 #[path = "tests/payload_tolerance.rs"]
 mod payload_tolerance;

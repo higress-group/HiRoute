@@ -70,6 +70,12 @@ mod input_anchor;
 
 #[path = "native_retry_tests.rs"]
 mod native_retry;
+
+#[path = "discovery_tests.rs"]
+mod discovery;
+
+#[path = "goal_context_tests.rs"]
+mod goal_context;
 #[path = "stage_closure_tests.rs"]
 mod stage_closure;
 
@@ -116,6 +122,7 @@ fn request(messages: Vec<CanonicalMessage>) -> ModelRequestIRV1 {
     ModelRequestIRV1 {
         native_body: None,
         native_only: false,
+        responses_client_tool_search: false,
         native_history: None,
         schema_version: MODEL_REQUEST_IR_SCHEMA.into(),
         ingress_protocol: IngressProtocol::Responses,

@@ -1,4 +1,4 @@
-//! Evidence for a single completed native Responses function batch.
+//! Evidence for a single completed native Responses client-tool batch.
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
@@ -10,18 +10,24 @@ use crate::context_hold::fingerprint::FingerprintBudget;
 use crate::replay::ReplayStore;
 use crate::runtime_fingerprint::RuntimeHash;
 use crate::server::core_runtime::model_ir::{
-    ContentPart, MessageRole, ModelRequestIRV1, NativeHistoryItem, ToolKindV1,
+    ContentPart, MessageRole, ModelRequestIRV1, NativeHandoffItem, NativeHistoryItem, ToolKindV1,
 };
 
-use super::boundary::tool_digest;
+use super::boundary::{argument_digest, text_digest, tool_digest};
 
 const MAX_CALLS: usize = 64;
 const MAX_SUFFIX_MESSAGES: usize = 256;
 const MAX_WIRE_ARGUMENT_BYTES: usize = 64 * 1024;
 
 #[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
-struct Invocation {
+struct CallIdentity {
     id: [u8; 32],
+    discovery: bool,
+}
+
+#[derive(Clone, Copy, Eq, Ord, PartialEq, PartialOrd)]
+struct Invocation {
+    identity: CallIdentity,
     digest: [u8; 32],
 }
 
@@ -66,7 +72,7 @@ impl ToolDeliveryHandoff {
 
 impl DeliveredToolBatch {
     /// The native projector has already reconciled the terminal snapshot with
-    /// each done item. A terminal-only tool is not a completed streamed call.
+    /// each streamed done item, or validated the complete JSON response.
     pub(crate) fn from_completed_output(
         output: &[Value],
         has_done: impl Fn(usize) -> bool,
@@ -80,6 +86,27 @@ impl DeliveredToolBatch {
         for (index, item) in output.iter().enumerate() {
             match item.get("type")?.as_str()? {
                 "message" | "reasoning" | "web_search_call" => continue,
+                "tool_search_call" if has_done(index) && calls.len() < MAX_CALLS => {
+                    if item.get("execution")?.as_str()? != "client"
+                        || item.get("status").is_some_and(|s| s != "completed")
+                        || item.as_object()?.keys().any(|key| {
+                            !matches!(
+                                key.as_str(),
+                                "type"
+                                    | "execution"
+                                    | "call_id"
+                                    | "id"
+                                    | "status"
+                                    | "arguments"
+                                    | "internal_chat_message_metadata_passthrough"
+                            )
+                        })
+                    {
+                        return None;
+                    }
+                    calls.push(discovery_call(item, None, &mut budget)?);
+                    continue;
+                }
                 "function_call" if has_done(index) && calls.len() < MAX_CALLS => {}
                 // Other types could be a client tool whose result is also due.
                 _ => return None,
@@ -110,7 +137,11 @@ impl DeliveredToolBatch {
             )?);
         }
         calls.sort_unstable();
-        if calls.is_empty() || calls.windows(2).any(|pair| pair[0].id == pair[1].id) {
+        if calls.is_empty()
+            || calls
+                .windows(2)
+                .any(|pair| pair[0].identity.id == pair[1].identity.id)
+        {
             return None;
         }
         Some(Self(calls.into_boxed_slice()))
@@ -123,7 +154,7 @@ impl DeliveredToolBatch {
     pub(super) fn matches(&self, suffix: &ToolResultSuffix) -> bool {
         self.0
             .iter()
-            .map(|call| call.id)
+            .map(|call| call.identity)
             .eq(suffix.results.iter().copied())
             && suffix
                 .calls
@@ -134,7 +165,7 @@ impl DeliveredToolBatch {
 
 pub(super) struct ToolResultSuffix {
     calls: Vec<Invocation>,
-    results: Vec<[u8; 32]>,
+    results: Vec<CallIdentity>,
 }
 
 impl ToolResultSuffix {
@@ -152,6 +183,38 @@ impl ToolResultSuffix {
         let mut calls = Vec::new();
         let mut results = Vec::new();
         for (offset, (message, native)) in messages.iter().zip(&layout[start..]).enumerate() {
+            match native.handoff {
+                NativeHandoffItem::GoalContext
+                    if message.role == MessageRole::Assistant
+                        && message.name.is_none()
+                        && message.content.is_empty() =>
+                {
+                    continue;
+                }
+                NativeHandoffItem::ToolSearchCall
+                    if results.is_empty() && calls.len() < MAX_CALLS =>
+                {
+                    calls.push(discovery_call(
+                        request.native_history_item(native)?,
+                        Some(replay),
+                        budget,
+                    )?);
+                    continue;
+                }
+                NativeHandoffItem::ToolSearchOutput if results.len() < MAX_CALLS => {
+                    let id = request
+                        .native_history_item(native)?
+                        .get("call_id")?
+                        .as_str()?;
+                    results.push(CallIdentity {
+                        id: text_digest(id, Some(replay), budget)?,
+                        discovery: true,
+                    });
+                    continue;
+                }
+                NativeHandoffItem::None => {}
+                _ => return None,
+            }
             if !native.modeled {
                 return None;
             }
@@ -172,7 +235,10 @@ impl ToolResultSuffix {
                         .get(&index)
                         .is_none_or(|s| s != "in_progress") =>
                 {
-                    results.push(call_id(logical_id, budget)?);
+                    results.push(CallIdentity {
+                        id: call_id(logical_id, budget)?,
+                        discovery: false,
+                    });
                 }
                 (
                     MessageRole::Assistant,
@@ -216,8 +282,10 @@ impl ToolResultSuffix {
         }
         results.sort_unstable();
         calls.sort_unstable();
-        if results.windows(2).any(|pair| pair[0] == pair[1])
-            || calls.windows(2).any(|pair| pair[0].id == pair[1].id)
+        if results.windows(2).any(|pair| pair[0].id == pair[1].id)
+            || calls
+                .windows(2)
+                .any(|pair| pair[0].identity.id == pair[1].identity.id)
         {
             return None;
         }
@@ -242,12 +310,42 @@ fn invocation(
         return None;
     }
     Some(Invocation {
-        id: call_id(id, budget)?,
+        identity: CallIdentity {
+            id: call_id(id, budget)?,
+            discovery: false,
+        },
         digest: tool_digest(
             id,
             ToolKindV1::Function,
             namespace,
             name,
+            arguments,
+            replay,
+            budget,
+        )?,
+    })
+}
+
+fn discovery_call(
+    item: &Value,
+    replay: Option<&ReplayStore>,
+    budget: &mut FingerprintBudget,
+) -> Option<Invocation> {
+    let arguments = item.get("arguments")?;
+    if !arguments.is_object() {
+        return None;
+    }
+    let id = item.get("call_id")?.as_str()?;
+    if id.trim().is_empty() {
+        return None;
+    }
+    Some(Invocation {
+        identity: CallIdentity {
+            id: text_digest(id, replay, budget)?,
+            discovery: true,
+        },
+        digest: argument_digest(
+            RuntimeHash::new_with_prefix(b"client-tool-search/v1"),
             arguments,
             replay,
             budget,

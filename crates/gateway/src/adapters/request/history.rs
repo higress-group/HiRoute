@@ -28,6 +28,12 @@ pub(super) fn validate_message_shapes(
     request: &ModelRequestIRV1,
     target: IngressProtocol,
 ) -> Result<RequestProjectionLoss, ProtocolAdapterError> {
+    if request.responses_client_tool_search && target != IngressProtocol::Responses {
+        return Err(ProtocolAdapterError::RequestUnrepresentable {
+            reason: RequestProjectionReason::ResponsesToolSearchUnsupported,
+            message_index: None,
+        });
+    }
     validate_responses_options(request.responses_options.as_ref(), target)?;
     if target != IngressProtocol::Messages
         && matches!(

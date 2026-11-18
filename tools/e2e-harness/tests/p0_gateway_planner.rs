@@ -148,6 +148,7 @@ fn corpus_request(case: &CorpusCase) -> ModelRequestIRV1 {
             .collect(),
         messages,
         web_search: None,
+        responses_client_tool_search: false,
         responses_search_history: Default::default(),
         responses_annotations: Default::default(),
         responses_message_phases: Default::default(),

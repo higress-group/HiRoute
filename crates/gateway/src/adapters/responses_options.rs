@@ -462,14 +462,20 @@ mod tests {
                 }
             }
         }
-        for tools in [
-            json!([{"type":"web_search","external_web_access":"true"}]),
-            json!([{"type":"web_search","unknown":true}]),
+        for field in [
+            "api_key",
+            "authorization",
+            "base_url",
+            "endpoint",
+            "headers",
+            "credentials",
         ] {
+            let mut search = json!({"type":"web_search"});
+            search[field] = json!("not-authorized");
             assert!(
                 decode_ingress_request(
                     IngressProtocol::Responses,
-                    &json!({"model":"alias","input":"search","tools":tools})
+                    &json!({"model":"alias","input":"search","tools":[search]})
                 )
                 .is_err()
             );

@@ -83,6 +83,43 @@ hosted-execution extensions, auth, or destination overrides cannot bypass admiss
 Cross-protocol candidates fail explicitly when equivalence is unavailable; they
 cannot silently drop images, tool semantics, reasoning, or ordinary extensions.
 
+Responses, Chat Completions and Messages native forwarding SHALL retain ordinary
+extension fields on recognized function/custom tool declarations and known
+tool-call/result history. Unknown fields mark the affected history unmodeled and
+disable semantic prefix reuse, cleanup and cross-protocol conversion. Provider
+feature metadata SHALL NOT veto native forwarding of such payloads. Tool kinds,
+programmatic execution carriers, authentication and destination controls retain
+their owning admission checks; an ordinary-field fallback cannot admit a new
+execution capability.
+
+Recognized Responses `web_search` declarations retain ordinary provider controls
+in native forwarding, including controls absent from the local typed projection.
+They remain visible to network authorization. Recognized `web_search_call` history
+with unknown actions, fields or unfinished states is retained as an unmodeled
+native item. The target provider validates that payload. Such an item cannot
+establish complete semantic history, provider-prefix reuse, cleanup or a
+cross-protocol conversion. Authentication and destination overrides retain
+their existing admission rules.
+
+Responses client-executed tool discovery retains the `tool_search` declaration,
+`tool_search_call` (object arguments and a nonempty `call_id`), and
+`tool_search_output` (the matching ID and in-place callable definitions).
+Returned functions, custom tools and namespaces remain scoped to that history
+position. Hosted execution and destination or credential overrides require their
+existing authority. A delivered discovery call can continue its routing turn
+when the original prefix, carrier, call ID and any replayed arguments match.
+Streamed JSON argument text and the completed object must agree. Incomplete or
+ambiguous evidence leaves forwarding available without conferring tool handoff.
+
+For a published source and model, endpoint selection prefers its configured
+ingress-matching protocol with representable reasoning controls, then its
+permitted conversion faces in declared order. Each selection uses its bound
+destination and credentials. When a Responses-only field prevents conversion
+to Chat or Messages, the candidate receipt records the field-specific exclusion.
+If protocol projection exhausts the route, the Gateway retains
+`400 CLIENT_PROTOCOL_UNREPRESENTABLE` and may identify the first known field
+and candidate upstream protocol in `detail`. Field values are never included.
+
 Protocol adapters SHALL derive continuity from their supported typed history,
 using the existing common history representation and prefix comparison. In Chat
 assistant history, textual `reasoning` is an alias of `reasoning_content`. A sole
@@ -206,6 +243,7 @@ foreign signatures. Structured-output format is independent of thinking controls
 | Messages `output_config.format.type=json_schema` | Preserve native format or map to Responses `text.format` / Chat `response_format.json_schema` |
 | Structured Schema, description, explicit strict | Preserve exactly; absent required target name uses `hiroute_structured_output`, absent strict uses true |
 | Unknown format or format additions | Native preservation; cross-protocol exclusion when no equivalent exists |
+| Messages function-tool `type` absent, null or `custom` | Preserve the native declaration; cross-protocol conversion retains ordinary function semantics |
 | Messages function-tool boolean `eager_input_streaming` and valid `cache_control` | Preserve native hints; cross-protocol may omit non-execution hints while retaining callable semantics |
 | Chat response `service_tier` | Cross-protocol decoder accepts absent/null/string, rejects other types; native response passthrough remains unchanged |
 

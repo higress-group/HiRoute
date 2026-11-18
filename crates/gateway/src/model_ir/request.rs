@@ -18,6 +18,9 @@ pub struct ModelRequestIRV1 {
     /// or history-prefix reuse/cleanup admission.
     #[serde(skip)]
     pub native_only: bool,
+    /// Ingress observed a client tool discovery declaration or history item.
+    #[serde(skip)]
+    pub responses_client_tool_search: bool,
     /// Request-local positions and semantic coverage produced by ingress.
     /// These facts never authorize conversion, affinity or source identity.
     #[serde(skip)]
@@ -89,6 +92,16 @@ pub struct NativeHistoryItem {
     /// None represents the scalar Responses input; otherwise a native array index.
     pub native_index: Option<usize>,
     pub modeled: bool,
+    pub handoff: NativeHandoffItem,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum NativeHandoffItem {
+    #[default]
+    None,
+    GoalContext,
+    ToolSearchCall,
+    ToolSearchOutput,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -193,7 +206,9 @@ impl ModelRequestIRV1 {
                 .any(|tool| tool.kind == ToolKindV1::Function && tool.strict == Some(true)),
             tool_choice: self.tool_choice.clone(),
             parallel_tools: self.parallel_tool_calls,
-            tool_roundtrip: active_function_tools || !self.responses_search_history.is_empty(),
+            tool_roundtrip: active_function_tools
+                || self.responses_client_tool_search
+                || !self.responses_search_history.is_empty(),
             tool_result_text: false,
             tool_result_json: false,
             logical_tool_id_mapping: active_function_tools
