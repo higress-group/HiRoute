@@ -681,6 +681,14 @@ snapshot-bound provenance reads and retry; IPC is mocked, not native acceptance.
 The installed HTTPS lifecycle uses complete v2 publications, exact documented cache components,
 frozen main/Worker/Continue execution, removal, restart and embedded absorption.
 
+[Input-budget acceptance](../../crates/daemon/tests/support/model_input_limits_product.py)
+joins the production frontend prefill/check/save producers to the installed public CLI,
+daemon and publication path. Astra/Sol on Chat and Responses retain their independent
+922k input and 128k output limits; explicit 800k/64k edits survive metadata refresh,
+check/save, publication and restart. The published content reference binds the checked
+Gateway capability snapshot. Only external HTTPS responses are fixtures; this case does
+not claim provider capacity or send million-token requests.
+
 [Recommended-model acceptance](../../crates/daemon/tests/support/recommended_model_product.py)
 uses the candidate's exact publication with separately built current or recorded-release
 binaries. It verifies that only the installed PAYG Offer is offered, rejected credentials, checked

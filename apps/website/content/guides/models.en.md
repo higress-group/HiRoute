@@ -45,6 +45,8 @@ Open **Models → General models** and select **Add models**:
 - **Add models to an existing connection:** reuse saved endpoints and credentials to add more models from the same service.
 - **Browse free models:** see each service's free conditions and how to get a key.
 
+When a provider documents separate input and output limits, API capability prefill uses the input limit for the context budget. The model directory keeps the total window as a separate fact. Values you edit yourself remain unchanged when model information is refreshed or the connection is checked again.
+
 After saving, a model shows **Connection ready**. This means it meets the local conditions for routing; it does not mean upstream inference or tool calls have been verified. Confirm with a real request.
 
 <figure>

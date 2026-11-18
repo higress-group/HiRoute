@@ -45,7 +45,8 @@ function catalogCapabilities(model: CanonicalModel, overrides: BindingOverrides 
     Number.isSafeInteger(value) && (value ?? 0) > 0 ? value! : fallback;
   const booleanFact = (value: string | undefined, fallback: boolean) =>
     value === 'supported' ? true : value === 'unsupported' ? false : fallback;
-  capabilities.context_tokens = { value: numberFact(overrides.context_tokens ?? model.context_tokens.value, 200_000), basis: 'user_declared' };
+  // Native context_tokens is an input budget; the publisher's total window also includes output.
+  capabilities.context_tokens = { value: numberFact(overrides.context_tokens ?? model.max_input_tokens ?? model.context_tokens.value, 200_000), basis: 'user_declared' };
   capabilities.max_output_tokens = { value: Math.min(
     numberFact(overrides.max_output_tokens ?? model.max_output_tokens.value, 32_768),
     capabilities.context_tokens.value!,

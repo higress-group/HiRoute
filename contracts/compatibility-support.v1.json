@@ -1361,6 +1361,7 @@
             "crates/application/src/compute_management/mutations/defaults.rs",
             "crates/daemon/src/control/runtime/model_connections/network_settings.rs",
             "crates/daemon/tests/support/model_connections_product.py",
+            "crates/daemon/tests/support/model_input_limits_product.py",
             "crates/daemon/tests/support/recommended_model_product.py",
             "crates/domain/src/compute/management/api_link.rs",
             "crates/domain/src/compute/network/transaction.rs",

@@ -194,6 +194,7 @@ export type ModelMetadataCatalog = {
     display_name: string;
     upstream_ids: string[];
     context_tokens: { state: string; value: number | null };
+    max_input_tokens?: number | null;
     max_output_tokens: { state: string; value: number | null };
     modalities: Record<string, string>;
     capabilities: Record<string, string>;

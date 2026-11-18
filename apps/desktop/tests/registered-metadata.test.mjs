@@ -23,6 +23,42 @@ function ids(id, modifiedOption = null) {
     .map(candidate => candidate.upstream_model_id);
 }
 
+for (const modelId of ['gpt-6.2-astra', 'gpt-6.2-sol']) {
+  for (const protocol of ['chat_completions', 'responses']) {
+    test(`GPT-6.2 ${modelId}/${protocol} prefills the input cap and retains manual edits on refresh`, async () => {
+      const { withRegisteredModels, buildCheckDraft } = await import('../src/features/model-connections/state.ts');
+      const openai = option('openai.platform.global.v1');
+      const endpoint = openai.endpoints.find(value => value.protocol === protocol);
+      assert.ok(endpoint);
+      const candidate = registeredModelCandidates({ ...openai, endpoints: [endpoint] }, bundle.metadata_catalog)
+        .find(value => value.upstream_model_id === modelId);
+      assert.ok(candidate);
+      assert.deepEqual(candidate.capability_prefill.context_tokens, { value: 922_000, basis: 'user_declared' });
+      assert.deepEqual(candidate.capability_prefill.max_output_tokens, { value: 128_000, basis: 'user_declared' });
+      const models = withRegisteredModels([], [candidate]);
+      const automatic = buildCheckDraft({ provenance: { kind: 'user_configured', configuration_revision: 1 }, models });
+      assert.equal(automatic.models[0].capabilities.context_tokens.value, 922_000);
+      const edited = { ...models[0], capabilities: { ...models[0].capabilities,
+        context_tokens: { value: 800_000, basis: 'user_declared' },
+        max_output_tokens: { value: 64_000, basis: 'user_declared' },
+      } };
+      const refreshed = withRegisteredModels([edited], [candidate]);
+      const manual = buildCheckDraft({ provenance: { kind: 'user_configured', configuration_revision: 1 }, models: refreshed });
+      assert.deepEqual(manual.models[0].capabilities, edited.capabilities);
+      assert.equal(candidate.capability_prefill.context_tokens.value, 922_000);
+      assert.equal(bundle.metadata_catalog.canonical_models.find(value => value.model_key === modelId).context_tokens.value, 1_050_000);
+    });
+  }
+}
+
+test('an endpoint input-budget override takes precedence over the canonical input limit', () => {
+  const catalog = { ...bundle.metadata_catalog, endpoint_bindings: bundle.metadata_catalog.endpoint_bindings.map(binding =>
+    binding.model_key === 'gpt-6.2-astra' ? { ...binding, capability_overrides: { ...binding.capability_overrides, context_tokens: 824_000 } } : binding) };
+  const candidate = registeredModelCandidates(option('openai.platform.global.v1'), catalog)
+    .find(value => value.upstream_model_id === 'gpt-6.2-astra');
+  assert.equal(candidate.capability_prefill.context_tokens.value, 824_000);
+});
+
 test('every built-in API option offers product-scoped metadata or an executable catalog model', () => {
   for (const registered of registry.connection_options.filter(item => item.origin !== 'agent_subscription')) {
     assert.ok(ids(registered.connection_option_id).length > 0, registered.connection_option_id);

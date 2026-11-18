@@ -29,10 +29,10 @@ class TrialProduct(InstalledProduct):
 
 class Provider:
     """Private HTTPS provider reached through a process-local DNS/socket test fixture."""
-    def __init__(self, root):
+    def __init__(self, root, hosts=HOSTS, models=(UPSTREAM,)):
         self.requests = []
         self.reject = False
-        self.models = [UPSTREAM]
+        self.models = list(models)
         config = root / 'openssl.cnf'
         config.write_text('[req]\ndistinguished_name=subject\n[subject]\n')
         self.ca = root / 'ca.pem'
@@ -46,11 +46,11 @@ class Provider:
                        capture_output=True, check=True, timeout=30)
         csr = root / 'provider.csr'
         subprocess.run(['openssl', 'req', '-config', str(config), '-new', '-newkey', 'rsa:2048',
-                        '-nodes', '-keyout', str(key), '-out', str(csr), '-subj', '/CN=' + HOSTS[0]],
+                        '-nodes', '-keyout', str(key), '-out', str(csr), '-subj', '/CN=' + hosts[0]],
                        capture_output=True, check=True, timeout=30)
         extensions = root / 'extensions.cnf'
         extensions.write_text('basicConstraints=critical,CA:FALSE\nsubjectAltName=' +
-                              ','.join('DNS:' + h for h in HOSTS) + '\n')
+                              ','.join('DNS:' + h for h in hosts) + '\n')
         subprocess.run(['openssl', 'x509', '-req', '-in', str(csr), '-CA', str(self.ca),
                         '-CAkey', str(ca_key), '-CAcreateserial', '-out', str(certificate),
                         '-days', '1', '-extfile', str(extensions)],
@@ -87,31 +87,31 @@ class Provider:
 
             def do_GET(self):
                 if self.record():
-                    assert self.path == '/api/v1/models', self.path
+                    assert self.path in ('/api/v1/models', '/v1/models'), self.path
                     self.reply({'object': 'list', 'data': [{'id': m, 'object': 'model'} for m in owner.models]})
 
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
                 if not self.record(body):
                     return
-                assert body['model'] == UPSTREAM, body
+                assert body['model'] in owner.models, body
                 probe = any(t.get('function', t).get('name') == 'hiroute_probe' for t in body.get('tools', []))
                 if self.path.endswith('/chat/completions'):
                     message = {'role': 'assistant', 'content': 'native product answer'}
                     if probe:
                         message['tool_calls'] = [{'id': 'probe', 'type': 'function', 'function': {
                             'name': 'hiroute_probe', 'arguments': '{"value":"ok"}'}}]
-                    value = {'id': 'chatcmpl_trial', 'object': 'chat.completion', 'created': 1, 'model': UPSTREAM,
+                    value = {'id': 'chatcmpl_trial', 'object': 'chat.completion', 'created': 1, 'model': body['model'],
                              'choices': [{'index': 0, 'message': message, 'finish_reason': 'tool_calls' if probe else 'stop'}],
                              'usage': {'prompt_tokens': 4, 'completion_tokens': 3, 'total_tokens': 7}}
                 elif self.path.endswith('/responses'):
-                    value = {'id': 'resp_trial', 'object': 'response', 'status': 'completed', 'model': UPSTREAM,
+                    value = {'id': 'resp_trial', 'object': 'response', 'status': 'completed', 'model': body['model'],
                              'output': [{'id': 'msg_trial', 'type': 'message', 'role': 'assistant', 'status': 'completed',
                                          'content': [{'type': 'output_text', 'text': 'native product answer', 'annotations': []}]}],
                              'usage': {'input_tokens': 4, 'output_tokens': 3, 'total_tokens': 7}}
                 else:
                     assert self.path.endswith('/messages'), self.path
-                    value = {'id': 'msg_trial', 'type': 'message', 'role': 'assistant', 'model': UPSTREAM,
+                    value = {'id': 'msg_trial', 'type': 'message', 'role': 'assistant', 'model': body['model'],
                              'content': [{'type': 'text', 'text': 'native product answer'}], 'stop_reason': 'end_turn',
                              'usage': {'input_tokens': 4, 'output_tokens': 3}}
                 self.reply(value)
@@ -123,8 +123,8 @@ class Provider:
         self.dial = root / 'dial.json'
         self.dial.write_bytes(wire({'schema_version': 'hiroute.gateway.e2e-dial-map/v1',
             'targets': [{'authority': h, 'address': '127.0.0.1:' + str(self.direct.server_port),
-                         'ca_pem': self.ca.read_text()} for h in HOSTS]}))
-        # Keep released binaries and registry hosts untouched. Interpose only these two
+                         'ca_pem': self.ca.read_text()} for h in hosts]}))
+        # Keep released binaries and registry hosts untouched. Interpose only these
         # provider names and their loopback TLS socket inside the isolated product process.
         # Reqwest retains its ordinary HTTPS/SNI/certificate and authentication checks.
         source = root / 'provider-transport.c'
@@ -138,7 +138,7 @@ class Provider:
 #include <sys/socket.h>
 int getaddrinfo(const char *name, const char *service, const struct addrinfo *hints, struct addrinfo **result) {
     int (*original)(const char *, const char *, const struct addrinfo *, struct addrinfo **) = dlsym(RTLD_NEXT, "getaddrinfo");
-    if (name && (!strcmp(name, "dashscope.aliyuncs.com") || !strcmp(name, "token-plan.cn-beijing.maas.aliyuncs.com"))) name = "127.0.0.1";
+    if (name && (PROVIDER_HOSTS)) name = "127.0.0.1";
     return original(name, service, hints, result);
 }
 int connect(int fd, const struct sockaddr *address, socklen_t length) {
@@ -153,7 +153,7 @@ int connect(int fd, const struct sockaddr *address, socklen_t length) {
     }
     return original(fd, address, length);
 }
-''')
+'''.replace('PROVIDER_HOSTS', ' || '.join('!strcmp(name, ' + json.dumps(host) + ')' for host in hosts)))
         self.transport = root / 'provider-transport.so'
         subprocess.run(['cc', '-shared', '-fPIC', '-Wall', '-Wextra', '-Werror', str(source),
                         '-o', str(self.transport), '-ldl'], check=True, capture_output=True, timeout=30)

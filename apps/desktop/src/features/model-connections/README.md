@@ -58,6 +58,9 @@ The composition owner must provide the real Tauri/Client Core adapter, open/retu
 The connection-options response also carries the daemon-selected complete metadata snapshot. The directory uses executable native API options; model candidates and capability prefill come from the selected option and its matching metadata. Custom API prefill offers those same native options and keeps the configuration editable. Unknown capabilities use the form's editable defaults. Credentials are never inferred, lifecycle data is warning-only, and nested cost hints are explicitly presented as “not a price.” A connection check remains mandatory before selected metadata can be saved.
 
 Exact registered prefill/check and new publication use the shared scoped-default resolver.
+Editable capability prefill uses an endpoint input-budget override, then the canonical
+independent `max_input_tokens`, then the total context when no input cap is known.
+Canonical total windows remain metadata; refresh and recheck preserve explicit model edits.
 User/ambiguous declarations retain saved intent; connector-verified authority is preserved.
 New UI saves use a V3 source/default transaction while released V2 requests and journal bytes
 retain their original proof reader. The model detail default editor shows saved versus current

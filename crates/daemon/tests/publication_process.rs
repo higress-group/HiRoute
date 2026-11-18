@@ -219,6 +219,12 @@ fn installed_recommended_qwen4_checks_connects_publishes_and_executes() {
     run_standalone_script("recommended_model_product.py");
 }
 
+#[test]
+#[cfg(target_os = "linux")]
+fn installed_gpt62_prefill_preserves_input_limits_through_save_and_publication() {
+    run_standalone_script("model_input_limits_product.py");
+}
+
 /// Runs only on request: five isolated one-candidate Plan publishes through the production
 /// Local Control socket and Gateway installer. The opt-in fixture prints per-run wall time and
 /// Debug stage counts; it is not a five-candidate or Desktop/WebView benchmark.
