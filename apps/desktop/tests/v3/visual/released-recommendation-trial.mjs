@@ -58,14 +58,19 @@ try {
     await screenshot('recommendation-enabled');
     await click('.new-model-card button');
     // Current clients show the choice introduced in #501; released clients enter the trial.
-    if (await evaluate(client, "!!document.querySelector('.recommendation-setup')")) {
-      await click('.recommendation-setup button', 'Create a trial route');
+    if (await evaluate(client, "!!document.querySelector('.recommendation-dialog')")) {
+      await click('.recommendation-dialog button', 'Create a trial route');
+      await click('.recommendation-dialog button', 'Create a connection');
+    } else {
+      await waitFor(client, "!!document.querySelector('[data-trial-target=trial]')", { timeout: 20_000 });
+      await click('[data-trial-target=trial] button', 'Connect here');
     }
-    await waitFor(client, "!!document.querySelector('[data-trial-target=trial]')", { timeout: 20_000 });
-    await click('[data-trial-target=trial] button', 'Connect here');
     await waitFor(client, "!!document.querySelector('.trial-inline-connection')", { timeout: 20_000 });
-    await click('.connection-provider-card');
-    await click('.connection-product-card', option.includes('token-plan') ? 'Token Plan' : 'Pay as you go');
+    await waitFor(client, `${visible('.connection-provider-card, .connection-dialog input[type=password]')}.length > 0`, { timeout: 20_000 });
+    if (await evaluate(client, `${visible('.connection-provider-card')}.length > 0`)) {
+      await click('.connection-provider-card');
+      await click('.connection-product-card', option.includes('token-plan') ? 'Token Plan' : 'Pay as you go');
+    }
     await input('Connection name', option);
     await input('API Key', 'isolated-recommendation-key');
     await screenshot('connection-form');

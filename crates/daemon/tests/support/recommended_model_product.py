@@ -6,6 +6,7 @@ external provider/Agent are fixtures; checks, saves, publication and execution u
 """
 import argparse
 import http.server
+import hashlib
 import json
 from pathlib import Path
 import ssl
@@ -163,7 +164,7 @@ int connect(int fd, const struct sockaddr *address, socklen_t length) {
         self.direct_thread.join(timeout=5)
 
 
-def run(repository, feed, evidence=None, browser=False, selected_option=None, baseline_feed=None):
+def run(repository, feed, evidence=None, browser=False, selected_option=None, baseline_feed=None, source_local=False):
     product = TrialProduct(repository)
     provider = Provider(product.root)
     stage = 'install'
@@ -201,6 +202,7 @@ def run(repository, feed, evidence=None, browser=False, selected_option=None, ba
             fixture.joinpath('publication.json').write_bytes(Path(feed).read_bytes())
             status = product.cli('models', 'feed', 'refresh')['data']
         assert status['selected']['data_revision'] == publication['data_revision'], status
+        assert status['selected']['data_digest'] == publication['data_digest'], status
         # The released test feed transport has a fixed synthetic directory. Disable it after
         # refresh; all following account checks use the real released HTTPS provider client.
         product.env.pop('HIROUTE_TEST_MODEL_FEED_ROOT')
@@ -216,7 +218,7 @@ def run(repository, feed, evidence=None, browser=False, selected_option=None, ba
         options = [o for o in choices['options'] if MODEL in o['model_configuration_ids']]
         assert {o['connection_option_id'] for o in options} == {'bailian.payg.cn.v1'}, options
         if selected_option:
-            options = [o for o in options if o['connection_option_id'] == selected_option]
+            options = [o for o in (choices['options'] if source_local else options) if o['connection_option_id'] == selected_option]
             assert options, 'requested connection option is unavailable'
         discovered = product.cli('worker', 'dependencies', 'discover')['data']
         revision = next(x['revision'] for x in discovered['selection_revisions'] if x['harness'] == 'codex_cli')
@@ -227,32 +229,34 @@ def run(repository, feed, evidence=None, browser=False, selected_option=None, ba
             stage = option_id
             print(json.dumps({'scenario': 'recommended-qwen4-registered-trial', 'stage': stage,
                               'product_revision': product.sha}), flush=True)
-            saved_before = {s['source_id'] for s in product.cli('compute', 'list')['data']['sources']}
-            candidate_ref = 'candidate/recommendation/' + option_id
-            product.register_secret(candidate_ref, 'isolated-recommendation-key')
-            product.secrets.add('isolated-recommendation-key')
-            request = {'kind': 'registered', 'request': {
-                'connection_option_id': option_id, 'display_name': option_id,
-                'expected_catalog': product.cli('compute', 'connection', 'options')['data']['catalog'],
-                'candidate_ref': candidate_ref, 'lineage_ref': 'lineage/' + option_id,
-                'edit_revision': 1, 'check_id': 'check/' + option_id,
-                'input_candidate': {'candidate_ref': candidate_ref, 'candidate_revision': 1},
-                'inference_model_id': UPSTREAM}}
-            # Rejected credentials cannot become a connected recommendation.
-            provider.reject = True
-            network_edit = {'expected_network_revision': 0, 'policy': {'mode': 'direct'}}
-            network_request = {'kind': 'registered', 'request': {'request': request['request'], 'network_edit': network_edit}}
-            denied = product.cli('compute', 'connection', 'test-network', '--request-stdin', payload=network_request)['data']['check']
-            assert denied['authentication'] == 'rejected' and denied['inference'] != 'verified', denied
-            assert {s['source_id'] for s in product.cli('compute', 'list')['data']['sources']} == saved_before, 'a failed check saved a source'
-            provider.reject = False
-            request['request'].update(edit_revision=2, check_id='check/verified/' + option_id)
-            checked = product.cli('compute', 'connection', 'test-network', '--request-stdin', payload=network_request)['data']['check']
-            assert checked['inference'] == 'verified' and checked['inference_model_id'] == UPSTREAM, checked
-            matching = [m for m in checked['candidate']['models'] if m['upstream_model_id'] == UPSTREAM]
-            assert len(matching) == 1 and matching[0]['selectable'], checked
-            # Follow the old form's exact selected subset, never every model in a catalog.
-            candidate = dict(checked['candidate'], models=matching)
+            checked = None
+            if not source_local:
+                saved_before = {s['source_id'] for s in product.cli('compute', 'list')['data']['sources']}
+                candidate_ref = 'candidate/recommendation/' + option_id
+                product.register_secret(candidate_ref, 'isolated-recommendation-key')
+                product.secrets.add('isolated-recommendation-key')
+                request = {'kind': 'registered', 'request': {
+                    'connection_option_id': option_id, 'display_name': option_id,
+                    'expected_catalog': product.cli('compute', 'connection', 'options')['data']['catalog'],
+                    'candidate_ref': candidate_ref, 'lineage_ref': 'lineage/' + option_id,
+                    'edit_revision': 1, 'check_id': 'check/' + option_id,
+                    'input_candidate': {'candidate_ref': candidate_ref, 'candidate_revision': 1},
+                    'inference_model_id': UPSTREAM}}
+                # Rejected credentials cannot become a connected recommendation.
+                provider.reject = True
+                network_edit = {'expected_network_revision': 0, 'policy': {'mode': 'direct'}}
+                network_request = {'kind': 'registered', 'request': {'request': request['request'], 'network_edit': network_edit}}
+                denied = product.cli('compute', 'connection', 'test-network', '--request-stdin', payload=network_request)['data']['check']
+                assert denied['authentication'] == 'rejected' and denied['inference'] != 'verified', denied
+                assert {s['source_id'] for s in product.cli('compute', 'list')['data']['sources']} == saved_before, 'a failed check saved a source'
+                provider.reject = False
+                request['request'].update(edit_revision=2, check_id='check/verified/' + option_id)
+                checked = product.cli('compute', 'connection', 'test-network', '--request-stdin', payload=network_request)['data']['check']
+                assert checked['inference'] == 'verified' and checked['inference_model_id'] == UPSTREAM, checked
+                matching = [m for m in checked['candidate']['models'] if m['upstream_model_id'] == UPSTREAM]
+                assert len(matching) == 1 and matching[0]['selectable'], checked
+                # Follow the old form's exact selected subset, never every model in a catalog.
+                candidate = dict(checked['candidate'], models=matching)
             if browser:
                 launch = product.cli('console', 'open')['data']
                 subprocess.run(['node', str(runner), str(Path(evidence) / option_id), option_id],
@@ -267,12 +271,14 @@ def run(repository, feed, evidence=None, browser=False, selected_option=None, ba
                 apply_from_preview(product, ('compute', 'connection', 'apply'), preview, 'recommendation-save-' + option_id)
             source = next(s for s in product.cli('compute', 'list')['data']['sources'] if s['display_name'] == option_id)
             member, = [m for m in source['models'] if m['upstream_model_id'] == UPSTREAM]
-            assert member['catalog_configuration_id'] == MODEL, member
             available = product.cli('models', 'availability')['data']
-            model = next(m for m in available['models'] if m['model_configuration_id'] == MODEL)
-            assert model['availability']['kind'] == 'executable' and member['binding_id'] in model['binding_ids'], model
+            if not source_local:
+                assert member['catalog_configuration_id'] == MODEL, member
+                model = next(m for m in available['models'] if m['model_configuration_id'] == MODEL)
+                assert model['availability']['kind'] == 'executable' and member['binding_id'] in model['binding_ids'], model
             observations[option_id] = {'checked': checked, 'source': source, 'availability': available,
                                        'routing_options': product.cli('routing', 'options', '--request-stdin', payload={})['data']}
+            assert any(c['binding_id'] == member['binding_id'] and c['routable'] for c in observations[option_id]['routing_options']['candidates'])
             if evidence:
                 Path(evidence).mkdir(parents=True, exist_ok=True)
                 (Path(evidence) / 'observations.json').write_bytes(wire(observations))
@@ -286,6 +292,8 @@ def run(repository, feed, evidence=None, browser=False, selected_option=None, ba
             worker(product, plan, 'recommendation-execute-' + option_id)
         report = {'scenario': 'recommended-qwen4-registered-trial', 'state': 'green', 'product_revision': product.sha,
                   'feed_revision': publication['data_revision'], 'sequence': publication['sequence'],
+                  'feed_data_digest': publication['data_digest'], 'feed_source_revision': publication['source_revision'],
+                  'feed_payload_sha256': hashlib.sha256(Path(feed).read_bytes()).hexdigest(),
                   'options': [o['connection_option_id'] for o in options], 'provider_requests': provider.requests}
         if evidence:
             evidence = Path(evidence)
@@ -309,11 +317,14 @@ if __name__ == '__main__':
     parser.add_argument('--feed', type=Path)
     parser.add_argument('--evidence', type=Path)
     parser.add_argument('--browser', action='store_true')
-    parser.add_argument('--option', choices=['bailian.payg.cn.v1'])
+    parser.add_argument('--option', choices=['bailian.payg.cn.v1', 'bailian.token-plan.cn.v1'])
     parser.add_argument('--baseline-feed', type=Path)
+    parser.add_argument('--source-local', action='store_true')
     args = parser.parse_args()
     if args.browser and (not args.option or not args.evidence):
         parser.error('--browser requires --option and --evidence to keep each trial isolated')
+    if args.source_local and not args.browser:
+        parser.error('--source-local requires the current browser setup flow')
     if args.baseline_feed and not args.browser:
         parser.error('--baseline-feed requires --browser')
-    run(args.repository, args.feed or args.repository / 'assets/model-feed/payload.json', args.evidence, args.browser, args.option, args.baseline_feed)
+    run(args.repository, args.feed or args.repository / 'assets/model-feed/payload.json', args.evidence, args.browser, args.option, args.baseline_feed, args.source_local)

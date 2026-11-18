@@ -708,6 +708,10 @@ hosts to loopback TLS and keeps the released registry, binaries and source code 
 Token Plan remains in the current UI's checked source-local recommendation flow; it cannot
 gain a new Offer authority through a feed in an older client. The recommendation browser
 scenarios cover this flow when the shared recommendation has `needs_connection` availability.
+Use `--source-local --option bailian.token-plan.cn.v1` with the current client to run that
+actual console path through the same provider fixture and published-route execution. An
+optional `--baseline-feed` captures the released client's disabled card before it accepts
+the candidate, keeping the viewport, language and theme unchanged for comparison.
 
 Current dependency startup and journal partition regressions live in
 [`current_dependencies_tests.rs`](../../crates/local-storage/src/control/current_dependencies_tests.rs)

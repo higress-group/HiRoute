@@ -51,8 +51,8 @@ export function NewModels({ language, active, plans, refreshVersion, onTry, onSa
     const configuration = { tone: '', label: t('选择接入', 'Choose a connection'), available: true };
     if (model.availability.kind === 'needs_newer_client') return { tone: 'warn', label: t(`需要 HiRoute ${model.availability.version}`, `Requires HiRoute ${model.availability.version}`), available: false };
     if (model.origin.kind === 'published') return { tone: '', label: t('仅在已发布路由中', 'Only in published routes'), available: false };
-    if (model.availability.kind === 'descriptive_only') return referenceModelKey(model)
-      ? configuration : { tone: '', label: t('资料可查看，当前不可执行', 'Information only; unavailable for execution'), available: false };
+    if (referenceModelKey(model)) return configuration;
+    if (model.availability.kind === 'descriptive_only') return { tone: '', label: t('资料可查看，当前不可执行', 'Information only; unavailable for execution'), available: false };
     if (plansUsing.length) return { ...configuration, tone: 'good', label: plansUsing.length > 1 ? t(`已在 ${plansUsing.length} 个路由中使用`, `Used in ${plansUsing.length} routes`) : t(`已在「${plansUsing[0].desired.display_name}」中使用`, `Used in “${plansUsing[0].desired.display_name}”`) };
     return model.binding_ids.length ? { ...configuration, tone: 'info', label: t('已接入', 'Connected') }
       : { ...configuration, label: t('需要先接入', 'Needs a connection') };
