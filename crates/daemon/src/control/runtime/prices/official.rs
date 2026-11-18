@@ -147,6 +147,30 @@ mod tests {
         serde_json::from_value(json!({"pricing_key":"product/model/id","product_key":"product","model_key":"model","upstream_model_id":"id","currency":"USD","unit":"per-1m-tokens","price_state":"exact","evidence_refs":["source"],"schedules":[{"schedule_key":"standard","condition":{"kind":"unconditional"},"application":"whole-request","rates":{"input":"0","output":"12.5","cache-read":"0.025","cache-write":"0.1"}}]})).unwrap()
     }
     #[test]
+    fn gpt62_conditional_tiers_never_fall_through_to_standard_or_legacy_rates() {
+        let bundle: serde_json::Value = serde_json::from_slice(include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../assets/release-facts/current/bundle/official-model-data.json"
+        )))
+        .unwrap();
+        for model in ["gpt-6.2-astra", "gpt-6.2-sol"] {
+            let value = bundle["data"]["pricing_facts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|p| p["model_key"] == model)
+                .unwrap();
+            let price: DocumentedModelPriceV1 = serde_json::from_value(value.clone()).unwrap();
+            assert_eq!(price.schedules.len(), 18);
+            let compiled = rules(&[&price], "USD", 19).unwrap();
+            assert_eq!(compiled.len(), 1);
+            assert_eq!(
+                compiled[0].rates,
+                TokenRatesV1::unknown(PriceUnknownReasonV1::UnsupportedBillingCondition)
+            );
+        }
+    }
+    #[test]
     fn model_prices_preserve_four_components_zero_currency_and_unsupported_conditions() {
         let mut p = price();
         let rule = rules(&[&p], "USD", 3).unwrap().remove(0);
