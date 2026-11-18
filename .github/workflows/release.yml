@@ -96,6 +96,10 @@ jobs:
             key="$RUNNER_TEMP/omarchy-release-key.asc"
             git show "$RELEASE_REVISION:assets/packaging/omarchy-release-key.asc" > "$key"
             if ! command -v gpg >/dev/null || ! command -v gpgv >/dev/null; then brew install gnupg; fi
+            # Use a bsdtar with native zstd support for the signed Arch packages.
+            archive_bin="$(brew --prefix libarchive)/bin"
+            if [[ ! -x "$archive_bin/bsdtar" ]]; then brew install libarchive; fi
+            export PATH="$archive_bin:$PATH"
             while IFS=$'\t' read -r package manifest archive; do
               python3 scripts/package-linux-desktop.py --verify-package "$RUNNER_TEMP/release-assets/$package" \
                 --public-key "$key" --manifest "$RUNNER_TEMP/release-assets/$manifest" --archive "$RUNNER_TEMP/release-assets/$archive"
