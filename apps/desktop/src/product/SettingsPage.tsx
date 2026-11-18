@@ -1,6 +1,6 @@
 import { hostCapabilities } from '../host/index.ts';
 import { invoke } from '../host/index.ts';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import './settings.css';
 import { ObservationStorageSettings } from '../features/ObservationStorageSettings';
 import { DiagnosticsSettings } from '../features/diagnostics/DiagnosticsSettings';
@@ -15,6 +15,8 @@ type SettingsPageProps = {
   active: boolean; language: Language; languagePreference: LanguagePreference; theme: ThemePreference;
   serviceLabel: string; serviceReady: boolean;
   onServiceChanged: () => Promise<void>;
+  onUpdateAvailabilityChange?: (available: boolean) => void;
+  openUpdatesRequest?: number;
   onLanguageChange: (language: LanguagePreference) => void;
   onThemeChange: (theme: ThemePreference) => void;
   onOpenSessions: (scope?: 'content_only' | 'facts_and_content') => void;
@@ -60,6 +62,10 @@ export function SettingsPage(props: SettingsPageProps) {
   const text = (zh: string, en: string) => props.language === 'zh' ? zh : en;
   const [section, setSection] = useState<'general' | 'runtime' | 'records'>('general');
   const sectionId = useId();
+  const updatesHeading = useRef<HTMLHeadingElement>(null);
+  const handledUpdatesRequest = useRef(0);
+  const { active, openUpdatesRequest } = props;
+  const updatesEnabled = hostCapabilities().updates;
   const [workerLimit, setWorkerLimit] = useState<number | null>(null);
   const [workerDraft, setWorkerDraft] = useState('');
   const [workerBusy, setWorkerBusy] = useState(false);
@@ -71,6 +77,19 @@ export function SettingsPage(props: SettingsPageProps) {
   const [listenerScope, setListenerScope] = useState<GatewayListenerScope>('local');
   const [listenerBusy, setListenerBusy] = useState(false);
   const [listenerError, setListenerError] = useState('');
+
+  useLayoutEffect(() => {
+    if (!active || !updatesEnabled || !openUpdatesRequest || handledUpdatesRequest.current === openUpdatesRequest) return;
+    if (section !== 'general') {
+      setSection('general');
+      return;
+    }
+    const heading = updatesHeading.current;
+    if (!heading) return;
+    handledUpdatesRequest.current = openUpdatesRequest;
+    heading.scrollIntoView({ block: 'start', behavior: 'instant' });
+    heading.focus({ preventScroll: true });
+  }, [active, openUpdatesRequest, section, updatesEnabled]);
 
   useEffect(() => {
     if (!props.active) return;
@@ -204,7 +223,8 @@ export function SettingsPage(props: SettingsPageProps) {
             <div className="segmented">{(['system', 'light', 'dark'] as const).map(theme => <button type="button" key={theme} className={`segment ${props.theme === theme ? 'active' : ''}`} aria-pressed={props.theme === theme} onClick={() => props.onThemeChange(theme)}>{theme === 'system' ? text('跟随系统', 'System') : theme === 'light' ? text('浅色', 'Light') : text('深色', 'Dark')}</button>)}</div>
           </div>
         </div></section>
-        {hostCapabilities().updates && <UpdatesSettings active={props.active} language={props.language} onServiceChanged={props.onServiceChanged} />}
+        {updatesEnabled && <UpdatesSettings active={active} language={props.language} headingRef={updatesHeading}
+          onServiceChanged={props.onServiceChanged} onUpdateAvailabilityChange={props.onUpdateAvailabilityChange} />}
       </div>
       <div role="tabpanel" data-settings-panel="runtime" id={`${sectionId}-panel-runtime`} aria-labelledby={`${sectionId}-tab-runtime`} hidden={section !== 'runtime'} tabIndex={0}>
         <section className="settings-group"><h2>{text('任务执行', 'Task execution')}</h2><div className="settings-list"><div className="settings-row">

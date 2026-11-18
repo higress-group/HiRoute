@@ -12,6 +12,7 @@ export function HomeNavigation({
   onRetryService,
   onNavigate,
   onOpenSettings,
+  onOpenUpdates,
   routingAttention = false,
 }: {
   language: Language;
@@ -25,11 +26,30 @@ export function HomeNavigation({
   routingAttention?: boolean;
   onNavigate: (id: string) => void;
   onOpenSettings?: () => void;
+  onOpenUpdates?: () => void;
 }) {
   const serviceTitle = providedServiceTitle ?? (serviceReady
     ? language === 'zh' ? '服务正常' : 'Service ready'
     : language === 'zh' ? '服务状态' : 'Service status');
   const settings = language === 'zh' ? '设置' : 'Settings';
+  const updateLabel = language === 'zh' ? '有新版本' : 'New version available';
+  const settingsItem = (open: () => void, compactUpdate = false) => {
+    const label = compactUpdate ? `${settings} · ${updateLabel}` : settings;
+    const layout = compactUpdate ? 'sidebar-settings-update' : 'sidebar-settings';
+    return <button
+      className={`nav-item ${layout}${current === 'settings' ? ' active' : ''}`}
+      type="button"
+      aria-current={current === 'settings' ? 'page' : undefined}
+      aria-label={label}
+      title={label}
+      onClick={open}
+    >
+      <UiIcon name="settings" />
+      <span>{settings}</span>
+      {compactUpdate && <i className="sidebar-update-dot" aria-hidden="true" />}
+    </button>;
+  };
+
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -55,21 +75,20 @@ export function HomeNavigation({
       </nav>
       <div className="sidebar-spacer" />
       <div className="sidebar-foot">
-        {serviceLabel && <div className="sidebar-health">
-          <i className={`status-dot ${serviceReady ? 'good' : 'warn'}`} aria-hidden="true" />
-          <div><strong>{serviceTitle}</strong><span>{serviceLabel}</span>{serviceCheckFailed && onRetryService && <button className="sidebar-health-retry" type="button" onClick={onRetryService}>{language === 'zh' ? '重试' : 'Retry'}</button>}</div>
+        {(serviceLabel || onOpenUpdates) && <div className="sidebar-health">
+          {serviceLabel && <>
+            <i className={`status-dot ${serviceReady ? 'good' : 'warn'}`} aria-hidden="true" />
+            <div className="sidebar-health-copy"><strong>{serviceTitle}</strong><span>{serviceLabel}</span>{serviceCheckFailed && onRetryService && <button className="sidebar-health-retry" type="button" onClick={onRetryService}>{language === 'zh' ? '重试' : 'Retry'}</button>}</div>
+          </>}
+          {onOpenUpdates && <button className="sidebar-update-entry" type="button"
+            aria-label={updateLabel} title={language === 'zh' ? '在设置中查看版本升级' : 'Open Updates in Settings'}
+            onClick={onOpenUpdates}
+          >
+            <span className="sidebar-update-pill">{language === 'zh' ? updateLabel : 'Update'}<UiIcon name="chevronRight" /></span>
+          </button>}
         </div>}
-        {onOpenSettings && <button
-          className={`nav-item ${current === 'settings' ? 'active' : ''}`}
-          type="button"
-          aria-current={current === 'settings' ? 'page' : undefined}
-          aria-label={settings}
-          title={settings}
-          onClick={onOpenSettings}
-        >
-          <UiIcon name="settings" />
-          <span>{settings}</span>
-        </button>}
+        {onOpenSettings && settingsItem(onOpenSettings)}
+        {onOpenUpdates && settingsItem(onOpenUpdates, true)}
       </div>
     </aside>
   );

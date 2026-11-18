@@ -1,9 +1,6 @@
 // Read-only, deterministic fixture data for the actual Settings components.
 // These replies do not establish native service, upgrade or filesystem effects.
 export function consistencySettingsReads(control) {
-  control.handlers.update_status = () => ({ current_version: '0.5.0', phase: 'idle', available: null,
-    downloaded_bytes: 0, active_calls: 0, active_tasks: 0, error: null, can_install: true,
-    package_ready: false, recovery: null });
   control.handlers.cli_entry_status = () => ({ state: 'valid', entry_path: '/opt/hiroute/bin/hiroute',
     path_contains_entry_directory: true, command_resolves_to_app_cli: true, daemon_available: true });
   control.handlers.gateway_listener_status = () => ({ config: {

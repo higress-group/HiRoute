@@ -17,13 +17,41 @@ export async function runShellHostScenarios(client,baseUrl,output) {
     }
     if(state==='expired')return;
     await waitFor(client,'Boolean(document.querySelector(".sidebar"))');
-    await evaluate(client,`[...document.querySelectorAll('.sidebar button')].find(b=>b.textContent.trim()===${JSON.stringify(language==='zh'?'设置':'Settings')}).click()`);
+    await evaluate(client,"[...document.querySelectorAll('.sidebar-foot .nav-item')].find(button=>button.getClientRects().length).click()");
     try { await waitFor(client,'document.querySelector(".settings-group")?.textContent.includes("Windows") && Boolean(document.querySelector(".settings-group button[aria-pressed]"))'); }
     catch(error) { await writeFile(path.join(output,'shell-ui-failure.json'),JSON.stringify(await evaluate(client,'({text:document.body.innerText,capabilities:window.consoleComponent.capabilities(),requests:window.consoleComponent.hostRequests,errors:window.consoleComponent.errors})'),null,2));await screenshot('shell-ui-failure.png');throw error; }
     await waitFor(client,'window.consoleComponent.hostRequests.some(r=>r.command==="update_status")');
     const page=await evaluate(client,'(()=>{const b=document.querySelector(".main .page").getBoundingClientRect();return{banner:!!document.querySelector(".console-transport-bar"),top:b.top,bottom:b.bottom};})()');
     assert(!page.banner&&page.top<90&&page.bottom<=height+1,'Windows host notice displaced the product page: '+JSON.stringify(page));
   };
+
+  const updateUrl = new URL('console-entry.html?case=ready&host=shell-console&native-shell=1&update=discover&language=en&theme=dark', baseUrl);
+  await navigate(client, updateUrl.href, { width: 755, height: 600 });
+  await waitFor(client, "Boolean(document.querySelector('.sidebar-settings-update')?.getClientRects().length)");
+  assert(await evaluate(client, `(() => {
+    const button = document.querySelector('.sidebar-settings-update');
+    return button.getAttribute('aria-label') === 'Settings · New version available'
+      && button.querySelector('.sidebar-update-dot').getClientRects().length
+      && !document.querySelector('.sidebar-update-entry').getClientRects().length
+      && !document.querySelector('.sidebar-settings').getClientRects().length
+      && window.consoleComponent.hostRequests.filter(({command}) => command === 'update_check').length === 1;
+  })()`), 'The narrow Windows sidebar did not replace the shortcut with a labeled gear marker');
+  await screenshot('shell-update-sidebar-en-dark-755.png');
+  await evaluate(client, "document.querySelector('.sidebar-settings-update').focus()");
+  await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r', unmodifiedText: '\r' });
+  await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+  await waitFor(client, `(() => {
+    const heading = document.querySelector('.settings-updates h2');
+    return document.activeElement === heading
+      && heading.getBoundingClientRect().top >= heading.closest('.page-content').getBoundingClientRect().top;
+  })()`);
+  assert(await evaluate(client, `document.querySelector('.settings-updates').innerText.includes('Version 0.4.0 is available')
+    && !window.consoleComponent.requests.some(({path}) => path.includes('update_'))
+    && !window.consoleComponent.hostRequests.some(({command}) => ['update_download', 'update_install', 'update_cancel'].includes(command))`),
+    'The Windows shortcut changed updater state or sent a maintenance command through console HTTP');
+  const updateScreenshot = await screenshot('shell-update-destination-en-dark-755.png');
+  results.push({ id: 'shell.sidebar-update-entry', state: 'green', screenshot: updateScreenshot });
+
   for(const language of ['zh','en'])for(const theme of ['light','dark'])for(const [width,height]of [[1200,813],[755,600]]) {
     for(const phase of ['ready','waiting','failed','catalog-unavailable']){
       await open(language,theme,width,height,phase);

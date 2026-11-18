@@ -35,6 +35,8 @@
   letter-spacing: normal;
   text-transform: none;
 }
+.settings-page .settings-updates > h2 { scroll-margin-block-start: 12px; }
+.settings-page .settings-updates > h2:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .settings-page .settings-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

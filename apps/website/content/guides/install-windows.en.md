@@ -58,7 +58,9 @@ For unattended installation, run the verified installer with `/S` and wait for i
 
 ## Update and recover
 
-Open **Settings → Updates**. The shell downloads a newer stable installer from the official HTTPS catalog and verifies its size and SHA-256 while your service keeps running. Installation waits for active calls and Worker tasks. **Cancel update** resumes normal admission without cancelling or replaying your work. The installer then replaces the application and reopens HiRoute.
+Select **Update** in the sidebar when it appears. In a narrow window, select the **Settings** gear marked with a purple dot. Both open **Settings → General → Updates**, where you can review the version and choose **Download update**. You can also select **Check for updates** in that section.
+
+The shell downloads the newer stable installer from the official HTTPS catalog and verifies its size and SHA-256 while your service keeps running. Installation waits for active calls and Worker tasks. **Cancel update** resumes normal admission without cancelling or replaying your work. The installer then replaces the application and reopens HiRoute.
 
 A manually downloaded newer installer uses the same drain and transaction path. An older daemon that cannot drain requires an explicit interactive confirmation before it can be stopped; a passive update refuses it. If an update fails, the startup page or Updates shows the failure and recovery status. Keep the logs and retained backups. Starting the shell after an interrupted installer attempts journal recovery and resumes paused admission; changed or foreign files require repair and are preserved.
 

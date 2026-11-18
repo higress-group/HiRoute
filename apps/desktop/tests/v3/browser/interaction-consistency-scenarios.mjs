@@ -71,6 +71,82 @@ export const interactionConsistencyScenarios = [
       all('dialog[open] button').find(n=>n.textContent==='不保存').click();await until(()=>!all('dialog[open]').length,'Discard');
     }
   }),
+  scenario('desktop.interactions.sidebar-update', ['interaction-consistency'], 'A confirmed update opens and focuses Updates through the existing editor guard', async () => {
+    const c = window.productShell;
+    await seedInteractionAudit(c, { state: 'home', language: 'zh', theme: 'dark' });
+    if (window.fixtureTransport === 'console') {
+      all('.sidebar-settings')[0].click();
+      await until(() => all('.settings-page').length, 'Console Settings');
+      assert(!all('.settings-updates, .sidebar-update-entry').length && !c.commands.some(({ command }) => command.startsWith('update_')),
+        'The browser console used a native update capability');
+      return;
+    }
+
+    const release = { version: '0.5.1', notes: { zh: '更新说明', en: 'Release notes' }, size: 1000 };
+    let view = { ...c.fixtureResponse('update_status', {}), phase: 'idle' };
+    let finishCheck;
+    c.handlers.update_status = () => structuredClone(view);
+    c.handlers.update_check = async () => {
+      view.phase = 'checking';
+      const phase = await new Promise(resolve => { finishCheck = resolve; });
+      view = { ...view, phase, available: phase === 'available' ? release : null };
+      return structuredClone(view);
+    };
+    const entry = () => all('.sidebar-update-entry')[0];
+    const count = command => c.commands.filter(item => item.command === command).length;
+    const updatesFocused = () => {
+      const heading = all('.settings-updates h2')[0];
+      if (!heading || document.activeElement !== heading) return false;
+      const position = heading.getBoundingClientRect();
+      const page = heading.closest('.page-content').getBoundingClientRect();
+      return position.top >= page.top && position.bottom <= page.bottom
+        && all('[role="tab"][aria-selected="true"]').some(tab => tab.textContent === '通用');
+    };
+
+    await until(() => all('.home-wrap').length && all('.sidebar-health .good').length, 'Home before update discovery');
+    await until(() => finishCheck, 'Background check on Home');
+    assert(!entry(), 'An unresolved check advertised an update');
+    finishCheck('available');
+    await until(entry, 'Confirmed update shortcut');
+    const reads = count('update_status');
+    await new Promise(resolve => setTimeout(resolve, 1100));
+    assert(count('update_check') === 1 && count('update_status') === reads, 'The settled updater kept polling on Home');
+
+    all('.sidebar-settings')[0].click();
+    await until(() => all('.settings-tabs button').length, 'Settings tabs');
+    all('.settings-tabs button').find(tab => tab.textContent === '服务与接入').click();
+    await until(() => all('[data-settings-panel="runtime"]').length, 'Selected non-General tab');
+    all('.sidebar button').find(button => button.getAttribute('aria-label') === '首页').click();
+    await until(() => all('.home-wrap').length, 'Return to Home');
+    entry().click();
+    await until(updatesFocused, 'Open General and focus Updates');
+    assert(all('.settings-updates').some(group => group.textContent.includes(release.version)),
+      'The destination did not use the confirmed version');
+
+    await openInteractionAudit('routing-new');
+    const name = all('.plan-identity-fields input')[0];
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(name, 'Unsaved route');
+    name.dispatchEvent(new Event('input', { bubbles: true }));
+    await pause();
+    entry().click();
+    await until(() => all('dialog[open]').length, 'Shortcut honors the editor guard');
+    all('dialog[open] button').find(button => button.textContent === '继续编辑').click();
+    await until(() => !all('dialog[open]').length, 'Keep editing closes the confirmation');
+    assert(visible(name) && name.value === 'Unsaved route', 'Keep editing lost the draft');
+    entry().click();
+    await until(() => all('dialog[open]').length, 'Confirm leaving through the shortcut');
+    all('dialog[open] button').find(button => button.textContent === '不保存').click();
+    await until(updatesFocused, 'The shortcut works again after confirming');
+    assert(count('update_check') === 1 && !count('update_download') && !count('update_install') && !count('update_cancel'),
+      'Visiting Updates submitted an updater action');
+
+    finishCheck = undefined;
+    all('.settings-updates button').find(button => button.textContent === '检查更新').click();
+    await until(() => finishCheck, 'Manual check still works');
+    finishCheck('current');
+    await until(() => !entry() && all('.settings-updates').some(group => group.textContent.includes('已是最新稳定版本')),
+      'A newer check removes the shortcut when the installed version is current');
+  }),
   scenario('desktop.interactions.update-download-cancel', ['interaction-consistency'], 'A pending macOS download permits cancellation while duplicate download and cancel requests are blocked', async () => {
     for (const phase of ['downloading','verifying']) {
       await fresh('settings-general');

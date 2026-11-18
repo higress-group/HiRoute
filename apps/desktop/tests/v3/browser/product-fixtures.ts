@@ -577,6 +577,11 @@ function productFixtureReply(command: string, payload: Record<string, any> | und
         route: fixtureDecisionNetworkRoute() }, failure: null };
   }
   const fresh = scenario === 'fresh';
+  if (command === 'update_status' || command === 'update_check') return {
+    current_version: '0.5.0', phase: 'current', available: null,
+    downloaded_bytes: 0, active_calls: 0, active_tasks: 0, error: null,
+    can_install: true, package_ready: false, recovery: null,
+  };
   if (command === 'decision_services_v3') return { schema: 'hiroute.decision-services/v3', services: [] };
   if (command === 'preview_decision_context') return fixtureDecisionContext(payload!.input);
   if (command === 'preview_decision_removal') return { id: payload!.input.id, revision: payload!.input.expected_revision, failure: null, blockers: [] };
