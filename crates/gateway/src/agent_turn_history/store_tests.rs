@@ -70,6 +70,9 @@ mod input_anchor;
 
 #[path = "native_retry_tests.rs"]
 mod native_retry;
+
+#[path = "goal_context_tests.rs"]
+mod goal_context;
 #[path = "stage_closure_tests.rs"]
 mod stage_closure;
 

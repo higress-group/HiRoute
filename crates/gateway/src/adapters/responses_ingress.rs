@@ -42,7 +42,7 @@ pub(super) fn decode_responses_input(
     value: &Value,
     messages: &mut Vec<CanonicalMessage>,
     item_status: Option<&str>,
-) -> Result<(), ModelIrError> {
+) -> Result<bool, ModelIrError> {
     let object = value
         .as_object()
         .ok_or(ModelIrError::InvalidField("input[]"))?;
@@ -137,6 +137,7 @@ pub(super) fn decode_responses_input(
                 && object.get("name").and_then(Value::as_str) == Some("goal_objective")
                 && object.get("namespace").and_then(Value::as_str) == Some("agent") =>
         {
+            let before = context.unknown_generation.get();
             ensure_keys(
                 context,
                 object,
@@ -154,6 +155,8 @@ pub(super) fn decode_responses_input(
             if !object.get("output").is_some_and(Value::is_string) {
                 return Err(ModelIrError::InvalidField("output"));
             }
+            let goal_context = before == context.unknown_generation.get()
+                && item_status.is_none_or(|status| status == "completed");
             // Codex appends this context after the real create_goal result. It
             // has no call identity and cannot become an executable ToolResult.
             context.mark_native_only();
@@ -162,6 +165,7 @@ pub(super) fn decode_responses_input(
                 content: Vec::new(),
                 name: None,
             });
+            return Ok(goal_context);
         }
         "function_call_output" => {
             ensure_keys(
@@ -288,7 +292,7 @@ pub(super) fn decode_responses_input(
             )));
         }
     }
-    Ok(())
+    Ok(false)
 }
 
 fn decode_agent_message(

@@ -40,6 +40,7 @@ impl DecodeContext<'_> {
         NativeHistoryItem {
             native_index,
             modeled: before == self.unknown_generation.get(),
+            goal_context: false,
         }
     }
 }
@@ -154,6 +155,7 @@ fn decode_responses(
                 let internal_metadata =
                     responses_options::internal_chat_message_metadata(context, item)?;
                 let item_type = item.get("type").and_then(Value::as_str);
+                let mut goal_context = false;
                 if item_type == Some("web_search_call") {
                     let mut native_item = item.clone();
                     native_item
@@ -199,7 +201,8 @@ fn decode_responses(
                     {
                         context.mark_native_only();
                     }
-                    decode_responses_input(context, item, &mut messages, item_status)?;
+                    goal_context =
+                        decode_responses_input(context, item, &mut messages, item_status)?;
                     if let Some(status) = item_status {
                         responses_item_statuses.insert(message_index, status.into());
                     }
@@ -218,7 +221,9 @@ fn decode_responses(
                         responses_options::reasoning_history(context, item)?,
                     );
                 }
-                native_history.push(context.history_item(Some(native_index), before));
+                let mut native_item = context.history_item(Some(native_index), before);
+                native_item.goal_context = goal_context;
+                native_history.push(native_item);
             }
         }
         Some(_) => return Err(ModelIrError::InvalidField("input")),

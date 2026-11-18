@@ -152,6 +152,13 @@ impl ToolResultSuffix {
         let mut calls = Vec::new();
         let mut results = Vec::new();
         for (offset, (message, native)) in messages.iter().zip(&layout[start..]).enumerate() {
+            if native.goal_context
+                && message.role == MessageRole::Assistant
+                && message.content.is_empty()
+                && message.name.is_none()
+            {
+                continue;
+            }
             if !native.modeled {
                 return None;
             }

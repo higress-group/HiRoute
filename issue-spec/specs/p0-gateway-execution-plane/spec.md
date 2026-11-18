@@ -136,6 +136,15 @@ and is currently excluded. The real `create_goal` call/result keeps its own ID.
 Every other executable tool result still requires its protocol's nonempty call ID;
 an absent, null or invalid identity cannot be repaired or attached to another call.
 
+Ingress records a request-local marker for this fully recognized goal context.
+Tool-result suffix matching may skip that marked non-executable item before or
+after real tool results. The marker supplies no call or result evidence. Handoff
+still requires the original request prefix, a unique predecessor in the same
+Plan and compatible native turn, and a complete one-to-one match between the
+delivered call IDs and real result IDs. Replayed calls must retain their identity
+and arguments. Unknown context fields or unfinished context status cannot select
+this exception. Native replay and history fingerprints retain the original item.
+
 Native Responses history preserves message.phase, supported turn metadata, reasoning
 fields/summary, nonempty encrypted_content, and legitimate completed item states;
 no process-local reasoning-owner registration is required. For the registered

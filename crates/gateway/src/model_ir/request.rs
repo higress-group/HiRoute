@@ -89,6 +89,7 @@ pub struct NativeHistoryItem {
     /// None represents the scalar Responses input; otherwise a native array index.
     pub native_index: Option<usize>,
     pub modeled: bool,
+    pub goal_context: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

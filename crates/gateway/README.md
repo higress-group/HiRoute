@@ -559,7 +559,13 @@ Codex also appends a `function_call_output` named `agent.goal_objective` without
 preserves that exact form as unmodeled native context; it adds no ToolResult or
 user intent. Native Responses replay retains the original item, while Chat and
 Messages candidates are excluded without an equivalent mapping. Ordinary tool
-results retain strict call identity. [Adapter cases](src/adapters/tests/goal_context.rs)
+results retain strict call identity. Ingress marks fully recognized goal context
+for the [tool-result suffix matcher](src/agent_turn_history/tool_continuation.rs),
+which can skip it before or after genuine results when finding a unique delivered
+tool predecessor. The real call/result set, arguments, request prefix, Plan and
+native turn still establish the handoff. Extra context fields and unfinished
+context stay outside that exception. [Handoff cases](src/agent_turn_history/goal_context_tests.rs),
+[adapter cases](src/adapters/tests/goal_context.rs)
 and [listener cases](../../tools/e2e-harness/tests/p0_gateway_runtime/codex_goal_context.rs)
 cover goal continuation, large Replay-backed text and protocol fallback.
 

@@ -95,3 +95,111 @@ fn codex_goal_context_excludes_unrepresentable_protocols_without_weakening_resul
         assert_eq!(classifier_body(&native, 0)["input"], body["input"]);
     }
 }
+
+#[cfg(all(unix, debug_assertions))]
+#[test]
+fn codex_goal_context_handoff_preserves_the_turn_while_response_capture_is_paused() {
+    use super::native_encrypted_continuation::{message, streamed};
+    use super::native_history::{headers, reply};
+
+    for goal_before_result in [false, true] {
+        let call = json!({"type":"function_call","id":"fc-goal","call_id":"call-goal",
+            "name":"create_goal","arguments":"{}","status":"completed"});
+        let regular = NativeProvider::start(vec![
+            streamed("goal-call", vec![call]),
+            streamed(
+                "goal-final",
+                vec![message("final", "final_answer", "Complete.")],
+            ),
+        ]);
+        let primary = NativeProvider::start(vec![streamed(
+            "different-route",
+            vec![message(
+                "different-final",
+                "final_answer",
+                "Different route.",
+            )],
+        )]);
+        let classifier =
+            NativeProvider::start(vec![reply(CLASSIFIER_SIMPLE), reply(CLASSIFIER_COMPLEX)]);
+        let fixture = RuntimeFixture::launch_rest_classified_with_native_control(
+            &[&regular, &primary, &classifier],
+            1,
+        );
+        let pause = fixture
+            .observation_root
+            .as_ref()
+            .unwrap()
+            .join("response-capture.pause");
+        std::fs::write(&pause, b"").unwrap();
+        let native_headers = headers(
+            "codex",
+            "goal-handoff-session",
+            "main",
+            "goal-turn",
+            "before",
+        );
+        let native_headers = native_headers
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.as_str()))
+            .collect::<Vec<_>>();
+        let send = |input: &[Value]| {
+            let payload = serde_json::to_vec(&json!({"model":MODEL,"stream":true,"store":false,
+                "input":input,"tools":[{"type":"function","name":"create_goal","parameters":{"type":"object"}}]})).unwrap();
+            let body = read_chunked_eos(open_request(
+                fixture.address,
+                "POST",
+                "/v1/responses",
+                &native_headers,
+                &payload,
+            ));
+            super::codex_acp_history::completed_stream(&body)
+        };
+        let mut input = vec![json!({"role":"user","content":"Complete the synthetic goal."})];
+        let first = send(&input);
+        input.extend(first["output"].as_array().unwrap().clone());
+        let goal = json!({"type":"function_call_output","id":"goal-context",
+            "name":"goal_objective","namespace":"agent","output":"Complete the synthetic goal."});
+        let result = json!({"type":"function_call_output","call_id":"call-goal","output":"active"});
+        input.extend(if goal_before_result {
+            [goal, result]
+        } else {
+            [result, goal]
+        });
+        let final_response = send(&input);
+        std::fs::remove_file(pause).unwrap();
+        assert_eq!(
+            (regular.calls(), primary.calls(), classifier.calls()),
+            (2, 0, 1)
+        );
+        assert_eq!(
+            final_response["output"][0]["content"][0]["text"],
+            "Complete."
+        );
+        assert_eq!(classifier_body(&regular, 1)["input"], json!(input));
+
+        let facts = wait_execution_facts(&fixture, 2);
+        let timeline = super::observed_history::timeline(&facts);
+        assert_eq!(timeline.turns.len(), 1);
+        assert_eq!(timeline.turns[0].requests.len(), 2);
+        let admissions = facts
+            .iter()
+            .filter(|event| event["fact"]["kind"] == "agent_turn_admitted")
+            .collect::<Vec<_>>();
+        assert_eq!(admissions.len(), 2);
+        assert_eq!(
+            admissions[0]["fact"]["agent_turn_id"],
+            admissions[1]["fact"]["agent_turn_id"]
+        );
+        let sources = facts
+            .iter()
+            .filter(|event| event["fact"]["kind"] == "route_decision")
+            .map(|event| {
+                event["fact"]["complexity"]["decision_source"]
+                    .as_str()
+                    .unwrap()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(sources, ["external_classifier", "inherited"]);
+    }
+}
