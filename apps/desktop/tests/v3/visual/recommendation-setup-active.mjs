@@ -22,6 +22,14 @@ const optionsFixture = { identity, featured, catalog };
 const results = [];
 const readyBinding = 'binding/recommendation/qwen4';
 const savedSource = 'source/recommendation/bailian';
+const capturedApi = JSON.parse(await readFile(new URL('../../../../../contracts/routing/trial-retained-api-capture.v1.json', import.meta.url)));
+const retainedBinding = 'binding/recommendation/retained-qwen4';
+const retainedApi = {
+  connection: { ...capturedApi.connection, source_id: 'source/recommendation/retained-payg', binding_id: retainedBinding,
+    model_configuration_id: identity, display_name: 'Bailian PAYG retained API' },
+  candidate: { ...capturedApi.candidate, binding_id: retainedBinding, model_configuration_id: identity,
+    display_name: 'Qwen4-Max', billing_class: 'paid', native_ingress_protocols: ['responses','chat_completions','messages'] },
+};
 
 async function click(selector, label = '') {
   await waitFor(client, `(()=>{const e=[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>e.getClientRects().length&&!e.disabled&&e.textContent.includes(${JSON.stringify(label)}));if(!e)return false;e.click();return true;})()`);
@@ -41,7 +49,7 @@ async function shot(name) {
   const image = await client.send('Page.captureScreenshot', { format: 'png' });
   await writeFile(path.join(output, `${name}.png`), Buffer.from(image.data, 'base64'));
 }
-async function setup({ language = 'zh', theme = 'light', width = 1200, height = 813, ready = true, reuse = true, priorDraft = true, route = true, mutable = true } = {}) {
+async function setup({ language = 'zh', theme = 'light', width = 1200, height = 813, ready = true, reuse = true, priorDraft = true, route = true, mutable = true, retained = false, availability = 'needs_connection' } = {}) {
   await navigate(client, `${base}product-shell.html`, { width, height });
   await waitFor(client, 'Boolean(window.productShell) && !!document.querySelector(".sidebar")');
   await evaluate(client, `(() => {
@@ -60,6 +68,9 @@ async function setup({ language = 'zh', theme = 'light', width = 1200, height = 
     }
     if (!${route}) c.desktop.catalog = { plans: [], drafts: [] };
     c.baseline = structuredClone(c.desktop.catalog);
+    const retainedApi=${JSON.stringify(retainedApi)};
+    c.retainedApiConnections=${retained} ? [retainedApi.connection] : [];
+    c.retainedApiCandidates=${retained} ? [retainedApi.candidate] : [];
     const member = { ...c.management.sources[0].models[0], binding_id: '${readyBinding}', model_ref: 'model-ref/qwen4',
       revision: 1, upstream_model_id: 'qwen4-max', display_name: 'Qwen4-Max', catalog_configuration_id: undefined,
       native_reasoning: { kind: 'discrete', parameter: 'reasoning_effort', profiles: ['low','high','xhigh'], default_profile: 'high' },
@@ -77,7 +88,7 @@ async function setup({ language = 'zh', theme = 'light', width = 1200, height = 
     if (${reuse}) c.management.sources.push(token);
     c.handlers.model_availability = () => ({ featured, models: [
       { model_configuration_id: identity, display_name: 'Qwen4-Max', origin: { kind:'embedded', client_version:'0.6.4' },
-        availability: { kind: 'descriptive_only' }, binding_ids: [], facts: { publisher_id:'publisher.alibaba-qwen', context_tokens:1000000, tool:true, vision:true, reasoning:null } },
+        availability: { kind: ${JSON.stringify(availability)} }, binding_ids: ${retained && availability === 'executable'} ? ['${retainedBinding}'] : [], facts: { publisher_id:'publisher.alibaba-qwen', context_tokens:1000000, tool:true, vision:true, reasoning:null } },
       { model_configuration_id: featured[1].model_configuration_id, display_name:'DeepSeek V4.1 Flash', origin:{ kind:'feed', sequence:16, as_of:featured[1].included_on },
         availability: { kind: 'needs_connection' }, binding_ids: [], facts:null },
     ] });
@@ -90,6 +101,7 @@ async function setup({ language = 'zh', theme = 'light', width = 1200, height = 
         billing_class: m.presentation?.billing_class ?? 'unknown',
         routable: source.state === 'ready' && m.presentation?.availability === 'available', ingress_protocols: ['responses','messages'],
       })));
+      value.candidates.push(...c.retainedApiCandidates);
       if (value.authoring) value.authoring.candidate_defaults.push({ binding_id: member.binding_id, economy: { kind:'profile',profile:'low' }, primary: { kind:'profile',profile:'high' } });
       return value;
     };
@@ -97,7 +109,7 @@ async function setup({ language = 'zh', theme = 'light', width = 1200, height = 
     c.handlers.trial_setup_snapshot = () => ({
       schema: 'hiroute.trial-setup-snapshot/v1',
       options: options({ input: { authoring:{} } }),
-      management: { revisions:c.management.revisions, retained_api_connections:[], sources:c.management.sources.map(source=>({
+      management: { revisions:c.management.revisions, retained_api_connections:c.retainedApiConnections, sources:c.management.sources.map(source=>({
         ...source, access_kind: source.connection_identity?.access_kind ?? 'api',
         models:source.models.map(model=>({ ...model, availability: model.presentation?.availability ?? 'unknown', catalog_admitted:!!model.catalog_configuration_id })),
       })) },
@@ -271,6 +283,60 @@ try {
     assert.equal(await evaluate(client,`[...document.querySelectorAll('${button}')].find(e=>e.textContent.includes('Replace a model')).disabled`),true);
     await click(button,'Create a trial route');
     await waitFor(client,`[...document.querySelectorAll('.trial-model-card')].some(e=>e.textContent.includes('DeepSeek')&&e.getAttribute('aria-pressed')==='true')`);
+    assert.equal(await evaluate(client,`${writes}.length`),0);
+  });
+  for (const availability of ['needs_connection','executable']) {
+    await run(`retained-api-trial-${availability}`, async () => {
+      await setup({language:'en',ready:false,reuse:false,retained:true,availability});
+      await begin('en',false);
+      await waitFor(client, `document.querySelector('${dialog}')?.textContent.includes('Bailian PAYG retained API')`);
+      await shot(`recommendation-retained-api-${availability}`);
+      await click(button,'Use selected connection');
+      await waitFor(client, `document.querySelector('.trial-page [data-trial-target=trial]')?.textContent.includes('Bailian PAYG retained API')`);
+      assert.equal(await evaluate(client, `productShell.commands.filter(c=>['check_saved_model_connection_v2','check_registered_model_connection_v2','register_protected_model_input','apply_compute_save','preview_plan_editor'].includes(c.command)).length`),0);
+    });
+  }
+  await run('retained-api-replacement-preserves-draft', async () => {
+    await setup({language:'en',ready:false,reuse:false,retained:true,availability:'executable'});
+    await begin('en');
+    await click(button,'Use selected connection');
+    await position('en');
+    await shot('recommendation-retained-api-replacement');
+    await click(button,'Save draft');
+    await waitFor(client, `${writes}.length === 1 && !!document.querySelector('.routing-page .route-candidate[data-binding-id="${retainedBinding}"]')`);
+    const {before, after} = await evaluate(client,'({before:productShell.baseline,after:productShell.desktop.catalog})');
+    const expected=structuredClone(before.drafts[0].editor);
+    // Fixed provider reasoning has no editable selection; discard the old model's setting.
+    expected.smart.economy[0]={binding_id:retainedBinding};
+    assert.deepEqual(after.plans,before.plans);
+    assert.deepEqual(after.drafts[0].editor,expected);
+    assert.equal(after.drafts[0].revision,4);
+    assert.equal(await evaluate(client, `productShell.commands.filter(c=>c.command==='apply_compute_save').length`),0);
+  });
+  await run('retained-api-rejects-unroutable-or-different-model', async () => {
+    await setup({language:'en',ready:false,reuse:false,retained:true});
+    await evaluate(client, `(()=>{
+      const row=productShell.retainedApiConnections[0],candidate=productShell.retainedApiCandidates[0];
+      productShell.retainedApiConnections=[];productShell.retainedApiCandidates=[];
+      for(const kind of ['record-mismatch','candidate-mismatch','unroutable','missing']) {
+        const binding_id=row.binding_id+'/'+kind;
+        productShell.retainedApiConnections.push({...row,binding_id,model_configuration_id:kind==='record-mismatch'?'model.other':row.model_configuration_id});
+        if(kind!=='missing')productShell.retainedApiCandidates.push({...candidate,binding_id,model_configuration_id:kind==='candidate-mismatch'?'model.other':candidate.model_configuration_id,routable:kind!=='unroutable'});
+      }
+    })()`);
+    await begin('en');
+    await waitFor(client, `[...document.querySelectorAll('${button}')].some(e=>e.getClientRects().length&&e.textContent.includes('Create a connection'))`);
+    assert.equal(await evaluate(client, `document.querySelector('${dialog}')?.textContent.includes('Bailian PAYG retained API')`),false);
+    assert.equal(await evaluate(client, `${writes}.length`),0);
+  });
+  await run('retained-api-revision-change-blocks-save', async () => {
+    await setup({language:'en',ready:false,reuse:false,retained:true});
+    await begin('en');
+    await click(button,'Use selected connection');
+    await position('en');
+    await evaluate(client,'productShell.retainedApiConnections[0].binding_revision+=1');
+    await click(button,'Save draft');
+    await waitFor(client, `document.querySelector('${dialog} [role=alert]')?.textContent.includes('selected connection changed')`);
     assert.equal(await evaluate(client,`${writes}.length`),0);
   });
   await run('read-only', async () => {

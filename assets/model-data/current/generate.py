@@ -1048,7 +1048,7 @@ def compile_candidate():
                     data["offers"], codex_subscription_intent_offer(identity, reference)
                 )
             else:
-                data["offers"].append(copy.deepcopy(offer))
+                merge_catalog_intent_offer(data["offers"], offer)
         for rate in intent.get("price_rates", []):
             if rate["model_configuration_id"] != identity:
                 raise ValueError("catalog price crosses reference model identity")

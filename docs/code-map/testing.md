@@ -681,6 +681,50 @@ snapshot-bound provenance reads and retry; IPC is mocked, not native acceptance.
 The installed HTTPS lifecycle uses complete v2 publications, exact documented cache components,
 frozen main/Worker/Continue execution, removal, restart and embedded absorption.
 
+[Input-budget acceptance](../../crates/daemon/tests/support/model_input_limits_product.py)
+joins the production frontend prefill/check/save producers to the installed public CLI,
+daemon and publication path. Astra/Sol on Chat and Responses retain their independent
+922k input and 128k output limits; explicit 800k/64k edits survive metadata refresh,
+check/save, publication and restart. The published content reference binds the checked
+Gateway capability snapshot. Only external HTTPS responses are fixtures; this case does
+not claim provider capacity or send million-token requests.
+
+[Recommended-model acceptance](../../crates/daemon/tests/support/recommended_model_product.py)
+uses the candidate's exact publication with separately built current or recorded-release
+binaries. It verifies that only the installed PAYG Offer is offered, rejected credentials, checked
+membership, saved catalog identity, route publication and Worker execution. Its optional
+`--browser --evidence DIRECTORY` drives the packaged release Web UI through the real console
+host, including the recommendation card, connection form and return to the selected trial
+model; [the browser runner](../../apps/desktop/tests/v3/visual/released-recommendation-trial.mjs)
+does not mock IPC. Build the selected release's frontend and CLI/daemon with the existing
+`integration-test-hooks` feature through the configured validation runner, then run:
+
+```sh
+HIROUTE_HEADLESS_PRODUCT_BIN_DIR="$RELEASE_CHECKOUT/target/debug" \
+  python3 -B crates/daemon/tests/support/recommended_model_product.py "$RELEASE_CHECKOUT" \
+  --feed assets/model-feed/payload.json --browser --option bailian.payg.cn.v1 \
+  --evidence "$RESULTS_DIRECTORY"
+```
+
+Select exact source revisions from the release records and retain the build reports with
+the acceptance results. The test download hook is disabled after cache acceptance, so
+subsequent account checks use the released HTTPS client with an isolated provider and
+Agent fixture. This does not establish acceptance against a customer's live credentials.
+The Linux fixture needs OpenSSL and a C compiler; the optional browser runner uses `CHROME_BIN` or
+`google-chrome`. Its process-local DNS/socket fixture maps only the two documented provider
+hosts to loopback TLS and keeps the released registry, binaries and source code unchanged.
+Token Plan remains in the current UI's checked source-local recommendation flow; it cannot
+gain a new Offer authority through a feed in an older client. The recommendation browser
+scenarios cover this flow when the shared recommendation has `needs_connection` availability.
+The same scenarios retain authenticated API bindings admitted by the routing owner, using
+exact catalog identity and routable-candidate checks. They cover reuse for a trial, replacement
+without changing a published route, mismatched/unavailable bindings and a binding revision
+changing before draft save; reusing these connections does not check or save a new source.
+Use `--source-local --option bailian.token-plan.cn.v1` with the current client to run that
+actual console path through the same provider fixture and published-route execution. An
+optional `--baseline-feed` captures the released client's disabled card before it accepts
+the candidate, keeping the viewport, language and theme unchanged for comparison.
+
 Current dependency startup and journal partition regressions live in
 [`current_dependencies_tests.rs`](../../crates/local-storage/src/control/current_dependencies_tests.rs)
 and [`current_storage/tests.rs`](../../crates/local-storage/src/migrations/current_storage/tests.rs):

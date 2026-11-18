@@ -39,6 +39,8 @@ The UI and CLI connect to the same HiRoute service and share configuration and e
 
 In **New models** on Home, find a recommendation and select **Start configuration**. Choose **Create a trial route** or **Replace a model in an existing route**. To try a model outside the recommendations, select **Try another model** and pick a connected model.
 
+In older versions, **Connect and try** opens the trial directly. After receiving the current model catalog, Qwen4-Max can connect through Bailian PAYG. Use that product's key, complete its check, and save the connection. Token Plan uses the **Start configuration** connection flow described above.
+
 The trial has four steps: choose models, review and publish, map the Agent, and start using it.
 
 <figure>

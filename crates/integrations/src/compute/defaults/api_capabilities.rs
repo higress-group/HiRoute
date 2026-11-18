@@ -590,6 +590,15 @@ mod tests {
                         &BTreeMap::new(),
                     )
                 };
+            for model in ["gpt-6.2-astra", "gpt-6.2-sol"] {
+                let defaults = project(model, &unknown(), &[]).capabilities;
+                assert_eq!(defaults.context_tokens.value, Some(922_000));
+                assert_eq!(defaults.max_output_tokens.value, Some(128_000));
+                assert_eq!(
+                    defaults.tool.value,
+                    Some(protocol == UpstreamProtocol::Responses)
+                );
+            }
             let single = project("gpt-6.1-terra", &unknown(), &[]);
             assert_eq!(
                 single.capabilities.tool.value,
