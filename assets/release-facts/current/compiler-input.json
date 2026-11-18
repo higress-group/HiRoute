@@ -1533,6 +1533,51 @@
           "upstream_protocol": "chat_completions"
         },
         {
+          "capability_id": "cap.bailian.qwen4-max.payg.chat",
+          "connector_id": "connector.bailian.p0",
+          "connector_revision": 1,
+          "endpoint_profile_id": "endpoint.bailian.payg.cn.v1",
+          "endpoint_profile_revision": 1,
+          "evidence_digest": "sha256:ad24ac1e6b73ba05fadcd479597dda601b9d9a9af7b6284f7b45fa0c147cac5a",
+          "model_configuration_id": "model.catalog.qwen-4-max",
+          "protocol_endpoint_id": "endpoint.bailian.payg.cn.v1.chat",
+          "required_adapter_ref": "adapter.openai-chat.v1",
+          "required_adapter_revision": 1,
+          "revision": 1,
+          "upstream_model_id": "qwen4-max",
+          "upstream_protocol": "chat_completions"
+        },
+        {
+          "capability_id": "cap.bailian.qwen4-max.payg.messages",
+          "connector_id": "connector.bailian.p0",
+          "connector_revision": 1,
+          "endpoint_profile_id": "endpoint.bailian.payg.cn.v1",
+          "endpoint_profile_revision": 1,
+          "evidence_digest": "sha256:ad24ac1e6b73ba05fadcd479597dda601b9d9a9af7b6284f7b45fa0c147cac5a",
+          "model_configuration_id": "model.catalog.qwen-4-max",
+          "protocol_endpoint_id": "endpoint.bailian.payg.cn.v1.messages",
+          "required_adapter_ref": "adapter.anthropic-messages.v1",
+          "required_adapter_revision": 1,
+          "revision": 1,
+          "upstream_model_id": "qwen4-max",
+          "upstream_protocol": "messages"
+        },
+        {
+          "capability_id": "cap.bailian.qwen4-max.payg.responses",
+          "connector_id": "connector.bailian.p0",
+          "connector_revision": 1,
+          "endpoint_profile_id": "endpoint.bailian.payg.cn.v1",
+          "endpoint_profile_revision": 1,
+          "evidence_digest": "sha256:ad24ac1e6b73ba05fadcd479597dda601b9d9a9af7b6284f7b45fa0c147cac5a",
+          "model_configuration_id": "model.catalog.qwen-4-max",
+          "protocol_endpoint_id": "endpoint.bailian.payg.cn.v1.responses",
+          "required_adapter_ref": "adapter.openai-responses.v1",
+          "required_adapter_revision": 1,
+          "revision": 1,
+          "upstream_model_id": "qwen4-max",
+          "upstream_protocol": "responses"
+        },
+        {
           "capability_id": "cap.cpa.claude.claude-fable-5-1.messages",
           "connector_id": "connector.cpa.claude",
           "connector_revision": 1,
@@ -2380,9 +2425,10 @@
           "endpoint_profile_id": "endpoint.bailian.payg.cn.v1",
           "endpoint_profile_revision": 1,
           "entitlement_id": "payg-api-key",
-          "evidence_digest": "sha256:e390f2e13258cdd5b7b8605566fba44567ed24545ca7011b999b80f4da532aab",
+          "evidence_digest": "sha256:e1ede737fe229609461728e518a6d1fe3ba114da1727f0aed44fc7601cb12016",
           "model_configuration_ids": [
-            "model.bailian.qwen3-max-2026-01-23"
+            "model.bailian.qwen3-max-2026-01-23",
+            "model.catalog.qwen-4-max"
           ],
           "offer_id": "offer.bailian.payg.cn",
           "region_id": "cn",
@@ -109541,7 +109587,7 @@
     "schema": "hiroute.release-model-data/v2"
   },
   "official_model_data": {
-    "data_revision": 18,
+    "data_revision": 19,
     "pricing_facts": [
       {
         "pricing_key": "anthropic-platform/claude-fable-5-2/claude-fable-5-2",

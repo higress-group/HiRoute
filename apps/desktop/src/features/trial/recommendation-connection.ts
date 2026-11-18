@@ -7,7 +7,8 @@ import { readTrialSetup } from './read-setup';
 
 export function referenceModelKey(model: AvailableModel): string | undefined {
   const prefix = 'model.catalog.';
-  if (model.availability.kind === 'descriptive_only' && model.model_configuration_id.startsWith(prefix)) {
+  if (['descriptive_only', 'needs_connection', 'executable'].includes(model.availability.kind)
+    && model.model_configuration_id.startsWith(prefix)) {
     return model.model_configuration_id.slice(prefix.length) || undefined;
   }
 }

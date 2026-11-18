@@ -146,6 +146,17 @@ list shows no recommendations, with no bundled announcement fallback. Clearing
 recommendations changes publication bytes and requires a higher publication
 sequence, but does not require a data revision increase by itself.
 
+A recommendation intended for connection and trial must also carry endpoint capabilities
+and a matching Offer for its exact model configuration on the installed registry. Released
+clients use those references to distinguish `needs_connection` from `descriptive_only`;
+canonical model metadata and a visible card alone do not enable the trial action. Keep the
+documented product, endpoint, adapter and entitlement identities together. This directory
+intent permits a connection check, while execution still requires a checked, saved source.
+Conditional account availability, protocol qualification and scoped pricing remain intact.
+Feed admission can extend membership of an installed Offer, but cannot add a new Offer's
+authority. Qwen4-Max therefore reuses the installed Bailian PAYG Offer for released-client
+trials. Token Plan stays in the current UI's checked source-local configuration flow.
+
 The publisher retrieves the fixed v2 URL without redirects. A genuine 404 permits
 bootstrap; retrieval failure, invalid served content, publication rollback, semantic
 rollback or equal-revision conflicting content stops replacement. Identical exact

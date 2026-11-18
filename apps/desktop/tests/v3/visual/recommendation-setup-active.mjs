@@ -77,7 +77,7 @@ async function setup({ language = 'zh', theme = 'light', width = 1200, height = 
     if (${reuse}) c.management.sources.push(token);
     c.handlers.model_availability = () => ({ featured, models: [
       { model_configuration_id: identity, display_name: 'Qwen4-Max', origin: { kind:'embedded', client_version:'0.6.4' },
-        availability: { kind: 'descriptive_only' }, binding_ids: [], facts: { publisher_id:'publisher.alibaba-qwen', context_tokens:1000000, tool:true, vision:true, reasoning:null } },
+        availability: { kind: 'needs_connection' }, binding_ids: [], facts: { publisher_id:'publisher.alibaba-qwen', context_tokens:1000000, tool:true, vision:true, reasoning:null } },
       { model_configuration_id: featured[1].model_configuration_id, display_name:'DeepSeek V4.1 Flash', origin:{ kind:'feed', sequence:16, as_of:featured[1].included_on },
         availability: { kind: 'needs_connection' }, binding_ids: [], facts:null },
     ] });

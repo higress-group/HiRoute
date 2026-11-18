@@ -865,7 +865,7 @@ fn connection_templates_cover_current_api_and_free_options_without_inventory_gat
 }
 
 #[test]
-fn qwen4_max_metadata_survives_client_loading_without_executable_catalog_entries() {
+fn qwen4_max_metadata_exposes_registered_intents_without_qualifying_accounts() {
     let (registry, data) = fixture();
     let (manifest, registry_bytes, data_bytes) = encoded(&registry, &data);
     let catalog =
@@ -941,13 +941,33 @@ fn qwen4_max_metadata_survives_client_loading_without_executable_catalog_entries
     assert_eq!(prices[0].product_key, "bailian-payg-cn");
     assert_eq!(prices[0].currency, "CNY");
     assert_eq!(catalog.model_data().models.len(), 31);
-    assert!(
-        catalog
-            .model_data()
-            .model_endpoint_capabilities
+    let capabilities: Vec<_> = catalog
+        .model_data()
+        .model_endpoint_capabilities
+        .iter()
+        .filter(|capability| capability.upstream_model_id == "qwen4-max")
+        .collect();
+    assert_eq!(capabilities.len(), 3);
+    for profile in ["endpoint.bailian.payg.cn.v1"] {
+        let matching: Vec<_> = capabilities
             .iter()
-            .all(|capability| capability.upstream_model_id != "qwen4-max")
-    );
+            .filter(|capability| capability.endpoint_profile_id == profile)
+            .collect();
+        assert_eq!(matching.len(), 3);
+        let offers: Vec<_> = catalog
+            .model_data()
+            .offers
+            .iter()
+            .filter(|offer| offer.endpoint_profile_id == profile)
+            .collect();
+        assert_eq!(offers.len(), 1);
+        assert!(
+            offers[0]
+                .model_configuration_ids
+                .iter()
+                .any(|id| id == "model.catalog.qwen-4-max")
+        );
+    }
 }
 
 #[test]

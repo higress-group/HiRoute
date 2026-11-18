@@ -839,7 +839,74 @@
         "https://help.aliyun.com/zh/model-studio/qwen4-max"
       ],
       "collected_on": "2026-11-16",
-      "identity_note": "Descriptive recommendation. The saved connection determines the executable model, supported reasoning settings, and billing product."
+      "identity_note": "Directory intent for the official qwen4-max model on the China (Beijing) Bailian PAYG endpoints, reusing the Offer authority installed in released clients. Only a checked, saved connection admits execution. Token Plan remains documented conditional metadata and uses the source-local checked connection flow in current clients; no new entitlement is installed through the feed. Provider-default reasoning leaves protocol-specific controls to the provider. No flat token rate is inferred.",
+      "catalog_intent": {
+        "endpoint_capabilities": [
+          {
+            "capability_id": "cap.bailian.qwen4-max.payg.chat",
+            "revision": 1,
+            "model_configuration_id": "model.catalog.qwen-4-max",
+            "connector_id": "connector.bailian.p0",
+            "connector_revision": 1,
+            "endpoint_profile_id": "endpoint.bailian.payg.cn.v1",
+            "endpoint_profile_revision": 1,
+            "protocol_endpoint_id": "endpoint.bailian.payg.cn.v1.chat",
+            "upstream_protocol": "chat_completions",
+            "upstream_model_id": "qwen4-max",
+            "required_adapter_ref": "adapter.openai-chat.v1",
+            "required_adapter_revision": 1,
+            "evidence_digest": "sha256:ad24ac1e6b73ba05fadcd479597dda601b9d9a9af7b6284f7b45fa0c147cac5a"
+          },
+          {
+            "capability_id": "cap.bailian.qwen4-max.payg.messages",
+            "revision": 1,
+            "model_configuration_id": "model.catalog.qwen-4-max",
+            "connector_id": "connector.bailian.p0",
+            "connector_revision": 1,
+            "endpoint_profile_id": "endpoint.bailian.payg.cn.v1",
+            "endpoint_profile_revision": 1,
+            "protocol_endpoint_id": "endpoint.bailian.payg.cn.v1.messages",
+            "upstream_protocol": "messages",
+            "upstream_model_id": "qwen4-max",
+            "required_adapter_ref": "adapter.anthropic-messages.v1",
+            "required_adapter_revision": 1,
+            "evidence_digest": "sha256:ad24ac1e6b73ba05fadcd479597dda601b9d9a9af7b6284f7b45fa0c147cac5a"
+          },
+          {
+            "capability_id": "cap.bailian.qwen4-max.payg.responses",
+            "revision": 1,
+            "model_configuration_id": "model.catalog.qwen-4-max",
+            "connector_id": "connector.bailian.p0",
+            "connector_revision": 1,
+            "endpoint_profile_id": "endpoint.bailian.payg.cn.v1",
+            "endpoint_profile_revision": 1,
+            "protocol_endpoint_id": "endpoint.bailian.payg.cn.v1.responses",
+            "upstream_protocol": "responses",
+            "upstream_model_id": "qwen4-max",
+            "required_adapter_ref": "adapter.openai-responses.v1",
+            "required_adapter_revision": 1,
+            "evidence_digest": "sha256:ad24ac1e6b73ba05fadcd479597dda601b9d9a9af7b6284f7b45fa0c147cac5a"
+          }
+        ],
+        "offers": [
+          {
+            "offer_id": "offer.bailian.payg.cn",
+            "revision": 1,
+            "endpoint_profile_id": "endpoint.bailian.payg.cn.v1",
+            "endpoint_profile_revision": 1,
+            "service_offering_id": "model-studio",
+            "entitlement_id": "payg-api-key",
+            "usage_scope": "workspace",
+            "region_id": "cn",
+            "model_configuration_ids": [
+              "model.catalog.qwen-4-max"
+            ],
+            "billing_class": "paid",
+            "evidence_digest": "sha256:ad24ac1e6b73ba05fadcd479597dda601b9d9a9af7b6284f7b45fa0c147cac5a"
+          }
+        ],
+        "price_rates": []
+      }
     }
   ],
   "current_provider_limits": [
