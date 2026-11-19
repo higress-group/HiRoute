@@ -38,8 +38,21 @@ import { candidateUnavailableMessage } from '../../plan-candidate-availability';
 import type { Options } from '../../plan-editor';
 import { TrialConnectedModelSelect, type ConnectedTrialModel } from './TrialConnectedModelSelect';
 import { TrialRequiredMark } from './TrialRequiredMark';
+import { readRecommendationRequestModelIds, recommendationConnections, referenceModelKey, sameRecommendationSourceRevisions } from './recommendation-connection';
+import type { ManagementSnapshot } from '../models/types';
 
 const ignoreRepresentedOperations = (_ids: string[]) => {};
+
+type ReferenceConnectionRead = {
+  modelKey: string;
+  scope?: { requestModelIds: ReadonlyMap<string, string>; identities: ManagementSnapshot };
+};
+type TrialConnection = {
+  model: AvailableModel;
+  requestModelIds?: ReadonlyMap<string, string>;
+  reuseRequestModelIds?: ReadonlyMap<string, string>;
+};
+type ConnectionPickOptions = { alreadyReleased?: boolean; inline?: boolean };
 
 function retainedApiIndex(management?: TrialManagementSnapshot) {
   const index = new Map<string, TrialRetainedApiConnection | null>();
@@ -85,8 +98,11 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
   const custom = isCustomExtension(classifier);
   const [services, setServices] = useState<DecisionServiceView[]>([]);
   const [servicesLoading, setServicesLoading] = useState(true), [servicesError, setServicesError] = useState(false);
-  const [connect, setConnect] = useState<AvailableModel | null>(null), [subscriptions, setSubscriptions] = useState(false);
-  const [reuseConnection, setReuseConnection] = useState<{ model: AvailableModel; sourceId: string; epoch: number; options?: ComputeConnectionOptions } | null>(null);
+  const [connect, setConnect] = useState<TrialConnection | null>(null), [subscriptions, setSubscriptions] = useState(false);
+  const [reuseConnection, setReuseConnection] = useState<{ model: AvailableModel; sourceId: string; epoch: number; options?: ComputeConnectionOptions; requestModelId?: string; requestModelIds?: ReadonlyMap<string, string> } | null>(null);
+  const [referenceRead, setReferenceRead] = useState<ReferenceConnectionRead>();
+  const [referenceRetry, setReferenceRetry] = useState(0);
+  const [inlineConnectionChoice, setInlineConnectionChoice] = useState<'idle' | 'checking' | 'changed'>('idle');
   const [reuseHidden, setReuseHidden] = useState(false);
   const [connectionHidden, setConnectionHidden] = useState(false);
   const [connectionState, setConnectionState] = useState<TrialConnectionState>('editing');
@@ -225,12 +241,38 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
     if (candidate.routable && !models.some(m => m.model_configuration_id === candidate.model_configuration_id)) models.push({ model_configuration_id: candidate.model_configuration_id, display_name: candidate.display_name, identity_stability: 'unknown', availability: { kind: 'executable' } });
   }
   const trial = models.find(m => m.model_configuration_id === trialId), primary = models.find(m => m.model_configuration_id === primaryId);
+  const reference = trial?.catalog && referenceModelKey(trial.catalog);
+  const currentReferenceRead = referenceRead?.modelKey === reference ? referenceRead : undefined;
+  const readScope = currentReferenceRead?.scope;
+  const management = data?.management;
+  // Omitting mismatched sources could make a multi-connection model look like a sole match.
+  const scope = useMemo(() => readScope && management && sameRecommendationSourceRevisions(management, readScope.identities)
+    ? readScope : undefined, [readScope, management]);
+  useEffect(() => {
+    if (!active || !reference) return;
+    let current = true;
+    setReferenceRead(undefined);
+    void Promise.all([
+      readRecommendationRequestModelIds(reference),
+      invoke<ManagementSnapshot>('compute_management_snapshot'),
+    ]).then(([requestModelIds, identities]) => {
+      if (current) setReferenceRead({ modelKey: reference, scope: { requestModelIds, identities } });
+    }).catch(() => { if (current) setReferenceRead({ modelKey: reference }); });
+    return () => { current = false; };
+  }, [active, reference, data?.management.revisions.target, referenceRetry]);
+  const referenceConnections = useMemo(() => scope && data && trial?.catalog
+    ? recommendationConnections(data, trial.catalog, scope.requestModelIds, scope.identities) : undefined, [scope, data, trial?.catalog]);
+  const referenceBindings = useMemo(() => new Set(referenceConnections?.ready.map(connection => connection.bindingId)), [referenceConnections]);
+  const canConnectTrial = !reference || Boolean(scope?.requestModelIds.size);
   function candidates(id: string) { return data?.options.candidates.filter(c => c.model_configuration_id === id && c.routable) ?? []; }
-  const trialCandidates = candidates(trialId), primaryCandidates = candidates(primaryId);
-  const soleTrial = trialCandidates.length === 1 ? trialCandidates[0] : undefined;
+  const trialCandidates = data?.options.candidates.filter(c => c.routable && (c.model_configuration_id === trialId || referenceBindings.has(c.binding_id))) ?? [];
+  // A catalog-scoped product may expose more connections than the exact catalog binding.
+  const soleTrial = trialCandidates.length === 1 && (!reference || scope) && inlineConnectionChoice === 'idle' ? trialCandidates[0] : undefined;
   const soleTrialMember = data?.management.sources.flatMap(source => source.models).find(member => member.binding_id === soleTrial?.binding_id);
-  const soleTrialCatalogMatch = !!soleTrial && ((soleTrialMember?.catalog_configuration_id === trialId && soleTrialMember.catalog_admitted) || !!retainedApiFor(data, soleTrial, retainedApi));
+  const soleTrialCatalogMatch = !!soleTrial && (referenceBindings.has(soleTrial.binding_id) || (soleTrialMember?.catalog_configuration_id === trialId && soleTrialMember.catalog_admitted) || !!retainedApiFor(data, soleTrial, retainedApi));
   const selectedTrial = trialBinding ? trialCandidates.find(c => c.binding_id === trialBinding) : soleTrialCatalogMatch ? soleTrial : undefined;
+  const isTrialModel = (modelId?: string) => !!modelId && (modelId === trialId || modelId === selectedTrial?.model_configuration_id);
+  const primaryCandidates = isTrialModel(primaryId) ? [] : candidates(primaryId);
   const selectedPrimary = primaryBinding ? primaryCandidates.find(c => c.binding_id === primaryBinding) : primaryCandidates.length === 1 ? primaryCandidates[0] : undefined;
   const actualTrialBinding = selectedTrial?.binding_id ?? trialBinding;
   const actualTrialSource = data?.management.sources.find(source => source.models.some(member => member.binding_id === actualTrialBinding));
@@ -255,6 +297,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
   };
   const backToSetup = (editor: Editor) => {
     setReviewDraft(editor);
+    setInlineConnectionChoice('idle');
     setThreshold(editor.smart.judgment.degree.simple_threshold_millis);
     setName(editor.display_name); setClassifier(editor.smart.classifier);
     const regular = editor.smart.economy[0], primary = editor.smart.primary[0];
@@ -283,17 +326,18 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
   const alias = trial ? createTrialAlias(trialName ?? trial.display_name, nonce) : '';
   const announcements = data ? modelAnnouncements(data.availability).entries : [];
   const featured = announcements.map(entry => entry.model_configuration_id);
-  const cards = [...new Set([...(initialModelId ? [initialModelId] : []), ...featured, ...(trialId ? [trialId] : [])])].flatMap(id => models.filter(m => m.catalog && m.model_configuration_id === id && m.availability.kind !== 'descriptive_only')).slice(0, 6);
-  const primaryOptions = models.filter(m => m.model_configuration_id !== trialId && candidates(m.model_configuration_id).length > 0);
+  const cards = [...new Set([...(initialModelId ? [initialModelId] : []), ...featured, ...(trialId ? [trialId] : [])])].flatMap(id => models.filter(m => m.catalog && m.model_configuration_id === id
+    && (m.availability.kind !== 'descriptive_only' || referenceModelKey(m.catalog)))).slice(0, 6);
+  const primaryOptions = models.filter(m => !isTrialModel(m.model_configuration_id) && candidates(m.model_configuration_id).length > 0);
   const source = (binding?: string) => retainedApiFor(data, data?.options.candidates.find(c => c.binding_id === binding), retainedApi)?.display_name ?? data?.management.sources.find(s => s.models.some(m => m.binding_id === binding))?.display_name;
   const bindingInfo = (binding?: string) => {
     const owner = data?.management.sources.find(s => s.models.some(m => m.binding_id === binding));
     return owner && { owner, member: owner.models.find(m => m.binding_id === binding)! };
   };
   const sourceKind = (binding?: string) => retainedApiFor(data, data?.options.candidates.find(c => c.binding_id === binding), retainedApi) ? 'API' : bindingInfo(binding)?.owner.access_kind === 'subscription' ? t('订阅', 'Subscription') : bindingInfo(binding)?.owner.access_kind === 'api' ? 'API' : t('类型未知', 'Unknown type');
-  const exactCatalogBinding = (modelId: string, bindingId: string) => !!retainedApiFor(data, data?.options.candidates.find(c => c.binding_id === bindingId && c.model_configuration_id === modelId), retainedApi) || (bindingInfo(bindingId)?.member.catalog_configuration_id === modelId && !!bindingInfo(bindingId)?.member.catalog_admitted);
+  const exactCatalogBinding = (modelId: string, bindingId: string) => (modelId === trialId && referenceBindings.has(bindingId)) || !!retainedApiFor(data, data?.options.candidates.find(c => c.binding_id === bindingId && c.model_configuration_id === modelId), retainedApi) || (bindingInfo(bindingId)?.member.catalog_configuration_id === modelId && !!bindingInfo(bindingId)?.member.catalog_admitted);
   const sourceLabel = (model: TrialModel) => {
-    const connections = candidates(model.model_configuration_id);
+    const connections = model.model_configuration_id === trialId ? trialCandidates : candidates(model.model_configuration_id);
     if (connections.length > 1) return t('多个接入', 'Multiple connections');
     if (connections.length === 1) {
       const label = source(connections[0].binding_id) ?? t('来源未确认', 'Source unconfirmed');
@@ -344,7 +388,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
     });
   }
   const agentMatches = !!mapping.agentId && agentRead.snapshot?.selected?.agent_id === mapping.agentId;
-  const readiness = trialReadiness({ language, trialId, trialUsable: usable(selectedTrial), trialReasoning: trialReasoning?.state,
+  const readiness = trialReadiness({ language, trialId, trialUsable: inlineConnectionChoice === 'idle' && usable(selectedTrial), trialReasoning: trialReasoning?.state,
     primaryId, primaryUsable: usable(selectedPrimary), primaryReasoning: primaryReasoning?.state, connectionOpen: !!reuseConnection || (!!connect && !connectionHidden && connectionState === 'editing'),
     connectionPending: connect && (connectionState === 'saving' || connectionState === 'uncertain') ? connectionState : null,
     decisionUsable: classifier.kind !== 'local_rules' && !!classifier.service.name && services.some(view => view.service.id === classifier.service.id && view.service.revision === classifier.service.revision),
@@ -367,7 +411,7 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
   }
   function cardState(model: TrialModel) {
     if (model.availability.kind === 'needs_newer_client' && !(unlinkedTrial && model.model_configuration_id === trialId)) return { tone: 'warn', text: t(`需要 HiRoute ${model.availability.version}`, `Requires HiRoute ${model.availability.version}`) };
-    const available = candidates(model.model_configuration_id);
+    const available = model.model_configuration_id === trialId ? trialCandidates : candidates(model.model_configuration_id);
     if (model.catalog && !(unlinkedTrial && model.model_configuration_id === trialId) && available.some(usable) && !available.some(candidate => exactCatalogBinding(model.model_configuration_id, candidate.binding_id) && usable(candidate))) return { tone: 'warn', text: t('请选择已保存模型，目录匹配未确认', 'Choose a saved model; catalog match unconfirmed') };
     if (available.some(usable)) return { tone: 'good', text: t('已连接', 'Connected') };
     if (available.length) return { tone: 'warn', text: t('接入当前不可用', 'Connection currently unavailable') };
@@ -376,22 +420,27 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
   function connectionPicker(role: 'trial' | 'primary') {
     const available = role === 'trial' ? trialCandidates : primaryCandidates;
     const selected = role === 'trial' ? selectedTrial : selectedPrimary;
-    if (available.length < 2) return null;
+    const reselect = role === 'trial' && inlineConnectionChoice === 'changed' && available.length > 0;
+    if (available.length < 2 && !reselect) return null;
+    const disabled = role === 'trial' && (pickerBusy || Boolean(reference && !scope));
     const label = (candidate: typeof available[number]) => `${source(candidate.binding_id) ?? t('来源未确认', 'Source unconfirmed')} · ${candidate.billing_class}`;
-    return <label className="field trial-connection-field"><span className="field-label">{t('使用的接入', 'Connection')}</span><select className="input" value={selected?.binding_id ?? ''} onChange={e => {
+    return <label className="field trial-connection-field"><span className="field-label">{t('使用的接入', 'Connection')}</span><select className="input" value={selected?.binding_id ?? ''} disabled={disabled} onChange={e => {
       const element = e.currentTarget, value = element.value;
       if (role === 'primary') { primaryOrigin.current = { kind: 'manual', agentId: mapping.agentId }; setPrimaryBinding(value); setPrimarySelection(undefined); return; }
-      if (value === selected?.binding_id) return;
+      if (disabled || pickerBusyRef.current || value === selected?.binding_id) return;
       const generation = selectionEpoch.current;
       void (async () => {
         if (connect && connectionState === 'editing' && !(await releaseConnection())) { element.value = selected?.binding_id ?? ''; return; }
         if (!live.current || generation !== selectionEpoch.current) return;
-        ++selectionEpoch.current; ++pickerEpoch.current;
-        setTrialBinding(value); setTrialChosen(undefined);
-        const member = bindingInfo(value)?.member;
-        setUnlinked(member && (!member.catalog_admitted || member.catalog_configuration_id !== trialId) ? value : '');
-        if (connect && connectionState !== 'editing') setConnectionHidden(true);
-        else if (connect) { setConnect(null); setConnectionHidden(false); }
+        if (!value) {
+          ++selectionEpoch.current; ++pickerEpoch.current;
+          selectTrialBinding(trialId, '', true, true);
+          return;
+        }
+        const owner = bindingInfo(value)?.owner;
+        const options = { alreadyReleased: true, inline: true };
+        if (owner) await chooseSavedBinding('trial', owner.source_id, value, options);
+        else await chooseRetainedBinding('trial', value, options);
       })();
     }}><option value="">{t('请选择', 'Select')}</option>{available.map((c, index) => <option key={c.binding_id} value={c.binding_id} disabled={!usable(c)}>{label(c)}{available.filter(other => label(other) === label(c)).length > 1 ? ` · ${index + 1}` : ''}</option>)}</select></label>;
   }
@@ -418,16 +467,33 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
       const matches = candidates(id);
       const owner = matches.length === 1 ? data?.management.sources.find(source => source.models.some(member => member.binding_id === matches[0].binding_id)) : undefined;
       const member = owner?.models.find(value => value.binding_id === matches[0]?.binding_id);
-      if (owner && member && matches[0] && bindingUsable(owner, member, matches[0])) { await chooseSavedBinding('trial', owner.source_id, matches[0].binding_id, true); return; }
-      if (matches.length === 1 && retainedApiFor(data, matches[0], retainedApi)) { await chooseRetainedBinding('trial', matches[0].binding_id, true); return; }
+      if (owner && member && matches[0] && bindingUsable(owner, member, matches[0])) { await chooseSavedBinding('trial', owner.source_id, matches[0].binding_id, { alreadyReleased: true }); return; }
+      if (matches.length === 1 && retainedApiFor(data, matches[0], retainedApi)) { await chooseRetainedBinding('trial', matches[0].binding_id, { alreadyReleased: true }); return; }
     }
     ++selectionEpoch.current; ++pickerEpoch.current; setUnlinked(''); setTrialId(id); setTrialBinding(''); setTrialChosen(undefined);
+    setInlineConnectionChoice('idle'); pickerBusyRef.current = false; setPickerBusy(false);
     if (connect && connectionState !== 'editing') setConnectionHidden(true); else { setConnect(null); setConnectionHidden(false); }
     if (id === primaryId) { primaryOrigin.current = { kind: 'unset', agentId: mapping.agentId }; setPrimaryId(''); setPrimaryBinding(''); setPrimarySelection(undefined); }
   })();
   const openPicker = (role: 'trial' | 'primary') => { ++pickerEpoch.current; pickerBusyRef.current = false; setPickerBusy(false); setPickerError(''); setPickerRole(role); };
   const closePicker = () => { ++pickerEpoch.current; pickerBusyRef.current = false; setPickerBusy(false); setPickerError(''); setPickerRole(null); };
-  const chooseSavedBinding = async (role: 'trial' | 'primary', sourceId: string, bindingId: string, alreadyReleased = false) => {
+  const connectionChanged = t('所选接入已变化或暂时无法读取，请核对后重新选择。', 'The selected connection changed or could not be read. Review it and choose again.');
+  function rejectConnectionChoice(role: 'trial' | 'primary', inline: boolean) {
+    if (inline) {
+      setTrialBinding(''); setTrialChosen(undefined); setUnlinked('');
+      setInlineConnectionChoice('changed');
+    } else {
+      setPickerRole(role); setPickerError(connectionChanged);
+    }
+  }
+  function selectTrialBinding(modelId: string, bindingId: string, linked: boolean, inline: boolean) {
+    if (!inline) setTrialId(modelId);
+    setTrialBinding(bindingId); setTrialChosen(undefined); setUnlinked(linked ? '' : bindingId);
+    setInlineConnectionChoice('idle');
+    if (connect && connectionState !== 'editing') setConnectionHidden(true); else { setConnect(null); setConnectionHidden(false); }
+    if (bindingId && modelId === primaryId) { setPrimaryId(''); setPrimaryBinding(''); setPrimarySelection(undefined); }
+  }
+  const chooseSavedBinding = async (role: 'trial' | 'primary', sourceId: string, bindingId: string, { alreadyReleased = false, inline = false }: ConnectionPickOptions = {}) => {
     const source = data?.management.sources.find(s => s.source_id === sourceId);
     const member = source?.models.find(m => m.binding_id === bindingId);
     const candidate = data?.options.candidates.find(c => c.binding_id === bindingId && c.routable);
@@ -435,49 +501,45 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
     if (role === 'trial' && connect && connectionState === 'editing' && !alreadyReleased && !(await releaseConnection())) return;
     const epoch = ++pickerEpoch.current, selection = role === 'trial' ? ++selectionEpoch.current : selectionEpoch.current;
     pickerBusyRef.current = true; setPickerBusy(true); setPickerError('');
+    if (inline) setInlineConnectionChoice('checking');
     const current = await refresh(false, true, {source_id: sourceId, bindings:[{binding_id: bindingId, model_ref:member.model_ref, revision:member.revision}], skipCatalogForNonRegistered:true});
     if (!live.current || epoch !== pickerEpoch.current || selection !== selectionEpoch.current) return;
     pickerBusyRef.current = false; setPickerBusy(false);
     const freshSource = current?.management.sources.find(s => s.source_id === sourceId);
     const freshMember = freshSource?.models.find(m => m.binding_id === bindingId && m.model_ref === member.model_ref && m.revision === member.revision && m.catalog_configuration_id === member.catalog_configuration_id);
     const freshCandidate = current?.options.candidates.find(c => c.binding_id === bindingId && c.model_configuration_id === candidate.model_configuration_id);
-    if (!freshSource || !freshMember || !freshCandidate || !bindingUsable(freshSource, freshMember, freshCandidate, current)) {
-      setPickerRole(role);
-      setPickerError(t('所选接入已变化或暂时无法读取，请核对后重新选择。', 'The selected connection changed or could not be read. Review it and choose again.'));
+    if (!freshSource || (inline && freshSource.revision !== source.revision) || !freshMember || !freshCandidate || !bindingUsable(freshSource, freshMember, freshCandidate, current)) {
+      rejectConnectionChoice(role, inline);
       return;
     }
     if (role === 'trial') {
-      setTrialId(freshCandidate.model_configuration_id); setTrialBinding(bindingId); setTrialChosen(undefined);
-      setUnlinked(freshMember.catalog_admitted && freshMember.catalog_configuration_id === freshCandidate.model_configuration_id ? '' : bindingId);
-      if (connect && connectionState !== 'editing') setConnectionHidden(true); else { setConnect(null); setConnectionHidden(false); }
-      if (freshCandidate.model_configuration_id === primaryId) { setPrimaryId(''); setPrimaryBinding(''); setPrimarySelection(undefined); }
+      const linked = freshMember.catalog_admitted && freshMember.catalog_configuration_id === (inline ? trialId : freshCandidate.model_configuration_id);
+      selectTrialBinding(freshCandidate.model_configuration_id, bindingId, linked, inline);
     } else {
       primaryOrigin.current = {kind:'manual', agentId:mapping.agentId};
       setPrimaryId(freshCandidate.model_configuration_id); setPrimaryBinding(bindingId); setPrimarySelection(undefined); setChoosingPrimary(false);
     }
     setPickerRole(null);
   };
-  const chooseRetainedBinding = async (role: 'trial' | 'primary', bindingId: string, alreadyReleased = false) => {
+  const chooseRetainedBinding = async (role: 'trial' | 'primary', bindingId: string, { alreadyReleased = false, inline = false }: ConnectionPickOptions = {}) => {
     const candidate = data?.options.candidates.find(value => value.binding_id === bindingId);
     const prior = retainedApiFor(data, candidate, retainedApi);
     if (!candidate || !prior || pickerBusyRef.current) return;
     if (role === 'trial' && connect && connectionState === 'editing' && !alreadyReleased && !(await releaseConnection())) return;
     const epoch = ++pickerEpoch.current, selection = role === 'trial' ? ++selectionEpoch.current : selectionEpoch.current;
     pickerBusyRef.current = true; setPickerBusy(true); setPickerError('');
+    if (inline) setInlineConnectionChoice('checking');
     const current = await refresh(false, true);
     if (!live.current || epoch !== pickerEpoch.current || selection !== selectionEpoch.current) return;
     pickerBusyRef.current = false; setPickerBusy(false);
     const freshCandidate = current?.options.candidates.find(value => value.binding_id === bindingId && value.model_configuration_id === candidate.model_configuration_id);
     const fresh = retainedApiFor(current, freshCandidate);
     if (!fresh || !freshCandidate || fresh.source_id !== prior.source_id || fresh.source_revision !== prior.source_revision || fresh.binding_revision !== prior.binding_revision || fresh.display_name !== prior.display_name) {
-      setPickerRole(role);
-      setPickerError(t('所选接入已变化或暂时无法读取，请核对后重新选择。', 'The selected connection changed or could not be read. Review it and choose again.'));
+      rejectConnectionChoice(role, inline);
       return;
     }
     if (role === 'trial') {
-      setTrialId(freshCandidate.model_configuration_id); setTrialBinding(bindingId); setTrialChosen(undefined); setUnlinked('');
-      if (connect && connectionState !== 'editing') setConnectionHidden(true); else { setConnect(null); setConnectionHidden(false); }
-      if (freshCandidate.model_configuration_id === primaryId) { setPrimaryId(''); setPrimaryBinding(''); setPrimarySelection(undefined); }
+      selectTrialBinding(freshCandidate.model_configuration_id, bindingId, true, inline);
     } else {
       primaryOrigin.current = {kind:'manual', agentId:mapping.agentId};
       setPrimaryId(freshCandidate.model_configuration_id); setPrimaryBinding(bindingId); setPrimarySelection(undefined); setChoosingPrimary(false);
@@ -486,6 +548,17 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
   };
   const step = mapped ? 4 : published ? 3 : review ? 2 : 1;
   const steps = [t('选择模型', 'Choose models'), t('核对并发布', 'Review and publish'), t('映射 Agent', 'Map the Agent'), t('开始使用', 'Start using it')];
+  function openTrialConnection() {
+    const model = trial?.catalog;
+    if (!model || !canConnectTrial) return;
+    const reuseRequestModelIds = referenceConnections && new Map(referenceConnections.reusable.flatMap(source =>
+      source.requestId ? [[source.sourceId, source.requestId] as const] : []));
+    connectionEpoch.current = ++selectionEpoch.current;
+    setConnectionState('editing');
+    setConnectionHidden(false);
+    setConnect({ model, requestModelIds: scope?.requestModelIds, reuseRequestModelIds });
+  }
+
   const setup = data && <div className="trial-setup"><fieldset disabled={catalogLoading || !mutable} className="trial-fields">
     <p className="field-help trial-required-hint">{t('* 表示需要完成的项目', '* marks required items')}</p>
     <section className="trial-card" data-trial-target="trial" tabIndex={-1}>
@@ -505,23 +578,36 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
         {rollingIdentity(trial.identity_stability) && <p className="field-help">{t('供应商可能更新同名模型；后续证据可能混合多个版本。', 'The provider may update this model alias; later evidence may mix versions.')}</p>}
         <p className="field-help">{t('目录或公告日期不能证明当前接入实际使用的版本。', 'A catalog or announcement date does not prove the version served by this connection.')}</p>
       </Disclosure>}
+      {inlineConnectionChoice === 'checking' && <p role="status" className="field-help">{t('正在确认所选接入…', 'Checking the selected connection…')}</p>}
+      {inlineConnectionChoice === 'changed' && <p role="alert" className="oc-inline-error">{connectionChanged}</p>}
       {connectionPicker('trial')}
       {trialBinding && !selectedTrial && <p className="oc-inline-error" role="alert">{t('所选试用接入当前不可用，请重新选择。', 'The selected trial connection is unavailable. Choose again.')}</p>}
       {selectedTrial && <p className="field-help"><strong>{bindingInfo(selectedTrial.binding_id)?.member.display_name ?? selectedTrial.display_name}</strong> · {source(selectedTrial.binding_id) ?? t('来源未确认', 'Source unconfirmed')} · {sourceKind(selectedTrial.binding_id)}{explicitUnlinkedTrial && <> · {t('使用此接入中的模型，目录版本未核实', 'Using the model from this connection; catalog version unconfirmed')}</>}</p>}
-      {!connect && trial?.catalog && trialCandidates.length > 0 && <button type="button" className="btn btn-quiet trial-inline-action" onClick={() => { connectionEpoch.current = ++selectionEpoch.current; setConnectionState('editing'); setConnectionHidden(false); setConnect(trial.catalog!); }}>{t('连接其他接入点', 'Connect another source')}</button>}
+      {!connect && reference && !canConnectTrial && (currentReferenceRead && !scope
+        ? <p role="alert" className="oc-inline-error">{readScope
+          ? t('读取期间接入发生了变化。', 'Connections changed while loading.')
+          : t('暂时无法读取此模型的接入方式。', 'Connection options for this model could not be read.')} <button type="button" className="btn btn-quiet" onClick={() => {
+            if (readScope) void refresh(false, true);
+            setReferenceRetry(value => value + 1);
+          }}>{t('重试', 'Retry')}</button></p>
+        : <p role="status" className="field-help">{scope ? t('当前版本暂无支持此模型的接入产品。', 'This version has no connection product for this model.') : t('正在读取此模型的接入方式…', 'Reading connection options for this model…')}</p>)}
+      {!connect && trial?.catalog && trialCandidates.length > 0 && <button type="button" className="btn btn-quiet trial-inline-action" disabled={!canConnectTrial} onClick={openTrialConnection}>{t('连接其他接入点', 'Connect another source')}</button>}
       {connectionHidden && <button type="button" className="btn btn-quiet trial-inline-action" data-trial-retry onClick={() => setConnectionHidden(false)}>{t('查看接入结果', 'Review connection result')}</button>}
       {reuseConnection && reuseHidden && <button type="button" className="btn" onClick={() => setReuseHidden(false)}>{t('查看接入结果', 'Review connection result')}</button>}
       {fieldError('trial') && <p id="trial-model-error" className="oc-inline-error">{fieldError('trial')}</p>}
       {reasoningPicker('trial')}
       {alias && <p className="field-help">{t('路由别名', 'Route alias')}: <code>{alias}</code></p>}
-      {connect && data && <div className="trial-connect-card" hidden={connectionHidden}><TrialConnectModel key={connect.model_configuration_id} model={connect} language={language} management={data.management} onReuseSource={async (sourceId, options) => {
-        if (!connect || !data.management.sources.some(source => source.source_id === sourceId && source.actions.includes('append_models')) || !await releaseConnection() || !live.current) return;
-        const target = connect;
+      {connect && data && <div className="trial-connect-card" hidden={connectionHidden}><TrialConnectModel key={connect.model.model_configuration_id} model={connect.model} language={language} management={data.management}
+        requestModelIds={connect.requestModelIds} reuseRequestModelIds={connect.reuseRequestModelIds} onReuseSource={async (sourceId, options) => {
+        const requestModelId = connect.reuseRequestModelIds?.get(sourceId);
+        if ((connect.requestModelIds && !requestModelId) || !data.management.sources.some(source => source.source_id === sourceId && source.actions.includes('append_models')) || !await releaseConnection() || !live.current) return;
         const epoch = ++selectionEpoch.current;
         setConnect(null); setConnectionHidden(false); setConnectionState('editing');
-        setReuseHidden(false); setReuseConnection({ model: target, sourceId, epoch, options });
-      }} mutable={mutable} onOperation={operationRef} onResolve={receipt => refresh(false, true, receipt)} onReceipt={() => setSavedReceipt(true)} onSelectionIntent={() => { ++pickerEpoch.current; return ++selectionEpoch.current; }} onStateChange={setConnectionState} onBack={recoverable => { if (recoverable) setConnectionHidden(true); else { if (!replacingConnection.current) ++selectionEpoch.current; setConnect(null); setConnectionState('editing'); setConnectionHidden(false); } void refresh(); }} onSaved={(_result, selection, intent) => { if (!live.current || (intent ?? connectionEpoch.current) !== selectionEpoch.current) return false; setSavedConnections(values => [...new Set([...values, selection.source])]); setTrialId(selection.modelId); setTrialBinding(selection.bindingId); setTrialChosen(undefined); setUnlinked(selection.linked ? '' : selection.bindingId); setConnect(null); setConnectionState('editing'); setConnectionHidden(false); void onRefresh(); return true; }} /></div>}
-      {!connect && trial?.catalog && !unlinkedTrial && !trialCandidates.length && trial.availability.kind !== 'needs_newer_client' && data && <div className="trial-connect-card"><div><strong>{t(`先接入 ${trial.display_name}`, `Connect ${trial.display_name} first`)}</strong><p className="field-help">{t('只读取这个服务的模型目录，不会发起付费推理。API Key 保存在本机。', 'Only the service model list is read; no paid inference runs. The API key stays on this device.')}</p></div><button type="button" className="btn btn-primary" onClick={() => { connectionEpoch.current = ++selectionEpoch.current; setConnectionState('editing'); setConnectionHidden(false); setConnect(trial.catalog!); }}>{t('在此接入', 'Connect here')}</button></div>}
+        setReuseHidden(false); setReuseConnection({ model: connect.model, sourceId, epoch, options, requestModelId, requestModelIds: connect.requestModelIds });
+      }} mutable={mutable} onOperation={operationRef} onResolve={receipt => refresh(false, true, receipt)} onReceipt={() => setSavedReceipt(true)} onSelectionIntent={() => { ++pickerEpoch.current; return ++selectionEpoch.current; }} onStateChange={setConnectionState} onBack={recoverable => { if (recoverable) setConnectionHidden(true); else { if (!replacingConnection.current) ++selectionEpoch.current; setConnect(null); setConnectionState('editing'); setConnectionHidden(false); } void refresh(); }} onSaved={(_result, selection, intent) => { if (!live.current || (intent ?? connectionEpoch.current) !== selectionEpoch.current) return false; setSavedConnections(values => [...new Set([...values, selection.source])]); setTrialId(selection.modelId); setTrialBinding(selection.bindingId); setTrialChosen(undefined); setUnlinked(selection.linked ? '' : selection.bindingId); setInlineConnectionChoice('idle'); setConnect(null); setConnectionState('editing'); setConnectionHidden(false); void onRefresh(); return true; }} /></div>}
+      {!connect && trial?.catalog && !unlinkedTrial && !trialCandidates.length && trial.availability.kind !== 'needs_newer_client' && data && <div className="trial-connect-card"><div><strong>{t(`先接入 ${trial.display_name}`, `Connect ${trial.display_name} first`)}</strong><p className="field-help">{reference
+        ? t('检查会向所选服务发送测试请求，可能产生费用。API Key 保存在本机。', 'The check sends a test request to the selected service and may incur charges. The API key stays on this device.')
+        : t('只读取这个服务的模型目录，不会发起付费推理。API Key 保存在本机。', 'Only the service model list is read; no paid inference runs. The API key stays on this device.')}</p></div><button type="button" className="btn btn-primary" disabled={!canConnectTrial} onClick={openTrialConnection}>{t('在此接入', 'Connect here')}</button></div>}
       <TrialProtectionExplanation classifier={classifier} language={language} />
     </section>
     <section className="trial-card trial-card-pair">
@@ -591,13 +677,13 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
       <div className="trial-picker"><p className="field-help">{t('选择此角色使用的实际模型；不会创建接入或发起推理。', 'Choose the actual model for this role. This does not create a connection or run inference.')}</p>{pickerBusy && <p role="status">{t('正在确认所选接入…', 'Checking the selected connection…')}</p>}{pickerError && <p role="alert" className="oc-inline-error">{pickerError}</p>}
         {data.management.sources.map(source => <section className="trial-picker-source" key={source.source_id}>
           <h3>{source.display_name}{data.management.sources.filter(s => s.display_name === source.display_name).length > 1 ? ` · ${data.management.sources.filter(s => s.display_name === source.display_name).indexOf(source) + 1}` : ''} <span className="badge no-dot">{source.access_kind === 'subscription' ? t('订阅', 'Subscription') : source.access_kind === 'api' ? 'API' : t('类型未知', 'Unknown type')}</span></h3>
-          {source.models.map(member => { const candidate = data.options.candidates.find(c => c.binding_id === member.binding_id); const sameAsTrial = pickerRole === 'primary' && candidate?.model_configuration_id === trialId; const available = bindingUsable(source, member, candidate) && !sameAsTrial; const recommended = available && member.catalog_admitted && !!member.catalog_configuration_id && member.catalog_configuration_id === (pickerRole === 'trial' ? trialId : primaryId) && candidate?.model_configuration_id === member.catalog_configuration_id; return <div className="trial-picker-row" key={member.binding_id}><button type="button" className="trial-choice" disabled={!available} aria-disabled={pickerBusy || !available} onClick={() => void chooseSavedBinding(pickerRole, source.source_id, member.binding_id)}><strong>{member.display_name}</strong><span>{member.upstream_model_id}{recommended ? ` · ${t('与推荐模型匹配', 'Matches recommendation')}` : ` · ${t('其他已接入模型', 'Other connected models')}`}</span>{!available && <span>{sameAsTrial ? t('已选为试用模型，请为主力选择其他模型。', 'Already selected for trial. Choose a different Primary model.') : unavailableReason(source, member)}</span>}</button>{pickerRole === 'primary' && !available && !sameAsTrial && <button type="button" className="btn btn-quiet" disabled={pickerBusy} onClick={() => { setAppendIntent(false); setManageSource(source.source_id); }}>{t('检查接入', 'Review connection')}</button>}</div>; })}
+          {source.models.map(member => { const candidate = data.options.candidates.find(c => c.binding_id === member.binding_id); const sameAsTrial = pickerRole === 'primary' && isTrialModel(candidate?.model_configuration_id); const available = bindingUsable(source, member, candidate) && !sameAsTrial; const recommended = available && exactCatalogBinding(pickerRole === 'trial' ? trialId : primaryId, member.binding_id); return <div className="trial-picker-row" key={member.binding_id}><button type="button" className="trial-choice" disabled={!available} aria-disabled={pickerBusy || !available} onClick={() => void chooseSavedBinding(pickerRole, source.source_id, member.binding_id)}><strong>{member.display_name}</strong><span>{member.upstream_model_id}{recommended ? ` · ${t('与推荐模型匹配', 'Matches recommendation')}` : ` · ${t('其他已接入模型', 'Other connected models')}`}</span>{!available && <span>{sameAsTrial ? t('已选为试用模型，请为主力选择其他模型。', 'Already selected for trial. Choose a different Primary model.') : unavailableReason(source, member)}</span>}</button>{pickerRole === 'primary' && !available && !sameAsTrial && <button type="button" className="btn btn-quiet" disabled={pickerBusy} onClick={() => { setAppendIntent(false); setManageSource(source.source_id); }}>{t('检查接入', 'Review connection')}</button>}</div>; })}
           {pickerRole === 'primary' && source.actions.includes('append_models') && <button type="button" className="btn btn-quiet" disabled={pickerBusy} onClick={() => { setAppendIntent(true); setManageSource(source.source_id); }}>{t('向此接入添加模型', 'Add model to this connection')}</button>}
         </section>)}
         {data.management.retained_api_connections.map(connection => {
           const candidate = data.options.candidates.find(value => value.binding_id === connection.binding_id);
           const exact = retainedApiFor(data, candidate, retainedApi);
-          const sameAsTrial = pickerRole === 'primary' && candidate?.model_configuration_id === trialId;
+          const sameAsTrial = pickerRole === 'primary' && isTrialModel(candidate?.model_configuration_id);
           const available = !!exact && !sameAsTrial;
           return <section className="trial-picker-source" key={`retained-${connection.binding_id}`}>
             <h3>{connection.display_name} <span className="badge no-dot">API</span></h3>
@@ -613,9 +699,12 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
       <div hidden={!!decisionSource}><DecisionServicesPage language={language} active mutable={mutable} intent={decision} plans={snapshot?.catalog.plans} drafts={snapshot?.catalog.drafts} sourceRefreshKey={sourceRefreshKey} returnLabel={t('返回试用', 'Back to trial')} onChanged={() => void refreshServices()} onReturn={() => void closeDecision()} onManageSource={sourceId => setDecisionSource(sourceId)} onUse={service => { serviceTouched.current = true; decisionSelect.current?.(service); setDecision(null); void refreshServices(); }} /></div>
       {decisionSource && <><div className="decision-detour" role="note"><button type="button" className="btn btn-quiet" onClick={() => void returnToDecision()}><UiIcon name="arrowLeft" />{t('返回决策模型 — 草稿已保留', 'Back to decision model — draft retained')}</button></div><ModelManagementPage agents={agentRead.snapshot?.choices} language={language} active trustedAuthority={mutable} initialSourceId={decisionSource} scanOnMount={false} onOperation={operationRef} onRecoveryRefresh={() => void refresh()} onChanged={() => { void refresh(false, true); void onRefresh(); }} plans={snapshot?.catalog.plans} /></>}
     </Dialog>}
-    {reuseConnection && <TrialReuseConnection visible={!reuseHidden} key={`${reuseConnection.sourceId}:${reuseConnection.epoch}`} model={reuseConnection.model} sourceId={reuseConnection.sourceId} options={reuseConnection.options} language={language} mutable={mutable} onOperation={operationRef} onClose={recoverable => { if (recoverable) setReuseHidden(true); else { ++selectionEpoch.current; setReuseConnection(null); } }} onUse={async (selected: ReusedTrialBinding) => {
+    {reuseConnection && <TrialReuseConnection visible={!reuseHidden} key={`${reuseConnection.sourceId}:${reuseConnection.epoch}`} model={reuseConnection.model} sourceId={reuseConnection.sourceId} options={reuseConnection.options} requestModelId={reuseConnection.requestModelId} requestModelIds={reuseConnection.requestModelIds} language={language} mutable={mutable} onOperation={operationRef} onClose={recoverable => { if (recoverable) setReuseHidden(true); else { ++selectionEpoch.current; setReuseConnection(null); } }} onUse={async (selected: ReusedTrialBinding) => {
         const context = reuseConnection;
-        const current = await refresh(false, true);
+        const [current, identities] = await Promise.all([
+          refresh(false, true),
+          context.requestModelIds ? invoke<ManagementSnapshot>('compute_management_snapshot') : undefined,
+        ]);
         if (!live.current) return false;
         const source = current?.management.sources.find(source => source.source_id === selected.sourceId);
         const member = source?.models.find(member => member.binding_id === selected.bindingId && member.model_ref === selected.modelRef && member.revision === selected.revision);
@@ -627,8 +716,13 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
           void onRefresh(); return true;
         }
         if (!bindingUsable(source, member, candidate, current)) return false;
+        if (current && context.requestModelIds && !recommendationConnections(current, context.model, context.requestModelIds, identities).ready.some(
+          connection => connection.bindingId === selected.bindingId && connection.sourceId === selected.sourceId
+            && connection.modelRef === selected.modelRef && connection.revision === selected.revision,
+        )) return false;
         setTrialId(candidate.model_configuration_id); setTrialBinding(selected.bindingId); setTrialChosen(undefined);
         setUnlinked(member.catalog_admitted && member.catalog_configuration_id === candidate.model_configuration_id ? '' : selected.bindingId);
+        setInlineConnectionChoice('idle');
         setSavedConnections(values => [...new Set([...values, source.display_name])]);
         if (candidate.model_configuration_id === primaryId) { setPrimaryId(''); setPrimaryBinding(''); setPrimarySelection(undefined); }
         setReuseConnection(null); void onRefresh(); return true;

@@ -160,8 +160,7 @@ async function setup({ language = 'zh', theme = 'light', width = 1200, height = 
     localStorage.setItem('hiroute.theme',${JSON.stringify(theme)});
     c.commands=[];c.remount();return true;
   })()`);
-  await waitFor(client, 'document.querySelector(".new-model-card h3")?.textContent==="Qwen4-Max"');
-  assert.equal(await evaluate(client, `document.querySelectorAll('.new-model-card h3')[1].textContent`), 'DeepSeek V4.1 Flash 1017');
+  await waitFor(client, `[...document.querySelectorAll('.new-model-card h3')].map(heading=>heading.textContent).slice(0,2).join('|')==='Qwen4-Max|DeepSeek V4.1 Flash 1017'`);
 }
 const dialog = '.recommendation-dialog';
 const button = `${dialog} button`;
@@ -275,24 +274,149 @@ try {
   await run('existing-trial-handoffs', async () => {
     await setup({language:'en'});
     await begin('en',false);
-    await click(button,'Use selected connection');
-    await waitFor(client,`document.querySelector('.trial-page [data-trial-target=trial]')?.textContent.includes('Qwen4-Max')`);
+    await waitFor(client,`document.querySelector('.trial-page [data-trial-connected-model]')?.dataset.trialBinding === '${readyBinding}'`);
+    await shot('qwen-trial-after-create');
+    assert.equal(await evaluate(client, `Boolean(document.querySelector('${dialog}'))`), false);
+    assert.equal(await evaluate(client, `document.querySelector('.trial-page select:has(option[value="binding/wrong"])') !== null`), false);
     assert.equal(await evaluate(client,`${writes}.length`),0);
     await setup({language:'en',route:false});
     await click('.new-model-card:nth-child(2) button','Start configuration');
     assert.equal(await evaluate(client,`[...document.querySelectorAll('${button}')].find(e=>e.textContent.includes('Replace a model')).disabled`),true);
     await click(button,'Create a trial route');
     await waitFor(client,`[...document.querySelectorAll('.trial-model-card')].some(e=>e.textContent.includes('DeepSeek')&&e.getAttribute('aria-pressed')==='true')`);
+    await shot('deepseek-trial-after-create');
     assert.equal(await evaluate(client,`${writes}.length`),0);
+  });
+  const trialPage = '.trial-page';
+  const inlineConnection = `${trialPage} .trial-inline-connection`;
+  await run('trial-recovers-connection-options-in-place', async () => {
+    await setup({ language:'en', ready:false, reuse:false });
+    await evaluate(client, `(() => {
+      const read = productShell.handlers.compute_connection_options;
+      productShell.handlers.compute_connection_options = () => { throw {code:'DAEMON_UNAVAILABLE'}; };
+      productShell.restoreConnectionOptions = () => { productShell.handlers.compute_connection_options = read; };
+    })()`);
+    await begin('en', false);
+    await waitFor(client, `[...document.querySelectorAll('${trialPage} [role=alert]')].some(e=>e.textContent.includes('Connection options for this model could not be read'))`);
+    await evaluate(client, 'productShell.restoreConnectionOptions()');
+    await click(`${trialPage} [role=alert] button`, 'Retry');
+    await waitFor(client, `[...document.querySelectorAll('${trialPage} button')].some(e=>!e.disabled&&e.textContent.includes('Connect here'))`);
+    assert.equal(await evaluate(client, `productShell.commands.some(c=>c.command==='check_registered_model_connection_v2')`), false);
+  });
+  await run('trial-selects-among-multiple-ready-connections', async () => {
+    await setup({ language:'en', retained:true });
+    await evaluate(client, `(() => {
+      const read = productShell.handlers.compute_connection_options;
+      productShell.handlers.compute_connection_options = payload =>
+        new Promise(resolve => setTimeout(() => resolve(read(payload)), 400));
+    })()`);
+    await begin('en', false);
+    const select = `${trialPage} select:has(option[value="${readyBinding}"])`;
+    await waitFor(client, `document.querySelector('${select}')?.options.length === 3`);
+    assert.equal(await evaluate(client, `document.querySelector('${select}').value`), '');
+    await change(select, readyBinding);
+    await waitFor(client, `document.querySelector('${trialPage} [data-trial-connected-model]')?.dataset.trialBinding === '${readyBinding}'`);
+    assert.equal(await evaluate(client, `${writes}.length`), 0);
+  });
+  const trialBindingValue = `document.querySelector('${trialPage} [data-trial-connected-model]')?.dataset.trialBinding`;
+  const trialConnectionSelect = `${trialPage} .trial-connection-field select`;
+  const connectionReadChanged = `[...document.querySelectorAll('${trialPage} [role=alert]')].some(e=>e.textContent.includes('Connections changed while loading'))`;
+  const selectedConnectionChanged = `[...document.querySelectorAll('${trialPage} [role=alert]')].some(e=>e.textContent.includes('The selected connection changed'))`;
+  await run('trial-skewed-connection-revisions-do-not-select-payg', async () => {
+    await setup({ language:'en', retained:true });
+    await evaluate(client, `(() => {
+      const c = productShell;
+      const readSetup = c.handlers.trial_setup_snapshot;
+      c.handlers.trial_setup_snapshot = () => {
+        const prior = structuredClone(readSetup());
+        c.management.revisions = { ...c.management.revisions, target: c.management.revisions.target + 1 };
+        c.management.sources = c.management.sources.map(source =>
+          source.source_id === '${savedSource}' ? { ...source, revision: source.revision + 1 } : source);
+        c.handlers.trial_setup_snapshot = readSetup;
+        return prior;
+      };
+    })()`);
+    await begin('en', false);
+    await waitFor(client, `${connectionReadChanged} || ${trialBindingValue} === '${retainedBinding}'`);
+    assert.equal(await evaluate(client, trialBindingValue), '', 'a partially joined snapshot must never select PAYG');
+    await shot('trial-skewed-connection-revisions');
+    await click(`${trialPage} [role=alert] button`, 'Retry');
+    await waitFor(client, `document.querySelector('${trialConnectionSelect}:enabled')?.options.length === 3`);
+    assert.equal(await evaluate(client, trialBindingValue), '');
+    await change(trialConnectionSelect, readyBinding);
+    await waitFor(client, `${trialBindingValue} === '${readyBinding}'`);
+    assert.equal(await evaluate(client, `${writes}.length`), 0);
+  });
+  for (const [id, staleBinding, validBinding] of [
+    ['unroutable-retained-payg', retainedBinding, readyBinding],
+    ['changed-token-plan-revision', readyBinding, retainedBinding],
+  ]) {
+    await run(`trial-manual-selection-rejects-${id}`, async () => {
+      await setup({ language:'en', retained:true });
+      await begin('en', false);
+      await waitFor(client, `document.querySelector('${trialConnectionSelect}')?.options.length === 3`);
+      await evaluate(client, `(() => {
+        const c = productShell;
+        if (${JSON.stringify(staleBinding)} === '${retainedBinding}') {
+          c.retainedApiConnections = c.retainedApiConnections.map(row => ({ ...row, binding_revision: row.binding_revision + 1 }));
+          c.retainedApiCandidates = c.retainedApiCandidates.map(row => ({ ...row, routable: false }));
+        } else {
+          c.management.revisions = { ...c.management.revisions, target: c.management.revisions.target + 1 };
+          c.management.sources = c.management.sources.map(source =>
+            source.source_id === '${savedSource}' ? { ...source, revision: source.revision + 1 } : source);
+        }
+      })()`);
+      await change(trialConnectionSelect, staleBinding);
+      await waitFor(client, `${selectedConnectionChanged} || ${trialBindingValue} === '${staleBinding}'`);
+      assert.equal(await evaluate(client, trialBindingValue), '', 'the stale selection must not enter the trial draft');
+      await shot(`trial-manual-selection-rejects-${id}`);
+      await waitFor(client, `!!document.querySelector('${trialConnectionSelect}:enabled option[value="${validBinding}"]')`);
+      await change(trialConnectionSelect, validBinding);
+      await waitFor(client, `${trialBindingValue} === '${validBinding}'`);
+      assert.equal(await evaluate(client, `${selectedConnectionChanged}`), false);
+      assert.equal(await evaluate(client, `${writes}.length`), 0);
+    });
+  }
+  for (const [product, label, width, height, theme] of [
+    ['token-plan', 'Token Plan', 755, 600, 'dark'],
+    ['payg', 'Pay as you go', 1200, 813, 'light'],
+  ]) {
+    await run(`trial-connect-${product}-in-place`, async () => {
+      await setup({ language:'en', ready:false, reuse:false, width, height, theme });
+      await begin('en', false);
+      await click(`${trialPage} button`, 'Connect here');
+      await click(`${inlineConnection} button`, 'Alibaba Cloud Model Studio');
+      await click(`${inlineConnection} button`, label);
+      await change(`${inlineConnection} input[type=password]`, 'local-test-input', 'input');
+      assert.equal(await evaluate(client, `productShell.commands.some(c=>c.command==='check_registered_model_connection_v2')`), false);
+      await click(`${inlineConnection} button`, 'Check and continue');
+      await click(`${inlineConnection} label:has(input[type=checkbox])`, 'Qwen4-Max');
+      await click(`${inlineConnection} button`, 'Save connection');
+      await waitFor(client, `document.querySelector('${trialPage} [data-trial-connected-model]')?.dataset.trialBinding === '${readyBinding}'`);
+      const check = await evaluate(client, `productShell.commands.find(c=>c.command==='check_registered_model_connection_v2').payload.request.request`);
+      assert.equal(check.connection_option_id, `bailian.${product}.cn.v1`);
+      assert.equal(check.inference_model_id, 'qwen4-max');
+      assert.equal(await evaluate(client, `${writes}.length`),0);
+    });
+  }
+  await run('trial-reuse-connection-in-place', async () => {
+    await setup({ language:'en', ready:false });
+    await begin('en', false);
+    await click(`${trialPage} button`, 'Connect here');
+    await waitFor(client, `document.querySelector('${inlineConnection} select[data-trial-source-choice]')?.options.length === 2`);
+    await change(`${inlineConnection} select[data-trial-source-choice]`, savedSource);
+    await waitFor(client, `document.querySelector('[data-trial-request-model]')?.value === 'qwen4-max' && document.querySelector('[data-trial-request-model]').readOnly`);
+    await click('.trial-reuse-connection button', 'Check and add');
+    await waitFor(client, `document.querySelector('${trialPage} [data-trial-connected-model]')?.dataset.trialBinding === '${readyBinding}'`);
+    assert.equal(await evaluate(client, `productShell.commands.filter(c=>c.command==='apply_compute_save').length`), 1);
+    assert.equal(await evaluate(client, `productShell.commands.filter(c=>c.command==='register_protected_model_input').length`), 0);
   });
   for (const availability of ['needs_connection','executable']) {
     await run(`retained-api-trial-${availability}`, async () => {
       await setup({language:'en',ready:false,reuse:false,retained:true,availability});
       await begin('en',false);
-      await waitFor(client, `document.querySelector('${dialog}')?.textContent.includes('Bailian PAYG retained API')`);
+      await waitFor(client, `document.querySelector('${trialPage} [data-trial-connected-model]')?.dataset.trialBinding === '${retainedBinding}'`);
       await shot(`recommendation-retained-api-${availability}`);
-      await click(button,'Use selected connection');
-      await waitFor(client, `document.querySelector('.trial-page [data-trial-target=trial]')?.textContent.includes('Bailian PAYG retained API')`);
       assert.equal(await evaluate(client, `productShell.commands.filter(c=>['check_saved_model_connection_v2','check_registered_model_connection_v2','register_protected_model_input','apply_compute_save','preview_plan_editor'].includes(c.command)).length`),0);
     });
   }

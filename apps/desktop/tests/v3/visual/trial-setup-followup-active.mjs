@@ -169,9 +169,10 @@ try {
     await click('.model-selection input[type=checkbox]'); await click('.modal-foot button','Save connection');
     await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('could not be verified')`);
     await click('.trial-recovery button','Back to trial');
-    await waitFor(client, `!!document.querySelector('[data-trial-target=trial] .trial-connection-field select') && !document.querySelector('.trial-setup')?.disabled`);
-    await evaluate(client, `(()=>{const e=document.querySelector('[data-trial-target=trial] .trial-connection-field select');e.value='binding/bailian/qwen-second';e.dispatchEvent(new Event('change',{bubbles:true}));return true;})()`);
-    assert.equal(await evaluate(client, `document.querySelector('[data-trial-target=trial] .trial-connection-field select').value`),'binding/bailian/qwen-second');
+    const connections = '[data-trial-target=trial] .trial-connection-field select';
+    await waitFor(client, `!!document.querySelector('${connections}:enabled')`);
+    await field(connections, 'binding/bailian/qwen-second');
+    await waitFor(client, `document.querySelector('[data-trial-connected-model]')?.dataset.trialBinding === 'binding/bailian/qwen-second'`);
     await click('[data-trial-target=trial] button','Review connection result'); await click('.trial-recovery button','Refresh result');
     await waitFor(client, `!document.querySelector('.trial-recovery button:disabled')`);
     assert.equal(await evaluate(client, `document.querySelector('[data-trial-target=trial] .trial-connection-field select').value`),'binding/bailian/qwen-second','recovery must not replace a later same-model binding choice');
@@ -772,12 +773,12 @@ try {
     await saveConnection();
     await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('could not be verified')`);
     await click('.trial-recovery button','Back to trial');
-    await waitFor(client, `!document.querySelector('.trial-setup')?.disabled`);
-    await click('.trial-model-card','Qwen');
+    await click('.trial-model-card','Qwen3-Coder-Plus');
+    await waitFor(client, `document.querySelector('.trial-model-card[aria-pressed=true] .trial-model-title')?.textContent.includes('Qwen3-Coder-Plus')`);
     await click('[data-trial-target=trial] button','Review connection result');
     await click('.trial-recovery button','Refresh result');
-    await waitFor(client, `!document.querySelector('.trial-recovery') || !document.querySelector('.trial-recovery button:disabled')`);
-    assert.match(await evaluate(client, `document.querySelector(':is(.trial-model-card[aria-pressed=true],[data-trial-connected-model])')?.textContent`),/Qwen/,
+    await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('Use this saved model') || !document.querySelector('.trial-recovery')`);
+    assert.equal(await evaluate(client, `document.querySelector('[data-trial-connected-model]')?.dataset.trialBinding`),'binding/bailian/qwen-coder',
       'refreshing a retained result cannot replace the newer trial without an explicit choice');
     assert.match(await evaluate(client, `document.querySelector('.trial-recovery')?.textContent`),/Use this saved model/);
     await evaluate(client, `document.querySelector('.trial-recovery').scrollIntoView({block:'center'});true`);

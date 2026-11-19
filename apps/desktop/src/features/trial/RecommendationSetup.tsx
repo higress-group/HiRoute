@@ -11,14 +11,12 @@ import {
   type RecommendationConnections, type RecommendedConnection,
 } from './recommendation-connection';
 
-type TrialIntent = { modelId?: string; bindingId?: string };
-
 export function RecommendationSetup({ model, language, mutable, hasRoutes, onTry, onSave, onClose, onOperation, onConnectionsChanged }: {
   model: AvailableModel;
   language: 'zh' | 'en';
   mutable: boolean;
   hasRoutes: boolean;
-  onTry(intent: TrialIntent): Promise<boolean>;
+  onTry(intent: { modelId: string }): Promise<boolean>;
   onSave(change: RecommendationReplacement): Promise<boolean>;
   onClose(): void;
   onOperation(operation: OperationReference): void;
@@ -26,7 +24,7 @@ export function RecommendationSetup({ model, language, mutable, hasRoutes, onTry
 }) {
   const t = (zh: string, en: string) => language === 'zh' ? zh : en;
   const reference = referenceModelKey(model);
-  const [purpose, setPurpose] = useState<'trial' | 'replace'>();
+  const [replacing, setReplacing] = useState(false);
   const [data, setData] = useState<RecommendationConnections>();
   const [requestModelIds, setRequestModelIds] = useState<ReadonlyMap<string, string>>();
   const [confirmed, setConfirmed] = useState<RecommendedConnection>();
@@ -47,13 +45,13 @@ export function RecommendationSetup({ model, language, mutable, hasRoutes, onTry
     const first = Array.from(container.querySelectorAll<HTMLElement>('select:not(:disabled), button:not(:disabled)'))
       .find(element => element.getClientRects().length > 0);
     (first ?? container).focus();
-  }, [purpose, creating, confirmed, reuse, creationHidden, busy]);
+  }, [replacing, creating, confirmed, reuse, creationHidden, busy]);
 
   const read = () => readRecommendationConnections(model, requestModelIds);
   async function loadConnections() {
     setBusy(true); setError(''); setData(undefined);
     try {
-      const ids = reference ? await readRecommendationRequestModelIds(model) : undefined;
+      const ids = reference ? await readRecommendationRequestModelIds(reference) : undefined;
       const current = await readRecommendationConnections(model, ids);
       if (!live.current) return;
       setRequestModelIds(ids); setData(current); setChoice(current.ready.length === 1 ? current.ready[0].bindingId : '');
@@ -64,20 +62,17 @@ export function RecommendationSetup({ model, language, mutable, hasRoutes, onTry
 
   async function start(next: 'trial' | 'replace') {
     if (!mutable || busy) return;
-    if (next === 'trial' && !reference) {
+    if (next === 'trial') {
       if (await onTry({ modelId: model.model_configuration_id })) onClose();
       return;
     }
-    setPurpose(next);
+    setReplacing(true);
     await loadConnections();
   }
 
   function finish(connection: RecommendedConnection) {
     if (!live.current) return false;
-    if (purpose === 'trial') void onTry({ bindingId: connection.bindingId }).then(accepted => { if (accepted) onClose(); });
-    else {
-      setCreating(false); setReuse(undefined); setConnectionState('editing'); setConfirmed(connection); setError('');
-    }
+    setCreating(false); setReuse(undefined); setConnectionState('editing'); setConfirmed(connection); setError('');
     return true;
   }
 
@@ -115,11 +110,11 @@ export function RecommendationSetup({ model, language, mutable, hasRoutes, onTry
   }
   const backLabel = t('返回接入方式', 'Back to connection options');
   const title = confirmed ? t('替换已有路由里的模型', 'Replace a model in an existing route')
-    : purpose ? t(`接入 ${model.display_name}`, `Connect ${model.display_name}`)
+    : replacing ? t(`接入 ${model.display_name}`, `Connect ${model.display_name}`)
       : t(`配置 ${model.display_name}`, `Configure ${model.display_name}`);
 
   const reuseDialog = reuse && <TrialReuseConnection
-    model={model} sourceId={reuse.sourceId} requestModelId={reuse.requestId} visible={!reuse.hidden} language={language} mutable={mutable} backLabel={backLabel}
+    model={model} sourceId={reuse.sourceId} requestModelId={reuse.requestId} requestModelIds={requestModelIds} visible={!reuse.hidden} language={language} mutable={mutable} backLabel={backLabel}
     onOperation={onOperation} onClose={recoverable => {
       if (recoverable) setReuse({ ...reuse, hidden: true });
       else { setReuse(undefined); void loadConnections(); }
@@ -146,7 +141,7 @@ export function RecommendationSetup({ model, language, mutable, hasRoutes, onTry
           if (accepted) onClose();
           return accepted;
         }}
-      /> : !purpose ? <div className="trial-choice-list">
+      /> : !replacing ? <div className="trial-choice-list">
         <button type="button" className="trial-choice" disabled={!mutable} onClick={() => void start('trial')}>
           <strong>{t('新建试用路由', 'Create a trial route')}</strong>
           <span>{t('走试用流程，选择主力模型与 Agent。', 'Use the trial setup to choose a primary model and Agent.')}</span>
@@ -162,7 +157,6 @@ export function RecommendationSetup({ model, language, mutable, hasRoutes, onTry
         </section>}
         <section className="recommendation-step" hidden={creationHidden}>
           {error && <p role="alert" className="oc-inline-error">{error}</p>}
-          {requestModelIds && <p className="field-help">{t('检查会向所选服务发送测试请求，可能产生费用。', 'The check sends a test request to the selected service and may incur charges.')}</p>}
           <TrialConnectModel model={model} language={language} mutable={mutable} management={data.setup.management} requestModelIds={requestModelIds} backLabel={backLabel}
             onResolve={async () => {
               const current = await read();
@@ -178,7 +172,7 @@ export function RecommendationSetup({ model, language, mutable, hasRoutes, onTry
             onBack={backFromCreation} onStateChange={setConnectionState} />
         </section>
       </> : <section className="recommendation-step" aria-busy={busy}>
-        <p className="field-help">{purpose === 'replace' ? t('确认接入可用后，再选择路由和模型位置。', 'Confirm an available connection before choosing a route and model position.') : t('确认接入后继续试用设置。', 'Confirm a connection to continue trial setup.')}</p>
+        <p className="field-help">{t('确认接入可用后，再选择路由和模型位置。', 'Confirm an available connection before choosing a route and model position.')}</p>
         {busy && <p role="status">{t('正在确认接入…', 'Checking connections…')}</p>}
         {error && <p role="alert" className="oc-inline-error">{error}</p>}
         {!busy && data && <>
@@ -199,7 +193,7 @@ export function RecommendationSetup({ model, language, mutable, hasRoutes, onTry
           {requestModelIds && requestModelIds.size === 0 && <p role="status">{t('当前版本暂无支持此模型的接入产品。', 'This version has no connection product for this model.')}</p>}
         </>}
         <div className="actions">
-          <button type="button" className="btn" disabled={busy} onClick={() => { setPurpose(undefined); setError(''); }}>{t('返回', 'Back')}</button>
+          <button type="button" className="btn" disabled={busy} onClick={() => { setReplacing(false); setError(''); }}>{t('返回', 'Back')}</button>
           {!busy && (!data || error) && <button type="button" className="btn" onClick={() => void loadConnections()}>{t('刷新接入', 'Refresh connections')}</button>}
           {data && (!requestModelIds || requestModelIds.size > 0) && <button type="button" className={data.ready.length ? 'btn' : 'btn btn-primary'} disabled={busy || !mutable} onClick={() => { fresh.current = undefined; setCreationHidden(false); setCreating(true); }}>{t('新建接入', 'Create a connection')}</button>}
           {data && data.ready.length > 0 && <button type="button" className="btn btn-primary" disabled={busy || !choice || !mutable} onClick={() => void confirmExisting()}>{t('使用所选接入', 'Use selected connection')}</button>}

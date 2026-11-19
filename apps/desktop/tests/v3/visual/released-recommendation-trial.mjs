@@ -57,12 +57,14 @@ try {
   } else {
     await screenshot('recommendation-enabled');
     await click('.new-model-card button');
-    // Current clients show the choice introduced in #501; released clients enter the trial.
+    // Releases without the configuration chooser enter the trial immediately.
     if (await evaluate(client, "!!document.querySelector('.recommendation-dialog')")) {
       await click('.recommendation-dialog button', 'Create a trial route');
+    }
+    await waitFor(client, `!!document.querySelector('[data-trial-target=trial]') || ${visible('.recommendation-dialog button')}.some(e=>!e.disabled&&e.textContent.includes('Create a connection'))`, { timeout: 20_000 });
+    if (await evaluate(client, "!!document.querySelector('.recommendation-dialog')")) {
       await click('.recommendation-dialog button', 'Create a connection');
     } else {
-      await waitFor(client, "!!document.querySelector('[data-trial-target=trial]')", { timeout: 20_000 });
       await click('[data-trial-target=trial] button', 'Connect here');
     }
     await waitFor(client, "!!document.querySelector('.trial-inline-connection')", { timeout: 20_000 });
