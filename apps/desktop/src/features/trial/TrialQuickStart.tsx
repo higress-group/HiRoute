@@ -296,11 +296,13 @@ export function TrialQuickStart({ initialModelId, initialBindingId, language, mu
     finally { replacingConnection.current--; }
   };
   const backToSetup = (editor: Editor) => {
+    const regular = editor.smart.economy[0], primary = editor.smart.primary[0];
+    // A model chosen in review supersedes an earlier connection recovery.
+    if (regular?.binding_id !== review?.smart.economy[0]?.binding_id) ++selectionEpoch.current;
     setReviewDraft(editor);
     setInlineConnectionChoice('idle');
     setThreshold(editor.smart.judgment.degree.simple_threshold_millis);
     setName(editor.display_name); setClassifier(editor.smart.classifier);
-    const regular = editor.smart.economy[0], primary = editor.smart.primary[0];
     if (regular) {
       const candidate = data?.options.candidates.find(value => value.binding_id === regular.binding_id);
       const member = data?.management.sources.flatMap(source => source.models).find(value => value.binding_id === regular.binding_id);

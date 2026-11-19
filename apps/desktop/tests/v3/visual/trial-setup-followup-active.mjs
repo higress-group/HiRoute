@@ -804,6 +804,39 @@ try {
     assert.match(await evaluate(client, `document.querySelector('[data-trial-target=trial]').textContent`),/Saved synthetic model/);
     assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
   });
+  await run('review-repair.reopen-keeps-model-changed-in-review', async () => {
+    await open('saved-registered=1&saved-read-failure=1');
+    await saveConnection();
+    await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('could not be verified')`);
+    await click('.trial-recovery button','Back to trial');
+    const connectedBinding = `document.querySelector('[data-trial-connected-model]')?.dataset.trialBinding`;
+    const savedBinding = 'binding/fixture/saved-model', replacementBinding = 'binding/bailian/qwen-coder';
+    await waitFor(client, `${connectedBinding} === '${savedBinding}'`);
+    await click('.trial-choice-list .trial-choice','GPT');
+    await click('.trial-footer .btn-primary','Review changes');
+
+    const regular = '.trial-review [data-route-group=economy]';
+    await click(`${regular} [data-binding-id="${savedBinding}"] button[aria-label="Remove"]`);
+    await click(`${regular} .add-candidate`,'Add model');
+    const choices = '[role=dialog] .catalog-picker .list-row';
+    await field('[role=dialog] input[data-autofocus]', 'Qwen3-Coder-Plus');
+    await waitFor(client, `document.querySelectorAll('${choices}').length === 1 && document.querySelector('${choices} .row-title')?.textContent === 'Qwen3-Coder-Plus'`);
+    await click(`${choices} button`,'Add');
+    await click('[role=dialog] button[aria-label="Close candidates"]');
+    await waitFor(client, `!!document.querySelector('${regular} [data-binding-id="${replacementBinding}"]')`);
+    await click('.trial-review > .actions button','Back to setup');
+    await waitFor(client, `${connectedBinding} === '${replacementBinding}'`);
+
+    await click('[data-trial-target=trial] button','Review connection result');
+    assert.equal(await evaluate(client, connectedBinding), replacementBinding);
+    await click('.trial-recovery button','Refresh result');
+    await waitFor(client, `!document.querySelector('.trial-recovery') || document.querySelector('.trial-recovery')?.textContent.includes('Use this saved model')`);
+    assert.equal(await evaluate(client, connectedBinding), replacementBinding, 'refreshing the old result preserves the model chosen in review');
+    assert.match(await evaluate(client, `document.querySelector('.trial-recovery')?.textContent ?? ''`), /Use this saved model/);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+    await evaluate(client, `document.querySelector('.trial-recovery').scrollIntoView({block:'center'});true`);
+    await shot('repair-review-model-kept-after-refresh-en-755');
+  });
   await run('review-repair.parked-custom-first-judgment', async () => {
     await open('custom-service=1'); await click('.trial-choice-list .trial-choice','GPT');
     await click('.trial-setup [data-route-group=classifier] .decision-methods button','Custom extension');
