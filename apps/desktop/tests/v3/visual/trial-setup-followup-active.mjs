@@ -772,20 +772,70 @@ try {
     await open('saved-registered=1&saved-read-failure=1');
     await saveConnection();
     await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('could not be verified')`);
+    await evaluate(client, 'trialSetupControl.holdNextManagement=true');
     await click('.trial-recovery button','Back to trial');
-    await click('.trial-model-card','Qwen3-Coder-Plus');
-    await waitFor(client, `document.querySelector('.trial-model-card[aria-pressed=true] .trial-model-title')?.textContent.includes('Qwen3-Coder-Plus')`);
+    await waitFor(client, 'trialSetupControl.pending.length===1');
+    // Switch models as soon as the held refresh enables the form.
+    await evaluate(client, `(() => {
+      const fields = document.querySelector('.trial-fields');
+      const observer = new MutationObserver(() => {
+        const nextModel = [...fields.querySelectorAll('.trial-model-card:enabled')].find(card => card.querySelector('.trial-model-title').textContent === 'Qwen3-Coder-Plus');
+        if (!nextModel) return;
+        observer.disconnect();
+        nextModel.click();
+      });
+      observer.observe(fields, {attributes:true, attributeFilter:['disabled']});
+      trialSetupControl.release();
+      return true;
+    })()`);
+    const connectedBinding = `document.querySelector('[data-trial-connected-model]')?.dataset.trialBinding`;
+    await waitFor(client, `document.querySelector('.trial-model-card[aria-pressed=true] .trial-model-title')?.textContent === 'Qwen3-Coder-Plus' && ${connectedBinding} === 'binding/bailian/qwen-coder'`);
+    await shot('repair-saved-result-switched-en-755');
     await click('[data-trial-target=trial] button','Review connection result');
     await click('.trial-recovery button','Refresh result');
     await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('Use this saved model') || !document.querySelector('.trial-recovery')`);
-    assert.equal(await evaluate(client, `document.querySelector('[data-trial-connected-model]')?.dataset.trialBinding`),'binding/bailian/qwen-coder',
+    assert.equal(await evaluate(client, connectedBinding),'binding/bailian/qwen-coder',
       'refreshing a retained result cannot replace the newer trial without an explicit choice');
     assert.match(await evaluate(client, `document.querySelector('.trial-recovery')?.textContent`),/Use this saved model/);
     await evaluate(client, `document.querySelector('.trial-recovery').scrollIntoView({block:'center'});true`);
     await shot('repair-saved-result-en-755');
     await click('.trial-recovery button','Use this saved model');
-    await waitFor(client, `document.querySelector('[data-trial-target=trial]')?.textContent.includes('Saved synthetic model')`);
+    await waitFor(client, `${connectedBinding} === 'binding/fixture/saved-model'`);
+    assert.match(await evaluate(client, `document.querySelector('[data-trial-target=trial]').textContent`),/Saved synthetic model/);
     assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+  });
+  await run('review-repair.reopen-keeps-model-changed-in-review', async () => {
+    await open('saved-registered=1&saved-read-failure=1');
+    await saveConnection();
+    await waitFor(client, `document.querySelector('.trial-recovery')?.textContent.includes('could not be verified')`);
+    await click('.trial-recovery button','Back to trial');
+    const connectedBinding = `document.querySelector('[data-trial-connected-model]')?.dataset.trialBinding`;
+    const savedBinding = 'binding/fixture/saved-model', replacementBinding = 'binding/bailian/qwen-coder';
+    await waitFor(client, `${connectedBinding} === '${savedBinding}'`);
+    await click('.trial-choice-list .trial-choice','GPT');
+    await click('.trial-footer .btn-primary','Review changes');
+
+    const regular = '.trial-review [data-route-group=economy]';
+    await click(`${regular} [data-binding-id="${savedBinding}"] button[aria-label="Remove"]`);
+    await click(`${regular} .add-candidate`,'Add model');
+    const choices = '[role=dialog] .catalog-picker .list-row';
+    await field('[role=dialog] input[data-autofocus]', 'Qwen3-Coder-Plus');
+    await waitFor(client, `document.querySelectorAll('${choices}').length === 1 && document.querySelector('${choices} .row-title')?.textContent === 'Qwen3-Coder-Plus'`);
+    await click(`${choices} button`,'Add');
+    await click('[role=dialog] button[aria-label="Close candidates"]');
+    await waitFor(client, `!!document.querySelector('${regular} [data-binding-id="${replacementBinding}"]')`);
+    await click('.trial-review > .actions button','Back to setup');
+    await waitFor(client, `${connectedBinding} === '${replacementBinding}'`);
+
+    await click('[data-trial-target=trial] button','Review connection result');
+    assert.equal(await evaluate(client, connectedBinding), replacementBinding);
+    await click('.trial-recovery button','Refresh result');
+    await waitFor(client, `!document.querySelector('.trial-recovery') || document.querySelector('.trial-recovery')?.textContent.includes('Use this saved model')`);
+    assert.equal(await evaluate(client, connectedBinding), replacementBinding, 'refreshing the old result preserves the model chosen in review');
+    assert.match(await evaluate(client, `document.querySelector('.trial-recovery')?.textContent ?? ''`), /Use this saved model/);
+    assert.equal(await evaluate(client, `trialTrace.filter(x=>x.command==='apply_compute_save').length`),1);
+    await evaluate(client, `document.querySelector('.trial-recovery').scrollIntoView({block:'center'});true`);
+    await shot('repair-review-model-kept-after-refresh-en-755');
   });
   await run('review-repair.parked-custom-first-judgment', async () => {
     await open('custom-service=1'); await click('.trial-choice-list .trial-choice','GPT');
