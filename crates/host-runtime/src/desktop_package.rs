@@ -230,6 +230,40 @@ fn tool(program: &str, args: &[&std::ffi::OsStr]) -> Result<String, &'static str
     String::from_utf8(bytes).map_err(|_| "PACKAGE_VERIFY_FAILED")
 }
 
+/// Apple Team ID baked in at compile time by the trusted packaging identity.
+/// A candidate package cannot supply this value.
+pub fn trusted_developer_id_team() -> Option<&'static str> {
+    option_env!("HIROUTE_DEVELOPER_ID_TEAM").filter(|team| !team.is_empty())
+}
+
+/// Self-signed packages stay adhoc. Developer ID requires a configured matching team.
+#[cfg(any(target_os = "macos", test))]
+fn publisher_identity_status(
+    distribution: &str,
+    signature: &str,
+    expected_team: Option<&str>,
+) -> Result<(), &'static str> {
+    if distribution == "controlled-trial" {
+        if signature.lines().any(|line| line == "Signature=adhoc") {
+            Ok(())
+        } else {
+            Err("PACKAGE_SIGNATURE_IDENTITY_MISMATCH")
+        }
+    } else {
+        let team = expected_team
+            .filter(|team| !team.is_empty())
+            .ok_or("UPGRADE_SIGNATURE_IDENTITY_UNCONFIGURED")?;
+        let expected = format!("TeamIdentifier={team}");
+        if signature.lines().any(|line| line == expected)
+            && signature.contains("Authority=Developer ID Application:")
+        {
+            Ok(())
+        } else {
+            Err("PACKAGE_SIGNATURE_IDENTITY_MISMATCH")
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 pub fn verify_desktop_app(
     app: &Path,
@@ -301,19 +335,8 @@ pub fn verify_desktop_app(
             identity.app_path.as_os_str(),
         ],
     )?;
-    if identity.distribution == "controlled-trial" {
-        if !signature.lines().any(|l| l == "Signature=adhoc") {
-            return Err("PACKAGE_SIGNATURE_IDENTITY_MISMATCH");
-        }
-    } else {
-        let team = expected_team.ok_or("UPGRADE_SIGNATURE_IDENTITY_UNCONFIGURED")?;
-        if !signature
-            .lines()
-            .any(|l| l == format!("TeamIdentifier={team}"))
-            || !signature.contains("Authority=Developer ID Application:")
-        {
-            return Err("PACKAGE_SIGNATURE_IDENTITY_MISMATCH");
-        }
+    publisher_identity_status(&identity.distribution, &signature, expected_team)?;
+    if identity.distribution != "controlled-trial" {
         tool(
             "/usr/sbin/spctl",
             &[
@@ -411,6 +434,68 @@ mod tests {
         assert_eq!(
             read_desktop_package_identity(invalid.path()).unwrap_err(),
             "PACKAGE_INVENTORY_INVALID"
+        );
+    }
+
+    #[test]
+    fn trusted_developer_id_team_matches_compile_time_env() {
+        assert_eq!(
+            trusted_developer_id_team(),
+            option_env!("HIROUTE_DEVELOPER_ID_TEAM").filter(|team| !team.is_empty())
+        );
+    }
+
+    #[test]
+    fn developer_id_requires_configured_matching_team_and_keeps_self_signed() {
+        let signature = "\
+Authority=Developer ID Application: Example Org (ABCD123456)
+Authority=Developer ID Certification Authority
+TeamIdentifier=ABCD123456
+";
+        assert_eq!(
+            publisher_identity_status("developer-id", signature, None),
+            Err("UPGRADE_SIGNATURE_IDENTITY_UNCONFIGURED")
+        );
+        assert_eq!(
+            publisher_identity_status("developer-id", signature, Some("")),
+            Err("UPGRADE_SIGNATURE_IDENTITY_UNCONFIGURED")
+        );
+        assert_eq!(
+            publisher_identity_status("developer-id", signature, Some("ABCD123456")),
+            Ok(())
+        );
+        assert_eq!(
+            publisher_identity_status("developer-id", signature, Some("OTHERTEAM1")),
+            Err("PACKAGE_SIGNATURE_IDENTITY_MISMATCH")
+        );
+        assert_eq!(
+            publisher_identity_status(
+                "developer-id",
+                "Authority=Developer ID Application: Example Org (ABCD123456)\n",
+                Some("ABCD123456")
+            ),
+            Err("PACKAGE_SIGNATURE_IDENTITY_MISMATCH")
+        );
+        assert_eq!(
+            publisher_identity_status(
+                "developer-id",
+                "TeamIdentifier=ABCD123456\n",
+                Some("ABCD123456")
+            ),
+            Err("PACKAGE_SIGNATURE_IDENTITY_MISMATCH")
+        );
+        let adhoc = "Signature=adhoc\nTeamIdentifier=not set\n";
+        assert_eq!(
+            publisher_identity_status("controlled-trial", adhoc, None),
+            Ok(())
+        );
+        assert_eq!(
+            publisher_identity_status("controlled-trial", adhoc, Some("ABCD123456")),
+            Ok(())
+        );
+        assert_eq!(
+            publisher_identity_status("controlled-trial", signature, None),
+            Err("PACKAGE_SIGNATURE_IDENTITY_MISMATCH")
         );
     }
 }
