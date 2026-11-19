@@ -318,6 +318,65 @@ try {
     await waitFor(client, `document.querySelector('${trialPage} [data-trial-connected-model]')?.dataset.trialBinding === '${readyBinding}'`);
     assert.equal(await evaluate(client, `${writes}.length`), 0);
   });
+  const trialBindingValue = `document.querySelector('${trialPage} [data-trial-connected-model]')?.dataset.trialBinding`;
+  const trialConnectionSelect = `${trialPage} .trial-connection-field select`;
+  const connectionReadChanged = `[...document.querySelectorAll('${trialPage} [role=alert]')].some(e=>e.textContent.includes('Connections changed while loading'))`;
+  const selectedConnectionChanged = `[...document.querySelectorAll('${trialPage} [role=alert]')].some(e=>e.textContent.includes('The selected connection changed'))`;
+  await run('trial-skewed-connection-revisions-do-not-select-payg', async () => {
+    await setup({ language:'en', retained:true });
+    await evaluate(client, `(() => {
+      const c = productShell;
+      const readSetup = c.handlers.trial_setup_snapshot;
+      c.handlers.trial_setup_snapshot = () => {
+        const prior = structuredClone(readSetup());
+        c.management.revisions = { ...c.management.revisions, target: c.management.revisions.target + 1 };
+        c.management.sources = c.management.sources.map(source =>
+          source.source_id === '${savedSource}' ? { ...source, revision: source.revision + 1 } : source);
+        c.handlers.trial_setup_snapshot = readSetup;
+        return prior;
+      };
+    })()`);
+    await begin('en', false);
+    await waitFor(client, `${connectionReadChanged} || ${trialBindingValue} === '${retainedBinding}'`);
+    assert.equal(await evaluate(client, trialBindingValue), '', 'a partially joined snapshot must never select PAYG');
+    await shot('trial-skewed-connection-revisions');
+    await click(`${trialPage} [role=alert] button`, 'Retry');
+    await waitFor(client, `document.querySelector('${trialConnectionSelect}:enabled')?.options.length === 3`);
+    assert.equal(await evaluate(client, trialBindingValue), '');
+    await change(trialConnectionSelect, readyBinding);
+    await waitFor(client, `${trialBindingValue} === '${readyBinding}'`);
+    assert.equal(await evaluate(client, `${writes}.length`), 0);
+  });
+  for (const [id, staleBinding, validBinding] of [
+    ['unroutable-retained-payg', retainedBinding, readyBinding],
+    ['changed-token-plan-revision', readyBinding, retainedBinding],
+  ]) {
+    await run(`trial-manual-selection-rejects-${id}`, async () => {
+      await setup({ language:'en', retained:true });
+      await begin('en', false);
+      await waitFor(client, `document.querySelector('${trialConnectionSelect}')?.options.length === 3`);
+      await evaluate(client, `(() => {
+        const c = productShell;
+        if (${JSON.stringify(staleBinding)} === '${retainedBinding}') {
+          c.retainedApiConnections = c.retainedApiConnections.map(row => ({ ...row, binding_revision: row.binding_revision + 1 }));
+          c.retainedApiCandidates = c.retainedApiCandidates.map(row => ({ ...row, routable: false }));
+        } else {
+          c.management.revisions = { ...c.management.revisions, target: c.management.revisions.target + 1 };
+          c.management.sources = c.management.sources.map(source =>
+            source.source_id === '${savedSource}' ? { ...source, revision: source.revision + 1 } : source);
+        }
+      })()`);
+      await change(trialConnectionSelect, staleBinding);
+      await waitFor(client, `${selectedConnectionChanged} || ${trialBindingValue} === '${staleBinding}'`);
+      assert.equal(await evaluate(client, trialBindingValue), '', 'the stale selection must not enter the trial draft');
+      await shot(`trial-manual-selection-rejects-${id}`);
+      await waitFor(client, `!!document.querySelector('${trialConnectionSelect}:enabled option[value="${validBinding}"]')`);
+      await change(trialConnectionSelect, validBinding);
+      await waitFor(client, `${trialBindingValue} === '${validBinding}'`);
+      assert.equal(await evaluate(client, `${selectedConnectionChanged}`), false);
+      assert.equal(await evaluate(client, `${writes}.length`), 0);
+    });
+  }
   for (const [product, label, width, height, theme] of [
     ['token-plan', 'Token Plan', 755, 600, 'dark'],
     ['payg', 'Pay as you go', 1200, 813, 'light'],

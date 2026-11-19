@@ -4,7 +4,7 @@ import { registeredCatalogModelId } from '../model-connections/registered-metada
 import type { ComputeConnectionOptions } from '../model-connections/types';
 import type { ManagementSnapshot } from '../models/types';
 import { readTrialSetup } from './read-setup';
-import type { TrialSetupSnapshot } from './types';
+import type { TrialManagementSnapshot, TrialSetupSnapshot } from './types';
 
 export function referenceModelKey(model: AvailableModel): string | undefined {
   const prefix = 'model.catalog.';
@@ -41,6 +41,12 @@ export async function readRecommendationConnections(model: AvailableModel, reque
     requestModelIds ? invoke<ManagementSnapshot>('compute_management_snapshot') : Promise.resolve(undefined),
   ]);
   return { setup, ...recommendationConnections(setup, model, requestModelIds, identities) };
+}
+
+export function sameRecommendationSourceRevisions(trial: TrialManagementSnapshot, identities: ManagementSnapshot): boolean {
+  if (trial.revisions.target !== identities.revisions.target || trial.sources.length !== identities.sources.length) return false;
+  const revisions = new Map(identities.sources.map(source => [source.source_id, source.revision]));
+  return trial.sources.every(source => revisions.get(source.source_id) === source.revision);
 }
 
 export function recommendationConnections(setup: Pick<TrialSetupSnapshot, 'options' | 'management'>, model: AvailableModel, requestModelIds?: ReadonlyMap<string, string>, identities?: ManagementSnapshot) {

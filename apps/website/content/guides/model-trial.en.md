@@ -50,7 +50,7 @@ The trial has four steps: choose models, review and publish, map the Agent, and 
 
 ## 1. Choose models
 
-- Under **Model to try**, choose a connected model, reuse a local subscription or saved API connection, or connect another source.
+- Under **Model to try**, choose a connected model, reuse a local subscription or saved API connection, or connect another source. If a connection changed, follow the message on the trial page to retry or choose again.
 - **Primary model:** takes complex tasks and turns that need protection. It is prefilled only when saved settings identify a single model.
 - **Decision connection:** a trial needs a competence score for every stage, so it requires a decision model; heuristic rules are not offered. If you have no decision model yet, add one here and your draft is retained.
 - **Agent:** choose the Agent that will use this route.
