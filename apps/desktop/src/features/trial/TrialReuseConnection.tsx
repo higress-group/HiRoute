@@ -19,10 +19,11 @@ type Checked = { candidate: { candidate_ref: string; candidate_revision: number 
 type Submission = { key: string; digest: string; candidate: Checked['candidate']; modelRef: string; operation?: OperationReference };
 
 /** A selected trial model is an intent, not another general model-management entry. */
-export function TrialReuseConnection({ model, sourceId, options, visible, language, mutable, onUse, onOperation, onClose, requestModelId, backLabel }: {
+export function TrialReuseConnection({ model, sourceId, options, visible, language, mutable, onUse, onOperation, onClose, requestModelId, requestModelIds, backLabel }: {
   model: AvailableModel; sourceId: string; language: 'zh' | 'en'; mutable: boolean;
   options?: ComputeConnectionOptions;
   requestModelId?: string;
+  requestModelIds?: ReadonlyMap<string, string>;
   backLabel?: string;
   visible: boolean;
   onUse(binding: ReusedTrialBinding): Promise<boolean>;
@@ -48,6 +49,8 @@ export function TrialReuseConnection({ model, sourceId, options, visible, langua
       if (!live.current) return;
       const current = management.sources.find(source => source.source_id === sourceId);
       if (!current) throw Error('SOURCE_CHANGED');
+      const product = current.connection_identity?.connection_option_id;
+      if (requestModelIds && (!product || !requestModelId || requestModelIds.get(product) !== requestModelId)) throw Error('SOURCE_CHANGED');
       let id = requestModelId ?? requestModelDefault(current, model.model_configuration_id);
       if (!id) {
         const defaults = options ?? await invoke<ComputeConnectionOptions>('compute_connection_options', { includeRequestModelIds: true }).catch(() => undefined);

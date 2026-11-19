@@ -12,9 +12,10 @@ import type { AvailableModel } from '../model-feed/types';
 type ResolvedBinding = { bindingId: string; modelId: string; name: string; source: string; linked: boolean };
 export type TrialConnectionState = 'editing' | 'saving' | 'uncertain' | 'saved';
 
-export function TrialConnectModel({ model, language, management, mutable, onResolve, onReceipt, onSaved, onSelectionIntent, onBack, onOperation, onStateChange, onReuseSource, requestModelIds, backLabel }: {
+export function TrialConnectModel({ model, language, management, mutable, onResolve, onReceipt, onSaved, onSelectionIntent, onBack, onOperation, onStateChange, onReuseSource, requestModelIds, reuseRequestModelIds, backLabel }: {
   model: AvailableModel; language: 'zh' | 'en'; management: TrialManagementSnapshot; mutable: boolean;
   requestModelIds?: ReadonlyMap<string, string>;
+  reuseRequestModelIds?: ReadonlyMap<string, string>;
   backLabel?: string;
   onResolve(receipt: ComputeSaveResult): Promise<Pick<TrialSetupSnapshot, 'options' | 'management'> | undefined>;
   onReceipt(): void;
@@ -192,8 +193,11 @@ export function TrialConnectModel({ model, language, management, mutable, onReso
     finally { busyRef.current = false; if (live.current) setBusy(false); }
   }
   if (saved || uncertain) return <section className="trial-recovery" aria-live="polite"><h3>{saved ? text('接入已保存', 'Connection saved') : text('正在核实接入结果', 'Verifying connection result')}</h3><p>{error || (busy ? saved ? text('接入已保存，正在更新模型可用状态…', 'Connection saved; updating model availability…') : text('正在核实原始保存操作…', 'Checking the original save operation…') : saved ? text('请选择此接入中保存的模型。', 'Choose the model saved in this connection.') : text('保存结果尚未确认，请刷新以核对原始操作。', 'The save result is unconfirmed. Refresh to check the original operation.'))}</p>{resolved.map(selection => <div className="trial-saved-choice" key={selection.bindingId}><span><strong>{selection.name}</strong> · {selection.source}{!requestModelIds && !selection.linked && <small>{text('使用此接入中的模型，目录版本未核实', 'Using the model from this connection; catalog version unconfirmed')}</small>}</span><button type="button" className="btn" disabled={busy} onClick={() => void useSaved(selection)}>{resolved.length === 1 ? text('使用此已保存模型', 'Use this saved model') : text('选择此模型', 'Choose this model')}</button></div>)}<div className="actions"><button type="button" className="btn" disabled={busy} onClick={() => void confirm()}>{text('刷新结果', 'Refresh result')}</button><button type="button" className="btn" disabled={busy} onClick={() => onBack(true)}>{backLabel ?? text('返回试用', 'Back to trial')}</button></div></section>;
-  const reusable = management.sources.filter(source => source.actions.includes('append_models') && ['api', 'subscription'].includes(source.access_kind));
-  return <section className="trial-inline-connection"><h3>{text('接入', 'Connect')} {model.display_name}</h3>{error && <p role="alert">{error}</p>}<ModelConnectionForm language={language} mutable={mutable} allowCustom={!requestModelIds} requestModelIds={requestModelIds} singleProductShortcut initialDraft={draft} existingNames={management.sources.map(s => s.display_name)} expectedRevisions={management.revisions} backend={backend}
+  const reusable = management.sources.filter(source => source.actions.includes('append_models') && ['api', 'subscription'].includes(source.access_kind)
+    && (!reuseRequestModelIds || reuseRequestModelIds.has(source.source_id)));
+  return <section className="trial-inline-connection"><h3>{text('接入', 'Connect')} {model.display_name}</h3>
+    {requestModelIds && <p className="field-help">{text('检查会向所选服务发送测试请求，可能产生费用。', 'The check sends a test request to the selected service and may incur charges.')}</p>}
+    {error && <p role="alert">{error}</p>}<ModelConnectionForm language={language} mutable={mutable} allowCustom={!requestModelIds} requestModelIds={requestModelIds} singleProductShortcut initialDraft={draft} existingNames={management.sources.map(s => s.display_name)} expectedRevisions={management.revisions} backend={backend}
     connectionChoice={onReuseSource && <label className="field"><span className="field-label">{text('使用的接入点', 'Connection to use')}</span><select className="input" data-trial-source-choice value="" disabled={reusing} onChange={event => {
       const sourceId = event.currentTarget.value;
       if (!sourceId || reusing) return;

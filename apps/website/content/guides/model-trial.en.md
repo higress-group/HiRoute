@@ -19,7 +19,7 @@ CLI reference: https://hiroute.ai/en/docs/cli/
 Use the built-in HiRoute management Skill. If it is not enabled, guide me through “Agent → HiRoute management → Enable”: https://hiroute.ai/en/docs/#management-skill
 
 Command pointers (choose only what the goal needs; prefix each with hiroute):
-- Choose trial and primary models: compute list · compute connection options / preview / apply
+- Choose trial and primary models: use compute list to find an existing routable binding. For a new connection, identify the provider product and use compute connection options / preview / apply.
 - Choose or add a decision connection: decision connections options / list / apply
 - Configure trust and publish the trial route: routing options → routing preview → routing apply
 - Replace a model in an existing route: use compute list to confirm an available binding, read the current route and draft, update the requested position, and save a draft through routing preview / apply. Confirm publication separately.
@@ -37,9 +37,9 @@ The UI and CLI connect to the same HiRoute service and share configuration and e
 
 ## Start from Home
 
-In **New models** on Home, find a recommendation and select **Start configuration**. Choose **Create a trial route** or **Replace a model in an existing route**. To try a model outside the recommendations, select **Try another model** and pick a connected model.
+In **New models** on Home, find a recommendation and select **Start configuration**. Choose **Create a trial route** or **Replace a model in an existing route**. Creating a trial route opens the trial page with the recommended model selected. Use an existing connection there, or select **Connect here** to check and save a connection. To try a model outside the recommendations, select **Try another model** and pick a connected model.
 
-In older versions, **Connect and try** opens the trial directly. After receiving the current model catalog, Qwen4-Max can connect through Bailian PAYG. Use that product's key, complete its check, and save the connection. Token Plan uses the **Start configuration** connection flow described above.
+When setting up Qwen4-Max in the trial page, select Bailian PAYG or Token Plan. Use the selected product's key to check and save the connection. HiRoute v0.6.4 asks you to confirm a connection before opening the Qwen4-Max trial page. Earlier versions with **Connect and try** support Bailian PAYG after receiving the current model catalog.
 
 The trial has four steps: choose models, review and publish, map the Agent, and start using it.
 
@@ -50,7 +50,7 @@ The trial has four steps: choose models, review and publish, map the Agent, and 
 
 ## 1. Choose models
 
-- **Model to try:** choose a connected model, or reuse a local subscription, choose a saved API model, or connect another source right here.
+- Under **Model to try**, choose a connected model, reuse a local subscription or saved API connection, or connect another source.
 - **Primary model:** takes complex tasks and turns that need protection. It is prefilled only when saved settings identify a single model.
 - **Decision connection:** a trial needs a competence score for every stage, so it requires a decision model; heuristic rules are not offered. If you have no decision model yet, add one here and your draft is retained.
 - **Agent:** choose the Agent that will use this route.

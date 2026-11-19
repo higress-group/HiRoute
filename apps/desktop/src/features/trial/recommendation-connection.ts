@@ -4,6 +4,7 @@ import { registeredCatalogModelId } from '../model-connections/registered-metada
 import type { ComputeConnectionOptions } from '../model-connections/types';
 import type { ManagementSnapshot } from '../models/types';
 import { readTrialSetup } from './read-setup';
+import type { TrialSetupSnapshot } from './types';
 
 export function referenceModelKey(model: AvailableModel): string | undefined {
   const prefix = 'model.catalog.';
@@ -21,14 +22,13 @@ export type RecommendedConnection = {
   modelRef?: string;
 };
 
-export async function readRecommendationRequestModelIds(model: AvailableModel) {
+export async function readRecommendationRequestModelIds(modelKey: string) {
   const options = await invoke<ComputeConnectionOptions>('compute_connection_options', { includeRequestModelIds: true });
-  const key = referenceModelKey(model);
   const catalog = options.metadata_catalog;
   const requestModelIds = new Map<string, string>();
-  if (key && catalog) {
+  if (catalog) {
     for (const option of options.options) {
-      const id = registeredCatalogModelId(option, catalog, key);
+      const id = registeredCatalogModelId(option, catalog, modelKey);
       if (id) requestModelIds.set(option.connection_option_id, id);
     }
   }
@@ -40,6 +40,10 @@ export async function readRecommendationConnections(model: AvailableModel, reque
     readTrialSetup(),
     requestModelIds ? invoke<ManagementSnapshot>('compute_management_snapshot') : Promise.resolve(undefined),
   ]);
+  return { setup, ...recommendationConnections(setup, model, requestModelIds, identities) };
+}
+
+export function recommendationConnections(setup: Pick<TrialSetupSnapshot, 'options' | 'management'>, model: AvailableModel, requestModelIds?: ReadonlyMap<string, string>, identities?: ManagementSnapshot) {
   const ready: RecommendedConnection[] = [];
   const reusable: { sourceId: string; sourceName: string; requestId?: string }[] = [];
   const candidates = new Map(setup.options.candidates.filter(candidate => candidate.routable).map(candidate => [candidate.binding_id, candidate]));
@@ -72,7 +76,7 @@ export async function readRecommendationConnections(model: AvailableModel, reque
     ready.push({ bindingId: connection.binding_id, sourceId: connection.source_id, sourceName: connection.display_name,
       revision: connection.binding_revision });
   }
-  return { setup, ready, reusable };
+  return { ready, reusable };
 }
 
 export function sameConnection(left: RecommendedConnection, right: RecommendedConnection): boolean {
