@@ -1,5 +1,25 @@
 [
   {
+    "slug": "ai-coding-token-efficiency",
+    "date": "2026-11-19",
+    "title": {
+      "zh": "把主力模型用在刀刃上：一个月 300 亿 Token、31 万行 Rust 背后的 AI Coding 实践",
+      "en": "Save Your Best Model for the Hard Parts: 30 Billion Tokens, 310K Lines of Rust, and What I Learned About Token Efficiency"
+    },
+    "shortTitle": {
+      "zh": "300 亿 Token 的 AI Coding 实践",
+      "en": "What 30 billion tokens taught me about AI coding"
+    },
+    "description": {
+      "zh": "从用 HiRoute 开发 HiRoute 到复跑 Higress 并发缺陷，分享如何按阶段切换模型、用验收决定何时升级，并把主力额度留给难点。",
+      "en": "A month of building HiRoute with HiRoute and a controlled Higress bug fix show how model routing, verification, and delegation make primary model capacity go further."
+    },
+    "files": {
+      "zh": "2026-11-19-ai-coding-token-efficiency.zh-CN.md",
+      "en": "2026-11-19-ai-coding-token-efficiency.en.md"
+    }
+  },
+  {
     "slug": "new-model-trials-and-task-routing",
     "date": "2026-11-03",
     "title": {
