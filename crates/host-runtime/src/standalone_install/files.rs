@@ -6,6 +6,18 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// A path-shape refusal keeps its own code so the shareable installer diagnostic can
+/// name the cause. `invalid()` stays reserved for admitted-byte conflicts.
+fn reparse() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        "INSTALL_PATH_REPARSE_UNSUPPORTED",
+    )
+}
+fn not_regular() -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, "INSTALL_PATH_NOT_REGULAR_FILE")
+}
+
 pub(crate) fn regular(path: &Path) -> io::Result<Option<File>> {
     for ancestor in path.ancestors() {
         match fs::symlink_metadata(ancestor) {
@@ -14,11 +26,11 @@ pub(crate) fn regular(path: &Path) -> io::Result<Option<File>> {
                 {
                     use std::os::windows::fs::MetadataExt;
                     if metadata.file_attributes() & 0x400 != 0 {
-                        return Err(invalid());
+                        return Err(reparse());
                     }
                 }
                 if metadata.file_type().is_symlink() {
-                    return Err(invalid());
+                    return Err(reparse());
                 }
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
@@ -31,7 +43,7 @@ pub(crate) fn regular(path: &Path) -> io::Result<Option<File>> {
     let result = File::open(path);
     match result {
         Ok(file) if file.metadata()?.is_file() => Ok(Some(file)),
-        Ok(_) => Err(invalid()),
+        Ok(_) => Err(not_regular()),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e),
     }
@@ -185,5 +197,49 @@ pub(crate) fn remove_owned(path: &Path) -> io::Result<()> {
     {
         fs::remove_file(path)?;
         hiroute_platform::durable::directory_barrier(path.parent().ok_or_else(invalid)?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Resolve the temporary root first: a platform temporary directory may itself
+    // sit behind a symlinked ancestor, which this admission refuses by design.
+    fn root() -> (tempfile::TempDir, PathBuf) {
+        let temp = tempfile::tempdir().unwrap();
+        #[cfg(windows)]
+        let root = temp.path().to_path_buf();
+        #[cfg(not(windows))]
+        let root = temp.path().canonicalize().unwrap();
+        (temp, root)
+    }
+    #[test]
+    fn an_absent_path_stays_an_admission_candidate() {
+        let (_temp, root) = root();
+        assert!(regular(&root.join("record.json")).unwrap().is_none());
+    }
+    // Ancestor shape is the one refusal a bare ownership code cannot explain: a
+    // junction or symlink anywhere above a destination fails every attempt with
+    // the same text. Keep each cause shareable on its own.
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_ancestor_reports_a_path_code() {
+        let (_temp, root) = root();
+        let real = root.join("real");
+        fs::create_dir(&real).unwrap();
+        let link = root.join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let error = regular(&link.join("record.json")).unwrap_err();
+        assert_eq!(error.to_string(), "INSTALL_PATH_REPARSE_UNSUPPORTED");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn a_non_regular_target_reports_a_path_code() {
+        let (_temp, root) = root();
+        let error = regular(&root).unwrap_err();
+        assert_eq!(error.to_string(), "INSTALL_PATH_NOT_REGULAR_FILE");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
     }
 }
