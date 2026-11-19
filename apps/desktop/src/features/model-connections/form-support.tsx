@@ -1,10 +1,13 @@
 import type {
+  CapabilityKey,
   ComputeConnectionOption,
+  ModelCapabilities,
   ModelDeclaration,
   NativeReasoning,
   TriState,
 } from './types';
 import { Disclosure } from '../../ui/Disclosure';
+import { applySuggestedCapabilities, capabilityKeys, declareCapability, displayCapabilities } from './state';
 
 export { safeConnectionErrorCode } from './copy';
 export { blankModel } from './state';
@@ -182,9 +185,14 @@ export function ManualModelEditor({ model, language, disabled, catalogManaged = 
   onChange(next: ModelDeclaration): void;
 }) {
   const zh = language === 'zh';
-  const updateCapability = <K extends keyof ModelDeclaration['capabilities'],>(key: K, value: ModelDeclaration['capabilities'][K]) =>
-    onChange({ ...model, capabilities: { ...model.capabilities, [key]: value } });
-  const reasoning = model.capabilities.native_reasoning.value;
+  const shown = displayCapabilities(model);
+  const updateCapability = <K extends CapabilityKey,>(key: K, value: ModelCapabilities[K]) =>
+    onChange(declareCapability(model, key, value));
+  const hasSuggestions = model.suggested_capabilities !== undefined
+    && capabilityKeys.some(key => model.capabilities[key].basis === 'unknown'
+      && !(model.cleared_capabilities ?? []).includes(key)
+      && model.suggested_capabilities![key].value !== null);
+  const reasoning = shown.native_reasoning.value;
   const reasoningKind = reasoning?.kind ?? 'unknown';
 
   return <fieldset className="connection-fields manual-capability-fields" disabled={disabled}>
@@ -202,13 +210,13 @@ export function ManualModelEditor({ model, language, disabled, catalogManaged = 
         ['tool', zh ? '工具调用' : 'Tool calling'],
         ['vision', zh ? '图片输入' : 'Image input'],
         ['streaming', zh ? '流式输出' : 'Streaming'],
-      ] as const).map(([key, label]) => <label className="field" key={key}><span className="field-label">{label}</span><select className="select" value={triState(model.capabilities[key].value)} onChange={event => updateCapability(key, booleanFact(event.target.value as TriState))}><option value="unknown">{zh ? '未知' : 'Unknown'}</option><option value="supported">{zh ? '支持' : 'Supported'}</option><option value="unsupported">{zh ? '不支持' : 'Not supported'}</option></select></label>)}
+      ] as const).map(([key, label]) => <label className="field" key={key}><span className="field-label">{label}</span><select className="select" value={triState(shown[key].value)} onChange={event => updateCapability(key, booleanFact(event.target.value as TriState))}><option value="unknown">{zh ? '未知' : 'Unknown'}</option><option value="supported">{zh ? '支持' : 'Supported'}</option><option value="unsupported">{zh ? '不支持' : 'Not supported'}</option></select></label>)}
       <label className="field"><span className="field-label">{zh ? '思考能力' : 'Reasoning capability'}</span><select className="select" value={reasoningKind} onChange={event => {
         const value = reasoningValue(event.target.value as NativeReasoning['kind'], reasoning);
         updateCapability('native_reasoning', { value, basis: value ? 'user_declared' : 'unknown' });
       }}><option value="unknown">{zh ? '未知' : 'Unknown'}</option><option value="fixed">{zh ? '供应商固定' : 'Provider fixed'}</option><option value="toggle">{zh ? '开关' : 'On / off'}</option><option value="discrete">{zh ? '可选档位' : 'Discrete levels'}</option><option value="budget">{zh ? 'Token 预算' : 'Token budget'}</option></select></label>
-      <label className="field"><span className="field-label">{zh ? '上下文上限 · tokens' : 'Context limit · tokens'}</span><input className="input" type="number" min="1" value={model.capabilities.context_tokens.value ?? ''} onChange={event => updateCapability('context_tokens', numberFact(event.target.value))} /></label>
-      <label className="field"><span className="field-label">{zh ? '输出上限 · tokens' : 'Output limit · tokens'}</span><input className="input" type="number" min="1" value={model.capabilities.max_output_tokens.value ?? ''} onChange={event => updateCapability('max_output_tokens', numberFact(event.target.value))} /></label>
+      <label className="field"><span className="field-label">{zh ? '上下文上限 · tokens' : 'Context limit · tokens'}</span><input className="input" type="number" min="1" value={shown.context_tokens.value ?? ''} onChange={event => updateCapability('context_tokens', numberFact(event.target.value))} /></label>
+      <label className="field"><span className="field-label">{zh ? '输出上限 · tokens' : 'Output limit · tokens'}</span><input className="input" type="number" min="1" value={shown.max_output_tokens.value ?? ''} onChange={event => updateCapability('max_output_tokens', numberFact(event.target.value))} /></label>
     </div>
     {reasoning?.kind === 'discrete' && <label className="field"><span className="field-label">{zh ? '支持的档位 · 从低到高，逗号分隔' : 'Supported levels · low to high, comma separated'}</span><input className="input" value={reasoning.profiles.join(', ')} placeholder="low, medium, high" onChange={event => {
       const profiles = event.target.value.split(',').map(value => value.trim()).filter(Boolean);
@@ -224,6 +232,7 @@ export function ManualModelEditor({ model, language, disabled, catalogManaged = 
       ] as const).map(([key, label]) => <label className="field" key={key}><span className="field-label">{label}</span><input className="input" type="number" min="1" value={reasoning[key]} onChange={event => updateCapability('native_reasoning', { value: { ...reasoning, [key]: Number(event.target.value) }, basis: 'user_declared' })} /></label>)}
     </div>}
     </Disclosure>
+    {hasSuggestions && <div className="manual-capability-suggestions"><button className="btn btn-quiet" type="button" onClick={() => onChange(applySuggestedCapabilities(model))}>{zh ? '采纳建议值' : 'Apply suggested values'}</button><span className="field-help">{zh ? '建议值仅填充仍为“未知”的能力，不会覆盖你的填写。' : 'Suggestions fill only values still marked Unknown and never overwrite your edits.'}</span></div>}
     </>}
   </fieldset>;
 }

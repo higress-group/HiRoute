@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { checkFailureCode, modelAvailabilityMessage, safeConnectionErrorCode } from '../src/features/model-connections/copy.ts';
+import { checkFailureCode, modelAvailabilityMessage, modelObservationMessage, safeConnectionErrorCode } from '../src/features/model-connections/copy.ts';
 import { saveFailureDefinitelyPreAdmission } from '../src/features/subscriptions/model.ts';
 
 test('nested native failures retain specific copy but classify pre-admission by machine code', () => {
@@ -26,4 +26,18 @@ test('failed tool probe reports credential rejection before tool compatibility',
   assert.equal(checkFailureCode({ authentication: 'verified', inference: 'failed', issues: [{ code: 'TOOL_CALL_NOT_VERIFIED', message_key: 'x', retryable: true }] }), 'MODEL_TOOL_CALL_NOT_VERIFIED');
   assert.equal(checkFailureCode({ authentication: 'unknown', inference: 'failed', issues: [{ code: 'INFERENCE_FAILED', message_key: 'x', retryable: true }] }), 'MODEL_INFERENCE_FAILED');
   assert.equal(checkFailureCode({ authentication: 'verified', inference: 'not_run' }), null);
+});
+
+test('observation labels separate catalog membership from this check', () => {
+  const model = { upstream_model_id: 'observed' };
+  const complete = { directory: 'available', reachability: 'reachable', observed_model_ids: ['observed'] };
+  assert.equal(modelObservationMessage(complete, model, false), 'Returned by this check');
+  assert.equal(modelObservationMessage(complete, { upstream_model_id: 'other' }, false), 'Not returned by this check');
+  assert.equal(modelObservationMessage(complete, { upstream_model_id: 'other' }, true), '本次检查未返回');
+  const partial = { directory: 'partial', reachability: 'reachable', observed_model_ids: [] };
+  assert.equal(modelObservationMessage(partial, model, false), 'Not confirmed by this check');
+  const failed = { directory: 'unavailable', reachability: 'transport_failed', observed_model_ids: [] };
+  assert.equal(modelObservationMessage(failed, model, false), 'Not confirmed by this check');
+  const empty = { directory: 'empty', reachability: 'reachable', observed_model_ids: [] };
+  assert.equal(modelObservationMessage(empty, model, false), 'Not returned by this check');
 });
