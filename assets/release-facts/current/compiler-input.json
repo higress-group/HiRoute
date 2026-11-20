@@ -4231,7 +4231,7 @@
           "restriction": "General platform credentials"
         }
       ],
-      "as_of": "2026-11-18",
+      "as_of": "2026-11-20",
       "canonical_models": [
         {
           "canonical_identity": "claude-fable-5-1",
@@ -6214,7 +6214,8 @@
           "display_name": "GPT-6.2 Astra",
           "evidence_refs": [
             "source-openai-gpt-6-2-astra-20261118",
-            "source-openai-gpt-6-2-migration-20261118"
+            "source-openai-gpt-6-2-migration-20261118",
+            "source-openai-gpt-6-2-model-index-20261120"
           ],
           "identity_stability": "unknown",
           "lifecycle": "active",
@@ -6237,9 +6238,15 @@
           "publisher": "OpenAI",
           "reasoning": {
             "default": null,
-            "kind": "model-documented",
-            "note": "Reasoning is supported and none is rejected on both APIs. The migration guide recommends low or medium; it does not establish the complete accepted effort set or provider default. Leave render profiles and default unresolved.",
-            "profiles": []
+            "kind": "discrete",
+            "note": "The OpenAI model index lists these efforts. Both APIs reject none. Responses uses reasoning.effort and Chat Completions uses reasoning_effort. The model-specific default remains unconfirmed.",
+            "profiles": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
           },
           "source_stability_note": "direct-provider-model-documentation; snapshot permanence not established",
           "upstream_id_state": null,
@@ -6267,6 +6274,7 @@
           "display_name": "GPT-6.2 Sol",
           "evidence_refs": [
             "source-openai-gpt-6-2-migration-20261118",
+            "source-openai-gpt-6-2-model-index-20261120",
             "source-openai-gpt-6-2-sol-20261118"
           ],
           "identity_stability": "unknown",
@@ -6290,9 +6298,15 @@
           "publisher": "OpenAI",
           "reasoning": {
             "default": null,
-            "kind": "model-documented",
-            "note": "Reasoning is supported and none is rejected on both APIs. The migration guide recommends low or medium; it does not establish the complete accepted effort set or provider default. Leave render profiles and default unresolved.",
-            "profiles": []
+            "kind": "discrete",
+            "note": "The OpenAI model index lists these efforts. Both APIs reject none. Responses uses reasoning.effort and Chat Completions uses reasoning_effort. The model-specific default remains unconfirmed.",
+            "profiles": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
           },
           "source_stability_note": "direct-provider-model-documentation; snapshot permanence not established",
           "upstream_id_state": null,
@@ -14438,6 +14452,15 @@
           "digest_state": "captured",
           "locator": "https://developers.openai.com/api/docs/guides/latest-model.md?model=gpt-6.2-astra",
           "source_key": "source-openai-gpt-6-2-migration-20261118",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "developers.openai.com",
+          "bytes_digest": "sha256:ccb0e7a0ecedefb58ff5c525c84b970b8af388aaea4ddc34d3f55b0a14afe8fb",
+          "collected_on": "2026-11-20",
+          "digest_state": "captured",
+          "locator": "https://developers.openai.com/api/docs/models",
+          "source_key": "source-openai-gpt-6-2-model-index-20261120",
           "source_kind": "provider-documentation"
         },
         {
@@ -107708,7 +107731,7 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:dbeac5f9ce25d32e0b8e891478d70397e2e0bf29a1690b654f03d0a6db05ded6"
+      "source_catalog_digest": "sha256:87236224902dbdef108a22511b238f4449b948e65a7415bb36d1e24755426e1d"
     },
     "rating_snapshot": {
       "digest": "sha256:3903b9b5f5b0c6111d7dd2e752d9538390d32e72950c3a0edee8d025449f4919",
@@ -109843,7 +109866,7 @@
     "schema": "hiroute.release-model-data/v2"
   },
   "official_model_data": {
-    "data_revision": 20,
+    "data_revision": 21,
     "pricing_facts": [
       {
         "pricing_key": "anthropic-platform/claude-fable-5-2/claude-fable-5-2",

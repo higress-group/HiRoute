@@ -25,7 +25,7 @@ function ids(id, modifiedOption = null) {
 
 for (const modelId of ['gpt-6.2-astra', 'gpt-6.2-sol']) {
   for (const protocol of ['chat_completions', 'responses']) {
-    test(`GPT-6.2 ${modelId}/${protocol} prefills the input cap and retains manual edits on refresh`, async () => {
+    test(`GPT-6.2 ${modelId}/${protocol} prefills limits and reasoning profiles and keeps manual edits`, async () => {
       const { withRegisteredModels, buildCheckDraft } = await import('../src/features/model-connections/state.ts');
       const openai = option('openai.platform.global.v1');
       const endpoint = openai.endpoints.find(value => value.protocol === protocol);
@@ -35,12 +35,16 @@ for (const modelId of ['gpt-6.2-astra', 'gpt-6.2-sol']) {
       assert.ok(candidate);
       assert.deepEqual(candidate.capability_prefill.context_tokens, { value: 922_000, basis: 'user_declared' });
       assert.deepEqual(candidate.capability_prefill.max_output_tokens, { value: 128_000, basis: 'user_declared' });
+      const reasoning = { kind: 'discrete', parameter: 'reasoning_effort', profiles: ['low', 'medium', 'high', 'xhigh', 'max'] };
+      assert.deepEqual(candidate.capability_prefill.native_reasoning, { value: reasoning, basis: 'user_declared' });
       const models = withRegisteredModels([], [candidate]);
       const automatic = buildCheckDraft({ provenance: { kind: 'user_configured', configuration_revision: 1 }, models });
       assert.equal(automatic.models[0].capabilities.context_tokens.value, 922_000);
+      assert.deepEqual(automatic.models[0].capabilities.native_reasoning, candidate.capability_prefill.native_reasoning);
       const edited = { ...models[0], capabilities: { ...models[0].capabilities,
         context_tokens: { value: 800_000, basis: 'user_declared' },
         max_output_tokens: { value: 64_000, basis: 'user_declared' },
+        native_reasoning: { value: { ...reasoning, default_profile: 'low' }, basis: 'user_declared' },
       } };
       const refreshed = withRegisteredModels([edited], [candidate]);
       const manual = buildCheckDraft({ provenance: { kind: 'user_configured', configuration_revision: 1 }, models: refreshed });
