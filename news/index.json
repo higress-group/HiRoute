@@ -23,16 +23,16 @@
     "slug": "local-d3",
     "date": "2026-11-18",
     "title": {
-      "zh": "HiRoute × vLLM-SR：本地 d3 / d3-mini 作为 Decision System One",
-      "en": "HiRoute × vLLM-SR: local d3 / d3-mini as Decision System One"
+      "zh": "日常留在本地，难了再上云：本地 Qwen3.8-27B 与 d3 决策模型，搭配百炼 Qwen4-Max 的一次实测",
+      "en": "Routine Work Stays Local, Hard Turns Go to the Cloud: A Test Run with Qwen3.8-27B, the d3 Decision Model and Qwen4-Max"
     },
     "shortTitle": {
-      "zh": "本地 d3 / d3-mini 接入 HiRoute Decision",
-      "en": "Local d3 / d3-mini as HiRoute Decision"
+      "zh": "日常留在本地，难了再上云：本地 d3 决策实测",
+      "en": "Routine work stays local, hard turns go to the cloud: a d3 test run"
     },
     "description": {
-      "zh": "Demo：用官方 vllm serve 部署 vllm-sr/d3-mini 与完整 d3，走 System One 接入 HiRoute Decision；两侧 12 例直连与 8 次连通性测试均通过。",
-      "en": "Demo: serve vllm-sr/d3-mini and full d3 with official vllm serve, bind them to HiRoute Decision over System One; both packages pass 12 direct cases and 8 connection tests."
+      "zh": "日常的活和路由决策都留在自己的 GPU 上，分别交给 Qwen3.8-27B 和 vLLM Semantic Router 的 d3 决策模型；只有这一轮够难、或者上一阶段没做好时，才交给百炼 Qwen4-Max。文中用三次经过 HiRoute 的 Codex 会话，记录这套组合是怎么跑通的。",
+      "en": "Routine turns and the routing decision stay on our own GPUs with Qwen3.8-27B and vLLM Semantic Router's d3 decision model; Bailian Qwen4-Max takes a turn only when it is hard or the previous stage fell short. Three Codex sessions through HiRoute show how the setup ran."
     },
     "files": {
       "zh": "2026-11-18-local-d3.zh-CN.md",
