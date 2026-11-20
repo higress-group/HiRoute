@@ -3,6 +3,7 @@
 | Date | English | 简体中文 |
 | --- | --- | --- |
 | 2026-11-19 | [What 30 billion tokens taught me about AI coding](2026-11-19-ai-coding-token-efficiency.en.md) | [300 亿 Token 的 AI Coding 实践](2026-11-19-ai-coding-token-efficiency.zh-CN.md) |
+| 2026-11-18 | [Local d3 / d3-mini as HiRoute Decision](2026-11-18-local-d3.en.md) | [本地 d3 / d3-mini 接入 HiRoute Decision](2026-11-18-local-d3.zh-CN.md) |
 | 2026-11-03 | [New HiRoute release](2026-11-03-new-model-trials-and-task-routing.en.md) | [HiRoute 新版本发布](2026-11-03-new-model-trials-and-task-routing.zh-CN.md) |
 | 2026-11-03 | [A Super Agent with Hermes and HiRoute](2026-11-03-hermes-super-agent.en.md) | [用 Hermes 和 HiRoute 搭 Super Agent](2026-11-03-hermes-super-agent.zh-CN.md) |
 | 2026-10-14 | [Switching models loses cache, not the savings](2026-10-14-routing-cache-cost.en.md) | [切换模型会损失缓存，智能路由还省钱吗？](2026-10-14-routing-cache-cost.zh-CN.md) |

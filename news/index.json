@@ -20,6 +20,26 @@
     }
   },
   {
+    "slug": "local-d3",
+    "date": "2026-11-18",
+    "title": {
+      "zh": "HiRoute × vLLM-SR：本地 d3 / d3-mini 作为 Decision System One",
+      "en": "HiRoute × vLLM-SR: local d3 / d3-mini as Decision System One"
+    },
+    "shortTitle": {
+      "zh": "本地 d3 / d3-mini 接入 HiRoute Decision",
+      "en": "Local d3 / d3-mini as HiRoute Decision"
+    },
+    "description": {
+      "zh": "Demo：用官方 vllm serve 部署 vllm-sr/d3-mini 与完整 d3，走 System One 接入 HiRoute Decision；两侧 12 例直连与 8 次连通性测试均通过。",
+      "en": "Demo: serve vllm-sr/d3-mini and full d3 with official vllm serve, bind them to HiRoute Decision over System One; both packages pass 12 direct cases and 8 connection tests."
+    },
+    "files": {
+      "zh": "2026-11-18-local-d3.zh-CN.md",
+      "en": "2026-11-18-local-d3.en.md"
+    }
+  },
+  {
     "slug": "new-model-trials-and-task-routing",
     "date": "2026-11-03",
     "title": {
