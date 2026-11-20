@@ -1,4 +1,4 @@
-"""GPT-6.2 facts must not invent reasoning, subscription access or blended prices."""
+"""Check documented GPT-6.2 reasoning, API scope and pricing facts."""
 import json
 from decimal import Decimal
 from pathlib import Path
@@ -6,6 +6,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 IDS = ('gpt-6.2-astra', 'gpt-6.2-sol')
+REASONING_PROFILES = ['low', 'medium', 'high', 'xhigh', 'max']
 
 
 class OpenAI62MetadataTests(unittest.TestCase):
@@ -14,16 +15,18 @@ class OpenAI62MetadataTests(unittest.TestCase):
         cls.source = json.loads((ROOT / 'assets/model-data/current/inputs/metadata-catalog.json').read_text())
         cls.data = json.loads((ROOT / 'assets/release-facts/current/bundle/official-model-data.json').read_text())['data']
 
-    def test_independent_limits_and_unresolved_effort_directory(self):
+    def test_independent_limits_and_documented_effort_levels(self):
+        sources = {s['source_key']: s for s in self.source['evidence_sources']}
         for model_id in IDS:
             model = next(m for m in self.source['models'] if m['model_key'] == model_id)
             self.assertEqual(model['upstream_ids'], [model_id])
             self.assertEqual((model['context_tokens'], model['max_input_tokens'], model['max_output_tokens']),
                              (1_050_000, 922_000, 128_000))
-            self.assertEqual(model['reasoning']['kind'], 'model-documented')
-            self.assertEqual(model['reasoning'].get('profiles', []), [])
+            self.assertEqual(model['reasoning']['kind'], 'discrete')
+            self.assertEqual(model['reasoning']['profiles'], REASONING_PROFILES)
             self.assertNotIn('default', model['reasoning'])
-            self.assertIn('none is rejected', model['reasoning']['note'])
+            self.assertTrue(any(sources[ref]['locator'] == 'https://developers.openai.com/api/docs/models'
+                                and sources[ref]['digest_state'] == 'captured' for ref in model['evidence_refs']))
             self.assertEqual(model['identity_stability'], 'unknown')
             self.assertEqual(model['modalities']['image_input'], 'supported')
             for modality in ('audio_input', 'audio_output', 'video_input'):
@@ -85,7 +88,8 @@ class OpenAI62MetadataTests(unittest.TestCase):
         for model_id in IDS:
             model = next(m for m in metadata['canonical_models'] if m['model_key'] == model_id)
             self.assertEqual(model['max_input_tokens'], 922000)
-            self.assertEqual(model['reasoning']['profiles'], [])
+            self.assertEqual(model['reasoning']['kind'], 'discrete')
+            self.assertEqual(model['reasoning']['profiles'], REASONING_PROFILES)
             self.assertIsNone(model['reasoning']['default'])
             original = next(p for p in self.source['pricing_facts'] if p['model_key'] == model_id)
             published = next(p for p in self.data['pricing_facts'] if p['model_key'] == model_id)

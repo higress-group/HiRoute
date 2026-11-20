@@ -1,6 +1,6 @@
 {
   "artifact_kind": "hiroute.model-metadata-current-source",
-  "as_of": "2026-11-18",
+  "as_of": "2026-11-20",
   "scope": {
     "catalog_generation": "current",
     "delivery": "client-bundled",
@@ -2536,6 +2536,15 @@
       "locator": "https://developers.openai.com/api/docs/guides/latest-model.md?model=gpt-6.2-astra",
       "collected_on": "2026-11-18",
       "bytes_digest": "sha256:dae79e0da343370b181a1662b01da4017413b82df5702da4b30f3b86b147d40c",
+      "digest_state": "captured"
+    },
+    {
+      "source_key": "source-openai-gpt-6-2-model-index-20261120",
+      "authority": "developers.openai.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://developers.openai.com/api/docs/models",
+      "collected_on": "2026-11-20",
+      "bytes_digest": "sha256:ccb0e7a0ecedefb58ff5c525c84b970b8af388aaea4ddc34d3f55b0a14afe8fb",
       "digest_state": "captured"
     },
     {
@@ -5693,15 +5702,23 @@
         "cache": "supported"
       },
       "reasoning": {
-        "kind": "model-documented",
-        "note": "Reasoning is supported and none is rejected on both APIs. The migration guide recommends low or medium; it does not establish the complete accepted effort set or provider default. Leave render profiles and default unresolved."
+        "kind": "discrete",
+        "profiles": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "note": "The OpenAI model index lists these efforts. Both APIs reject none. Responses uses reasoning.effort and Chat Completions uses reasoning_effort. The model-specific default remains unconfirmed."
       },
       "identity_stability": "unknown",
       "lifecycle": "active",
       "source_stability_note": "direct-provider-model-documentation; snapshot permanence not established",
       "evidence_refs": [
         "source-openai-gpt-6-2-astra-20261118",
-        "source-openai-gpt-6-2-migration-20261118"
+        "source-openai-gpt-6-2-migration-20261118",
+        "source-openai-gpt-6-2-model-index-20261120"
       ],
       "data_note": "Total context and independent input/output limits are distinct. Tools require Responses; Chat Completions supports text generation without tools. API documentation does not establish Codex or ChatGPT subscription access. Prices retain Standard, Batch and Fast conditions; Ultrafast, background completion windows, regional processing and tool fees must not inherit these rates."
     },
@@ -5734,14 +5751,22 @@
         "cache": "supported"
       },
       "reasoning": {
-        "kind": "model-documented",
-        "note": "Reasoning is supported and none is rejected on both APIs. The migration guide recommends low or medium; it does not establish the complete accepted effort set or provider default. Leave render profiles and default unresolved."
+        "kind": "discrete",
+        "profiles": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ],
+        "note": "The OpenAI model index lists these efforts. Both APIs reject none. Responses uses reasoning.effort and Chat Completions uses reasoning_effort. The model-specific default remains unconfirmed."
       },
       "identity_stability": "unknown",
       "lifecycle": "active",
       "source_stability_note": "direct-provider-model-documentation; snapshot permanence not established",
       "evidence_refs": [
         "source-openai-gpt-6-2-migration-20261118",
+        "source-openai-gpt-6-2-model-index-20261120",
         "source-openai-gpt-6-2-sol-20261118"
       ],
       "data_note": "Total context and independent input/output limits are distinct. Tools require Responses; Chat Completions supports text generation without tools. API documentation does not establish Codex or ChatGPT subscription access. Prices retain Standard, Batch and Fast conditions; Ultrafast, background completion windows, regional processing and tool fees must not inherit these rates."

@@ -58,11 +58,12 @@ canonical semantic digests are unchanged; byte digests and bundle manifests bind
 the exact emitted bytes. Python preparation and the Rust producer use the same
 format. Existing artifact-size and structural validation still apply.
 
-GPT-6.2 Astra and Sol have separate Responses and Chat Completions bindings;
-only Responses advertises tools. Their documented total context, input limit and
-output limit are independent. The model pages reject `none` effort but do not
-establish an exhaustive effort directory or provider default, so the catalog does
-not supply render profiles. API documentation does not establish subscription access.
+GPT-6.2 Astra and Sol have separate Responses and Chat Completions bindings. Tools
+require Responses. Their documented total context, input limit and output limit
+are independent. The [OpenAI model index](https://developers.openai.com/api/docs/models#flagship-models)
+lists `low`, `medium`, `high`, `xhigh`, and `max` for both models. The catalog records
+those profiles with an unknown model-specific default. Both APIs reject `none`.
+API documentation does not establish subscription access.
 
 Their prices preserve the whole-request 272,000-input-token boundary, Standard,
 Batch and Fast tiers, and separate 30-minute and Responses-only 12-hour writes.

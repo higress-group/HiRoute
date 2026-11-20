@@ -1,4 +1,4 @@
-"""Real form prefill -> protected check/save -> published Gateway input/output budgets."""
+"""Verify form prefill, protected check/save and published Gateway budgets."""
 import json
 import os
 from pathlib import Path
@@ -8,6 +8,12 @@ import sys
 from model_feed_product import restart
 from recommended_model_product import Provider, TrialProduct
 from standalone_headless_product import apply_from_preview, apply_plan, plan_change, wire
+
+EXPECTED_REASONING = {
+    'value': {'kind': 'discrete', 'parameter': 'reasoning_effort',
+              'profiles': ['low', 'medium', 'high', 'xhigh', 'max']},
+    'basis': 'user_declared',
+}
 
 
 def frontend(repository, value):
@@ -51,6 +57,7 @@ def run(repository):
         for case in cases:
             stage = case['key']
             draft = case['draft']
+            assert draft['models'][0]['capabilities']['native_reasoning'] == EXPECTED_REASONING, stage
             protected = {'candidate_ref': draft['candidate_ref'], 'candidate_revision': 1}
             product.register_secret(draft['candidate_ref'], 'isolated-input-limits-key')
             product.secrets.add('isolated-input-limits-key')
@@ -74,6 +81,7 @@ def run(repository):
             expected_output = 64_000 if case['manual'] else 128_000
             assert saved['capabilities']['context_tokens'] == {'value': expected_input, 'basis': 'user_declared'}, saved
             assert saved['capabilities']['max_output_tokens'] == {'value': expected_output, 'basis': 'user_declared'}, saved
+            assert saved['capabilities']['native_reasoning'] == EXPECTED_REASONING, saved
             # Use the same authoring policy as the form/CLI, including its reasoning defaults.
             authoring = product.cli('routing', 'options', '--request-stdin', payload={'authoring': {
                 'display_name': stage, 'purpose': 'Verify exact input and output budgets',
