@@ -16,6 +16,8 @@ CASES = (
     "installed_standalone_cli_completes_the_headless_management_loop",
     "installed_cli_quickstart_reuses_resources_and_exact_apply_files",
     "installed_feed_withdrawal_preserves_published_sessions_workers_and_continue",
+    "installed_recommended_qwen4_checks_connects_publishes_and_executes",
+    "installed_gpt62_prefill_preserves_input_limits_through_save_and_publication",
 )
 MAX_BYTES = 32 * 1024 * 1024
 
