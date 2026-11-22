@@ -254,8 +254,10 @@ Windows NSIS installer with its `.identity.json` sidecar when Windows is in scop
 Windows headless archives are internal payloads and must not be published. The
 installer identity must bind the exact source/hash and the required Windows
 Server x64 standard-user cases from `scripts/windows-desktop-cases.json`, with
-the actual OS/build recorded. Historical publication replays retain their exact
-recorded scope and verdicts. After
+the actual OS/build recorded. An explicit decision to ship an exact installer
+with its native cases unassessed records `native_runtime: not_assessed` and
+the decision link in the sidecar. Publication replays retain the original
+scope and verdicts. After
 reviewing those assets, add their exact filenames, sizes, and digests to the
 manifest on `main`. Publish the GitHub Release only after that record lands.
 The workflow freezes that `main` revision for the website, resolves the tag's

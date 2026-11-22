@@ -37,7 +37,7 @@ The UI and CLI connect to the same HiRoute service and share configuration and e
 
 ## Start from Home
 
-In **New models** on Home, find a recommendation and select **Start configuration**. Choose **Create a trial route** or **Replace a model in an existing route**. Creating a trial route opens the trial page with the recommended model selected. Use an existing connection there, or select **Connect here** to check and save a connection. To try a model outside the recommendations, select **Try another model** and pick a connected model.
+In **New models** on Home, find a recommendation and select **Start configuration**. Choose **Create a trial route** or **Replace a model in an existing route**. In HiRoute v0.6.5, creating a trial route opens the trial page with the recommended model selected. The page can use the only confirmed connection or let you choose among saved connections. Select **Connect here** to check and save a connection. To try a model outside the recommendations, select **Try another model** and pick a connected model.
 
 When setting up Qwen4-Max in the trial page, select Bailian PAYG or Token Plan. Use the selected product's key to check and save the connection. HiRoute v0.6.4 asks you to confirm a connection before opening the Qwen4-Max trial page. Earlier versions with **Connect and try** support Bailian PAYG after receiving the current model catalog.
 

@@ -314,10 +314,13 @@ workflow still requires the separate hosted Windows 11 x64-artifact replay.
 Select native updater, interruption and recovery tests when a change affects
 those paths, using the [release acceptance scope](release-builds.md#hosted-build-and-publication).
 
-Recorded releases with a historical scope decision keep their original sidecars
-and exact verdicts. The publisher checks those decisions against the original
-version, source, installer SHA-256 and public Issue comment. A recorded
-`not_assessed` verdict remains part of that release's evidence.
+The publisher binds each recorded scope decision to the release version,
+source, installer SHA-256 and public Issue comment. When a decision explicitly
+leaves all native cases unassessed, set `native_runtime` to `not_assessed` and
+attach the decision link as `acceptance_decision`. Keep `embedded_components`
+at `awaiting_runtime`. The publisher checks the package and its hosted
+qualification and requires the sidecar to omit `native_evidence`.
+Publication replays retain the release's original sidecar and verdicts.
 
 ## Scripted silent uninstall
 

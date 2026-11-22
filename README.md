@@ -154,10 +154,11 @@ to evaluate decision prompts against your own tasks.
 HiRoute provides **macOS, Windows x64, and Omarchy desktop apps**, plus a Linux Web UI and CLI.
 The [download page](https://hiroute.ai/en/download/) lists published packages.
 
-Version 0.6.4 adds Qwen4-Max trial setup and model replacement in routing drafts.
-It improves Codex tool continuations and subscription discovery, corrects GPT-6.2 API input limits,
-and adds a Desktop sidebar shortcut for available updates.
-See the [model trial guide](https://hiroute.ai/en/docs/model-trial/) for setup and publishing steps.
+Version 0.6.5 lets you choose the Windows Desktop installation folder during setup.
+You can reuse or set up a connection for a recommended model on the trial page.
+GPT-6.2 API connections expose the supported reasoning effort levels.
+See the [Windows installation guide](https://hiroute.ai/en/docs/install-windows/) and
+the [model trial guide](https://hiroute.ai/en/docs/model-trial/).
 
 1. **Connect your models.** Add a supported subscription or API connection and choose an
    economical model plus a primary model.

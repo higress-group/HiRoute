@@ -78,6 +78,22 @@ test('historical Windows identities retain the exact recorded selection and verd
   identity.native_evidence.runs[0].scenarios['install.console-ready'] = 'not_assessed';
   assert.throws(() => verifyWindowsNativeAcceptance(identity, policy), /cannot omit actual standard-user/);
 });
+
+test('an unassessed Windows installer requires a decision for its exact package', () => {
+  const policy = JSON.parse(fs.readFileSync(new URL('../../../scripts/windows-desktop-cases.json', import.meta.url)));
+  const binding = { version: '1.2.3', revision, installer_sha256: 'c'.repeat(64) };
+  const decisionUrl = 'https://github.com/higress-group/HiRoute/issues/193#issuecomment-1';
+  const identity = { ...binding, native_runtime: 'not_assessed', acceptance_decision: decisionUrl };
+  assert.throws(() => verifyWindowsNativeAcceptance(identity, policy), /exact committed release decision/);
+
+  policy.release_decisions.push({ ...binding, native_runtime: 'not_assessed', decision_url: decisionUrl });
+  assert.equal(verifyWindowsNativeAcceptance(identity, policy), identity);
+  for (const change of [{ installer_sha256: 'd'.repeat(64) }, { acceptance_decision: decisionUrl + '0' },
+    { native_runtime: 'green' }, { native_evidence: { runs: [] } }]) {
+    assert.throws(() => verifyWindowsNativeAcceptance({ ...identity, ...change }, policy));
+  }
+});
+
 test('Desktop update endpoint publishes the same validated website catalog', () => {
   const generated = JSON.parse(fs.readFileSync(new URL('../public/releases.json', import.meta.url), 'utf8'));
   const source = JSON.parse(fs.readFileSync(new URL('../data/releases.json', import.meta.url), 'utf8'));

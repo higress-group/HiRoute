@@ -1,0 +1,30 @@
+{
+  "schema": "hiroute.documentation-review/v1",
+  "tag": "v0.6.5",
+  "product_revision": "5ff9126ad88eb1f785a52cafd9298b2ba963205b",
+  "guides": {
+    "status": "updated",
+    "summary": "The bilingual Windows guides and copied Agent instructions describe initial directory selection, the final /D= argument and repair at the registered path. The trial guides describe opening the selected recommendation and choosing or saving a connection in the trial page. The README summaries cover these changes and the GPT-6.2 reasoning options. The copied trial commands match the current CLI entry points.",
+    "reviewed_files": [
+      "README.md",
+      "README.zh-CN.md",
+      "apps/website/content/guides/install-windows.en.md",
+      "apps/website/content/guides/install-windows.zh.md",
+      "apps/website/content/guides/model-trial.en.md",
+      "apps/website/content/guides/model-trial.zh.md"
+    ],
+    "content_sha256": "b47a7b7267d01027f6f24a51a5dfadfc7692f74c0aed7b03e7be46e8aef4d4b4"
+  },
+  "screenshots": {
+    "status": "updated",
+    "summary": "Inspected the bilingual dark-mode trial setup captures from 2f5152bb7a88fe7ee73b4f72974969b3b051e412. The frozen source uses the same Desktop components. The trial images show the first setup step with a selected model. The refreshed recommendation entry images have the same bytes as their existing copies. Windows directory selection is covered in the written installer instructions.",
+    "reviewed_files": [
+      "apps/website/docs/guide-assets.md",
+      "apps/website/public/guide-assets/trial-entry-en.webp",
+      "apps/website/public/guide-assets/trial-entry-zh.webp",
+      "apps/website/public/guide-assets/trial-setup-en.webp",
+      "apps/website/public/guide-assets/trial-setup-zh.webp"
+    ],
+    "content_sha256": "2bc0a83d7e7e1a62be1017615104e13a5d525fde1afe7afa9e731dcd39c4373d"
+  }
+}

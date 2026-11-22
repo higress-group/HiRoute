@@ -104,6 +104,13 @@
         ],
         "server": []
       }
+    },
+    {
+      "version": "0.6.5",
+      "revision": "5ff9126ad88eb1f785a52cafd9298b2ba963205b",
+      "installer_sha256": "2fa78a011c38142c1c9d05191d33d813b0429519c85e28096723cc6e098f2ad7",
+      "native_runtime": "not_assessed",
+      "decision_url": "https://github.com/higress-group/HiRoute/issues/193#issuecomment-7078344848"
     }
   ]
 }

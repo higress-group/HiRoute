@@ -117,14 +117,9 @@ def recorded_native_decisions(identity, policy):
         entry.get(key) == identity.get(key) for key in ("version", "revision", "installer_sha256"))]
 
 
-def native_deferral(identity, policy, decisions):
+def native_deferral(policy, decision):
     required = policy["historical_platforms"]
-    if (identity.get("native_runtime") != "deferred" or len(decisions) != 1
-            or identity.get("acceptance_decision") != decisions[0].get("decision_url")
-            or not re.fullmatch(r"https://github\.com/higress-group/HiRoute/issues/[1-9][0-9]*#issuecomment-[1-9][0-9]*",
-                                decisions[0].get("decision_url", ""))):
-        raise ValueError("Windows native deferral lacks an exact committed release decision")
-    deferred = decisions[0].get("deferred_cases", {})
+    deferred = decision.get("deferred_cases", {})
     if (set(deferred) != set(required) or not any(deferred.values())
             or any(not isinstance(cases, list) or len(cases) != len(set(cases))
                    or not set(cases) <= set(required[platform])
@@ -142,10 +137,21 @@ def verify_native_acceptance(identity, policy=None):
     required = policy["platforms"]
     deferred = {platform: [] for platform in required}
     decisions = recorded_native_decisions(identity, policy)
-    if identity.get("native_runtime") == "deferred" or decisions:
-        deferred = native_deferral(identity, policy, decisions)
+    runtime = identity.get("native_runtime")
+    if runtime in ("deferred", "not_assessed") or decisions:
+        if (len(decisions) != 1 or runtime not in ("deferred", "not_assessed")
+                or decisions[0].get("native_runtime", "deferred") != runtime
+                or identity.get("acceptance_decision") != decisions[0].get("decision_url")
+                or not re.fullmatch(r"https://github\.com/higress-group/HiRoute/issues/[1-9][0-9]*#issuecomment-[1-9][0-9]*",
+                                    decisions[0].get("decision_url", ""))):
+            raise ValueError("Windows native deferral lacks an exact committed release decision")
+        if runtime == "not_assessed":
+            if "native_evidence" in identity or "deferred_cases" in decisions[0]:
+                raise ValueError("Unassessed Windows acceptance cannot include native runs or partial verdicts")
+            return
+        deferred = native_deferral(policy, decisions[0])
         required = policy["historical_platforms"]
-    elif identity.get("native_runtime") != "green" or "acceptance_decision" in identity:
+    elif runtime != "green" or "acceptance_decision" in identity:
         raise ValueError("Windows Desktop requires completed native acceptance on Windows Server x64")
     evidence = identity.get("native_evidence", {})
     runs = evidence.get("runs", []) if isinstance(evidence, dict) else []
@@ -160,7 +166,7 @@ def verify_native_acceptance(identity, policy=None):
                 or native.get("installer_sha256") != identity["installer_sha256"]
                 or native.get("standard_user") is not True or native.get("architecture") != "AMD64"
                 or not isinstance(native.get("os_version"), str) or not native["os_version"]
-                or (identity["native_runtime"] == "green" and not WINDOWS_SERVER_OS.fullmatch(native["os_version"]))
+                or (runtime == "green" and not WINDOWS_SERVER_OS.fullmatch(native["os_version"]))
                 or not isinstance(scenarios, dict)
                 or set(scenarios) != set(required[platform])
                 or any(scenarios[case] != ("not_assessed" if case in deferred[platform] else "green")
@@ -172,9 +178,10 @@ def verify(installer, identity, revision):
     if not isinstance(identity, dict):
         raise ValueError("Windows Desktop identity must be an object")
     regular(installer)
+    components = "awaiting_runtime" if identity.get("native_runtime") == "not_assessed" else "green"
     expected = {"schema": SCHEMA, "revision": revision, "architecture": "x86_64", "distribution": "unsigned",
                 "installer_sha256": digest(installer), "installer_size": installer.stat().st_size,
-                "integrity": "green", "embedded_components": "green"}
+                "integrity": "green", "embedded_components": components}
     if not re.fullmatch(r"[0-9a-f]{40}", revision) or any(identity.get(k) != v for k, v in expected.items()):
         raise ValueError("Windows Desktop identity lacks matching native acceptance")
     if installer.name != f'HiRoute-{identity.get("version")}-{revision[:12]}-windows-x86_64-setup.exe':
