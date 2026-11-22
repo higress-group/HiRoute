@@ -318,6 +318,8 @@ if ($Scope -eq 'components') {
     'windows::installed_apps::tests::windows_uninstall_locations_select_exact_app_and_versioned_names_read_only',
     'windows::lifecycle::tests::lifecycle_payload_is_closed_and_does_not_accept_extra_authority',
     'windows::service::token::tests::restricted_business_child_runs_with_owner_medium_token',
+    'windows::shell_location::tests::custom_location_accepts_a_new_private_program_folder_and_excludes_service_state',
+    'windows::shell_location::tests::custom_location_is_an_unambiguous_local_folder',
     'windows::shell_login::tests::fixed_login_command_is_quoted_even_for_paths_without_spaces',
     'windows::shell_registration::tests::inherited_export_is_published_privately_and_changed_material_is_not_overwritten',
     'windows::task::tests::task_owner_ids_come_from_principal_and_logon_trigger',
