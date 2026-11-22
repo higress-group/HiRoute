@@ -3,6 +3,7 @@ import { invoke } from '../host/index.ts';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import './settings.css';
 import { ObservationStorageSettings } from '../features/ObservationStorageSettings';
+import { ConfigurationTransferSettings } from '../features/ConfigurationTransferSettings';
 import { DiagnosticsSettings } from '../features/diagnostics/DiagnosticsSettings';
 import { UpdatesSettings } from '../features/UpdatesSettings';
 import { ShellHostSettings } from '../features/ShellHostSettings';
@@ -223,6 +224,7 @@ export function SettingsPage(props: SettingsPageProps) {
             <div className="segmented">{(['system', 'light', 'dark'] as const).map(theme => <button type="button" key={theme} className={`segment ${props.theme === theme ? 'active' : ''}`} aria-pressed={props.theme === theme} onClick={() => props.onThemeChange(theme)}>{theme === 'system' ? text('跟随系统', 'System') : theme === 'light' ? text('浅色', 'Light') : text('深色', 'Dark')}</button>)}</div>
           </div>
         </div></section>
+        <ConfigurationTransferSettings active={active} language={props.language} />
         {updatesEnabled && <UpdatesSettings active={active} language={props.language} headingRef={updatesHeading}
           onServiceChanged={props.onServiceChanged} onUpdateAvailabilityChange={props.onUpdateAvailabilityChange} />}
       </div>

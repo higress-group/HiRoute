@@ -156,6 +156,7 @@
     "hiroute.compute-subscription-preview/v2",
     "hiroute.compute-subscription-target/v2",
     "hiroute.compute-subscription-validation-record/v1",
+    "hiroute.configuration-bundle/v1",
     "hiroute.connector-owned-credential/v1",
     "hiroute.connector-owned-runtime-fallback/v1",
     "hiroute.connector-profile/v1",

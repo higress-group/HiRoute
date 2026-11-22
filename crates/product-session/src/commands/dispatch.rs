@@ -404,6 +404,26 @@ pub async fn dispatch(
             let value = observation_delete(window, state, input.input).await?;
             serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
         }
+        "configuration_export" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {}
+            let _: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value = configuration_export(window, state).await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
+        "configuration_import" => {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields, rename_all = "camelCase")]
+            struct Arguments {
+                input: ConfigurationBundleV1,
+            }
+            let input: Arguments = serde_json::from_value(args)
+                .map_err(|_| DesktopFailure::from("REQUEST_INVALID"))?;
+            let value = configuration_import(window, state, input.input).await?;
+            serde_json::to_value(value).map_err(|_| "RESPONSE_DATA_INVALID".into())
+        }
         "worker_settings_get" => {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields, rename_all = "camelCase")]

@@ -434,6 +434,7 @@ fn audited(name: &str) -> bool {
             | "plan_editor_options"
             | "observation_capacity_get"
             | "worker_settings_get"
+            | "configuration_export"
             | "worker_executor_availability"
             | "worker_plans"
             | "worker_dependencies_discover"

@@ -153,6 +153,17 @@
     "host_only": true
   },
   {
+    "name": "save_configuration_bundle",
+    "args": [
+      {
+        "name": "bundle",
+        "type": "ConfigurationBundleV1"
+      }
+    ],
+    "result": "Result<ConfigurationBundleSaveOutcome, DesktopFailure>",
+    "host_only": true
+  },
+  {
     "name": "desktop_snapshot",
     "args": [],
     "result": "Result<DesktopSnapshot, DesktopFailure>",
@@ -672,6 +683,23 @@
       }
     ],
     "result": "Result<AgentCheckCompletion, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "configuration_export",
+    "args": [],
+    "result": "Result<ConfigurationBundleV1, DesktopFailure>",
+    "host_only": false
+  },
+  {
+    "name": "configuration_import",
+    "args": [
+      {
+        "name": "input",
+        "type": "ConfigurationBundleV1"
+      }
+    ],
+    "result": "Result<ConfigurationImportResultV1, DesktopFailure>",
     "host_only": false
   },
   {

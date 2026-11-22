@@ -126,7 +126,8 @@ valid console session; authentication expiry and revocation still require sign-i
 The browser exposes the shared model, routing, Agent, Worker, conversation and
 settings workflows. Host-only update, CLI-entry, quit, login-start and titlebar
 controls are absent. Directory actions show a path on the service host. OpenAPI
-saving downloads the canonical file; clipboard failures expose manual copying.
+saving downloads the canonical file, configuration export downloads the preference
+bundle as JSON, and clipboard failures expose manual copying.
 
 Windows Desktop wraps the local console, checks the actual Gateway and creates
 fresh one-time launch codes itself. A service restart returns it through the

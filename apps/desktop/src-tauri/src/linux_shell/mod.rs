@@ -3,6 +3,7 @@ mod presentation;
 mod runtime;
 
 use hiroute_host_runtime::StorageRecovery;
+use hiroute_product_session::commands::ConfigurationBundleV1;
 use runtime::{LiveConsole, NativeSession};
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -364,6 +365,36 @@ async fn shell_save_classifier_openapi(
 }
 
 #[tauri::command]
+async fn shell_save_configuration_bundle(
+    window: WebviewWindow,
+    host: HostState<'_>,
+    bearer: String,
+    bundle: ConfigurationBundleV1,
+) -> Result<&'static str, &'static str> {
+    use tauri_plugin_dialog::DialogExt;
+    let bearer = Zeroizing::new(bearer);
+    authorize(&window, &host, &bearer).await?;
+    let dialog = window
+        .dialog()
+        .file()
+        .set_file_name("hiroute-configuration.json")
+        .add_filter("Configuration JSON", &["json"])
+        .set_parent(&window);
+    let selected = tauri::async_runtime::spawn_blocking(move || dialog.blocking_save_file())
+        .await
+        .map_err(|_| "FILE_SAVE_UNAVAILABLE")?;
+    let Some(path) = selected else {
+        return Ok("cancelled");
+    };
+    authorize(&window, &host, &bearer).await?;
+    let body = serde_json::to_vec(&bundle).map_err(|_| "FILE_SAVE_UNAVAILABLE")?;
+    tokio::fs::write(path.into_path().map_err(|_| "FILE_SAVE_UNAVAILABLE")?, body)
+        .await
+        .map_err(|_| "FILE_SAVE_UNAVAILABLE")?;
+    Ok("saved")
+}
+
+#[tauri::command]
 async fn shell_write_clipboard(
     window: WebviewWindow,
     host: HostState<'_>,
@@ -528,7 +559,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             shell_status, shell_retry_startup, shell_install_runtime, shell_recover_runtime, shell_open_legacy_browser,
             shell_preview_runtime_update, shell_update_runtime,
-            shell_capabilities, shell_open_in_browser, shell_open_external_url, shell_save_classifier_openapi,
+            shell_capabilities, shell_open_in_browser, shell_open_external_url, shell_save_classifier_openapi, shell_save_configuration_bundle,
             shell_restart_service, shell_preview_runtime_removal, shell_remove_runtime, shell_reconnect, shell_open_diagnostic_directory, shell_write_clipboard,
             shell_presentation_get, shell_presentation_set,
         ])
