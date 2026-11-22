@@ -226,35 +226,30 @@ mod tests {
     }
 
     #[test]
-    fn gpt62_does_not_infer_render_profiles_or_a_provider_default() {
+    fn gpt62_uses_documented_api_profiles_with_unknown_provider_default() {
         let catalog = catalog();
         for model in ["gpt-6.2-astra", "gpt-6.2-sol"] {
-            let facts = catalog
-                .model_metadata()
-                .canonical_models
-                .iter()
-                .find(|m| m.model_key == model)
-                .unwrap();
-            assert!(facts.reasoning.profiles.is_empty());
-            assert!(facts.reasoning.default.is_none());
             for protocol in [
                 UpstreamProtocol::Responses,
                 UpstreamProtocol::ChatCompletions,
             ] {
                 let (provenance, target, authentication) =
                     scope(&catalog, "openai.platform.global.v1", protocol);
+                let result = missing_api_reasoning_default(
+                    &catalog,
+                    &provenance,
+                    &target,
+                    &authentication,
+                    model,
+                    &unknown(),
+                    None,
+                )
+                .unwrap();
                 assert!(
-                    missing_api_reasoning_default(
-                        &catalog,
-                        &provenance,
-                        &target,
-                        &authentication,
-                        model,
-                        &unknown(),
-                        None,
-                    )
-                    .is_none()
+                    matches!(result.capability, NativeReasoningCapabilityV1::Discrete { parameter, profiles, default_profile: None }
+                        if parameter == "reasoning_effort" && profiles == ["low", "medium", "high", "xhigh", "max"])
                 );
+                assert_eq!(result.render_convention, None);
             }
         }
     }
