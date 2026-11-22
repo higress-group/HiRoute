@@ -1626,6 +1626,17 @@
   ],
   "field_compatibility_support": [
     {
+      "contract": "hiroute.windows-shell-transaction/v1",
+      "field": "custom_root absent in default-location Windows Desktop transactions",
+      "mode": "recovery_read_only",
+      "owner": "Windows Desktop installer",
+      "reason": "Released installers prepared their shell journals in the fixed per-user Programs directory. Recovery resolves an omitted custom_root to that same location. Default-location installations continue to use this representation.",
+      "removal_condition": "Retain while default-location Desktop journals can be recovered.",
+      "allowed_paths": [
+        "apps/shell/src-tauri/src/runtime/install_transaction.rs"
+      ]
+    },
+    {
       "contract": "OpenAI Responses web_search_call",
       "field": "action.type=find",
       "mode": "legacy_adapter",

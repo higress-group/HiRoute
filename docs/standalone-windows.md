@@ -64,7 +64,8 @@ an existing SCM-managed installation before modifying it and explain the refusal
 
 Windows KnownFolders determine the actual account Profile and LocalAppData;
 HOME and XDG variables cannot redirect an installed instance. Shell program files
-live in `%LOCALAPPDATA%\Programs\HiRoute`. Standalone state lives separately in
+default to `%LOCALAPPDATA%\Programs\HiRoute`. Fresh installations can select
+another local Desktop program directory. Standalone state lives separately in
 `%LOCALAPPDATA%\HiRoute\cli`; versioned CLI/daemon/CPA files and shared data remain
 under the user's `.local` directories. The install directory never contains or
 sits inside the standalone state directory.

@@ -1,4 +1,5 @@
 //! The shell's fixed current-user login entry. No script or arbitrary registry API.
+use super::shell_location;
 use std::{
     io,
     path::{Path, PathBuf},
@@ -14,20 +15,22 @@ const NAME: &str = "HiRoute";
 fn wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(Some(0)).collect()
 }
-fn checked_binary(path: &Path) -> io::Result<()> {
-    let expected = super::background::local_app_data()?.join("Programs/HiRoute/hiroute-shell.exe");
-    if !path.is_absolute()
-        || path != expected
-        || path
-            .components()
-            .any(|p| matches!(p, std::path::Component::ParentDir))
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            "SHELL_LOGIN_CONFLICT",
-        ));
+fn checked_binary(path: &Path) -> io::Result<PathBuf> {
+    let root = shell_location::installed_root()?;
+    let expected = root.join("hiroute-shell.exe");
+    if path == expected {
+        return Ok(expected);
     }
-    Ok(())
+    if let Some(parent) = path.parent()
+        && shell_location::same_existing_path(parent, &root, true).unwrap_or(false)
+        && shell_location::same_existing_path(path, &expected, false).unwrap_or(false)
+    {
+        return Ok(expected);
+    }
+    Err(io::Error::new(
+        io::ErrorKind::PermissionDenied,
+        "SHELL_LOGIN_CONFLICT",
+    ))
 }
 fn command_line(binary: &Path) -> String {
     // Always quote, including ordinary profiles whose path contains no spaces.
@@ -72,19 +75,17 @@ pub fn configured_binary() -> io::Result<Option<PathBuf>> {
         .strip_prefix('"')
         .and_then(|s| s.strip_suffix("\" --background"))
         .ok_or_else(|| io::Error::other("SHELL_LOGIN_CONFLICT"))?;
-    let path = PathBuf::from(value);
-    checked_binary(&path)?;
-    Ok(Some(path))
+    checked_binary(Path::new(value)).map(Some)
 }
 pub fn enabled(binary: &Path) -> io::Result<bool> {
-    checked_binary(binary)?;
+    let binary = checked_binary(binary)?;
     match configured_binary()? {
         Some(path) if path != binary => Err(io::Error::other("SHELL_LOGIN_CONFLICT")),
         value => Ok(value.is_some()),
     }
 }
 pub fn set(binary: &Path, enabled: bool) -> io::Result<()> {
-    checked_binary(binary)?;
+    let binary = checked_binary(binary)?;
     if let Some(existing) = configured_binary()?
         && existing != binary
     {
@@ -93,8 +94,8 @@ pub fn set(binary: &Path, enabled: bool) -> io::Result<()> {
     if !enabled {
         return remove();
     }
-    let _held = super::security::open_identity(binary, false)?;
-    let value = wide(&command_line(binary));
+    let _held = super::security::open_identity(&binary, false)?;
+    let value = wide(&command_line(&binary));
     let key = wide(KEY);
     let name = wide(NAME);
     // SAFETY: fixed HKCU Run value and live, NUL-terminated UTF-16 data.
@@ -136,9 +137,9 @@ mod tests {
     use super::*;
     #[test]
     fn fixed_login_command_is_quoted_even_for_paths_without_spaces() {
-        let binary = super::super::background::local_app_data()
+        let binary = super::super::shell_location::installed_root()
             .unwrap()
-            .join("Programs/HiRoute/hiroute-shell.exe");
+            .join("hiroute-shell.exe");
         let command = command_line(&binary);
         let decoded = command
             .strip_prefix('"')

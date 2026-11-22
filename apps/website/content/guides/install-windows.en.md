@@ -16,6 +16,8 @@ Read the documentation below, then use the HiRoute CLI to carry out my goal for 
 Page documentation: https://hiroute.ai/en/docs/install-windows/
 CLI reference: https://hiroute.ai/en/docs/cli/
 
+For a first install on a specific drive, use Show installation options or the installer's final /D= argument. Use the existing directory for repair or upgrade. The folder selection applies to the Desktop program.
+
 Follow the guide for the requested installation or checks. Once installed, help me enable the built-in management Skill under “Agent → HiRoute management → Enable” for further configuration: https://hiroute.ai/en/docs/#management-skill
 
 Command pointers (choose only what the goal needs; prefix each with hiroute):
@@ -46,7 +48,7 @@ The installer is not code-signed. Windows may show an unknown publisher or a Sma
 
 ## Install and start
 
-1. Open the installer in your ordinary account. It installs in `%LOCALAPPDATA%\Programs\HiRoute` and keeps service data separately under `%LOCALAPPDATA%\HiRoute\cli`.
+1. Open the installer in your ordinary account. To put the Desktop program on another drive, expand **Show installation options** and select **Browse...** or enter a new folder such as `D:\Apps\HiRoute`. Choose a local fixed drive and a folder that only your account or an administrator can replace. The default is `%LOCALAPPDATA%\Programs\HiRoute`. Service data stays in `%LOCALAPPDATA%\HiRoute\cli`.
 2. Login startup and the tray are enabled by default. You can deselect either option. With the tray disabled, closing the window exits the shell; the background service continues.
 3. Open HiRoute. It checks the current-user Task, starts the service, waits for the Gateway and opens its local console. There is no password or unlock step. Protected actions retain their page confirmation.
 
@@ -57,6 +59,8 @@ The installer adds the fixed `.local\bin` directory to your user PATH without re
 For unattended installation, run the verified installer with `/S` and wait for its process exit code. It applies the default login-start and tray choices without prompts, starts the service and returns a nonzero code on failure. CLI-only users install this same package. There is no separate Windows standalone archive and no ARM64 package.
 
 ## Update and recover
+
+For a fresh unattended install, put the destination last, for example `installer.exe /S /D=D:\My Apps\HiRoute`. Leave the path unquoted, including spaces. Repairs and updates reuse the installed directory. To change drives later, uninstall while keeping your data, then select the new directory during setup.
 
 Select **Update** in the sidebar when it appears. In a narrow window, select the **Settings** gear marked with a purple dot. Both open **Settings → General → Updates**, where you can review the version and choose **Download update**. You can also select **Check for updates** in that section.
 

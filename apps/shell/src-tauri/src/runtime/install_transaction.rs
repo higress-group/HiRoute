@@ -1,20 +1,22 @@
 //! Shell files and the standalone journal have separate owners. Retain shell bytes until
 //! the native standalone transaction, login settings and readiness check all succeed.
 use hiroute_host_runtime::standalone_install::{Package, windows};
-use hiroute_platform::windows::security;
+use hiroute_platform::windows::{security, shell_location};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::BTreeMap,
-    fs,
-    io::{self, Read},
+    collections::{BTreeMap, BTreeSet},
+    fs::{self, File},
+    io::{self, Read, Write},
     path::{Path, PathBuf},
 };
 
+mod program_writes;
 mod recovery;
 
 const INVENTORY: &str = "shell-package.json";
 const PENDING: &str = "install-pending.json";
+const UNINSTALLER: &str = "uninstall.exe";
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Inventory {
@@ -25,6 +27,9 @@ struct Inventory {
 #[serde(deny_unknown_fields)]
 struct Pending {
     schema: String,
+    // Released journals without this field always belong to the original default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    custom_root: Option<PathBuf>,
     phase: Phase,
     old: BTreeMap<String, String>,
     new: BTreeMap<String, String>,
@@ -54,10 +59,67 @@ pub(super) fn data() -> io::Result<PathBuf> {
     Ok(hiroute_platform::windows::background::local_app_data()?.join("HiRoute/shell"))
 }
 pub(super) fn root() -> io::Result<PathBuf> {
-    Ok(hiroute_platform::windows::background::local_app_data()?.join("Programs/HiRoute"))
+    match active_root()? {
+        Some(root) => Ok(root),
+        None => shell_location::default_root(),
+    }
+}
+pub(super) fn active_root() -> io::Result<Option<PathBuf>> {
+    let registered = shell_location::registered_root()?;
+    if has_pending()? {
+        let root = match pending()?.custom_root {
+            Some(path) => {
+                shell_location::validate_existing_or_missing_custom(&path)?;
+                path
+            }
+            None => shell_location::default_root()?,
+        };
+        if registered.as_ref().is_some_and(|path| path != &root) {
+            return Err(invalid());
+        }
+        return Ok(Some(root));
+    }
+    if registered.is_some() {
+        return Ok(registered);
+    }
+    let default = shell_location::default_root()?;
+    Ok(
+        (present(&default.join(INVENTORY))? || present(&default.join("hiroute-shell.exe"))?)
+            .then_some(default),
+    )
+}
+
+/// Check the choice without changing the filesystem while the options page is open.
+pub(super) fn check_destination(path: &Path) -> io::Result<()> {
+    if let Some(active) = active_root()? {
+        return if path == active
+            || shell_location::same_existing_path(path, &active, true).unwrap_or(false)
+        {
+            Ok(())
+        } else {
+            Err(shell_location::invalid())
+        };
+    }
+    if path == shell_location::default_root()? {
+        return Ok(());
+    }
+    shell_location::validate_custom(path)?;
+    match security::open_identity(path, true) {
+        Ok(file) => {
+            security::verify_owner_only_handle(&file, true)?;
+            if fs::read_dir(path)?.next().is_some() {
+                return Err(shell_location::invalid());
+            }
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    Ok(())
 }
 pub(super) fn hash(path: &Path) -> io::Result<String> {
-    let mut file = security::open_identity(path, false)?;
+    hash_file(&security::open_identity(path, false)?)
+}
+fn hash_file(mut file: &File) -> io::Result<String> {
     if file.metadata()?.len() > 2 * 1024 * 1024 * 1024 {
         return Err(invalid());
     }
@@ -101,7 +163,7 @@ fn read<T: serde::de::DeserializeOwned>(path: &Path, private: bool) -> io::Resul
         security::open_identity(path, false)?
     };
     let mut bytes = vec![];
-    file.by_ref()
+    Read::by_ref(&mut file)
         .take(1024 * 1024 + 1)
         .read_to_end(&mut bytes)?;
     if bytes.len() > 1024 * 1024 {
@@ -204,15 +266,17 @@ pub(super) fn recover_for_candidate(
         && hiroute_host_runtime::storage_upgrade_started(&layout.storage_root())
             .map_err(|error| Failure::io("check-storage-recovery", error))?
     {
-        return prepare(manifest, daemon)
+        let root = root().map_err(read_journal)?;
+        return prepare(manifest, daemon, &root)
             .map(|_| ())
             .map_err(|error| Failure::io("resume-desktop-install", error));
     }
     windows::recover_pending().map_err(|error| Failure::io("recover-standalone", error))?;
     rollback(allow).map_err(|error| Failure::io("rollback-desktop", error))
 }
-pub(super) fn prepare(manifest: &Path, daemon: &Path) -> io::Result<bool> {
+pub(super) fn prepare(manifest: &Path, daemon: &Path, root: &Path) -> io::Result<bool> {
     windows::preflight()?;
+    check_destination(root)?;
     let package: Package = read(manifest, false)?;
     package.validate()?;
     if package.target != "x86_64-pc-windows-msvc" {
@@ -249,7 +313,7 @@ pub(super) fn prepare(manifest: &Path, daemon: &Path) -> io::Result<bool> {
             // Re-running the exact current installer continues its existing
             // journal forward. Never replace its retained original rollback set.
             for name in value.old.keys().chain(value.new.keys()) {
-                let path = root()?.join(name);
+                let path = root.join(name);
                 if present(&path)? {
                     let actual = hash(&path)?;
                     if value.old.get(name) != Some(&actual) && value.new.get(name) != Some(&actual)
@@ -262,7 +326,13 @@ pub(super) fn prepare(manifest: &Path, daemon: &Path) -> io::Result<bool> {
         }
         rollback(false)?;
     }
-    let root = root()?;
+    let custom_root = (root != shell_location::default_root()?).then(|| root.to_owned());
+    if custom_root.is_some() {
+        let directory = security::ensure_private_directory(root)?;
+        security::verify_owner_only_handle(&directory, true)?;
+        shell_location::validate_custom(root)?;
+        program_writes::reserve(root)?;
+    }
     let mut old = BTreeMap::new();
     let inventory = root.join(INVENTORY);
     let existed = present(&inventory)?;
@@ -341,6 +411,7 @@ pub(super) fn prepare(manifest: &Path, daemon: &Path) -> io::Result<bool> {
     }
     let value = Pending {
         schema: "hiroute.windows-shell-transaction/v1".into(),
+        custom_root,
         phase: Phase::Prepared,
         old,
         new,
@@ -350,7 +421,7 @@ pub(super) fn prepare(manifest: &Path, daemon: &Path) -> io::Result<bool> {
         console_desired,
         shell_login,
     };
-    let history_cutover = recovery::prepare(&value, &package, daemon)?;
+    let history_cutover = recovery::prepare(&value, &package, daemon, root)?;
     write(&data.join(PENDING), &value)?;
     Ok(history_cutover)
 }
@@ -396,26 +467,60 @@ fn prune_old_payload(
     }
     Ok(())
 }
-/// Record NSIS-generated files before any service mutation. Unknown replacements stay for repair.
-pub(super) fn record_generated() -> io::Result<()> {
+/// Admit the uninstaller generated by NSIS before it appears in the program directory.
+pub(super) fn publish_uninstaller(source: &Path) -> io::Result<()> {
     let mut value = pending()?;
+    if value.phase != Phase::Prepared {
+        return Err(invalid());
+    }
+    let source = security::open_read_lease(source)?;
+    let expected = hash_file(source.file())?;
     let root = root()?;
-    for name in ["uninstall.exe", "shell-install.json"] {
-        let path = root.join(name);
-        if present(&path)? {
-            value.new.insert(name.into(), hash(&path)?);
+    let target = root.join(UNINSTALLER);
+    let prepared = value.new.get(UNINSTALLER);
+    if prepared.is_some_and(|digest| digest != &expected) {
+        return Err(invalid());
+    }
+    if present(&target)? {
+        let actual = hash(&target)?;
+        if prepared == Some(&actual) {
+            return Ok(());
+        }
+        if value.old.get(UNINSTALLER) != Some(&actual) {
+            return Err(invalid());
         }
     }
-    write(&data()?.join(PENDING), &value)
+    value.new.insert(UNINSTALLER.into(), expected);
+    write(&data()?.join(PENDING), &value)?;
+    program_writes::publish(&root, value.custom_root.is_some(), UNINSTALLER, |file| {
+        io::copy(&mut source.reopen_file()?, file)?;
+        Ok(())
+    })
+}
+pub(super) fn verify_uninstaller(root: &Path) -> io::Result<()> {
+    let value = pending()?;
+    let unavailable = || io::Error::other("SHELL_UNINSTALLER_PUBLICATION_REQUIRED");
+    let expected = value.new.get(UNINSTALLER).ok_or_else(unavailable)?;
+    if value.phase != Phase::Prepared
+        || &hash(&root.join(UNINSTALLER)).map_err(|_| unavailable())? != expected
+    {
+        return Err(unavailable());
+    }
+    Ok(())
 }
 pub(super) fn write_preferences(bytes: &[u8]) -> io::Result<()> {
     let mut value = pending()?;
     value.new.insert(
-        "shell-install.json".into(),
+        program_writes::PREFERENCES.into(),
         format!("{:x}", Sha256::digest(bytes)),
     );
     write(&data()?.join(PENDING), &value)?;
-    hiroute_platform::durable::write_private_atomic(&root()?.join("shell-install.json"), bytes)
+    program_writes::publish(
+        &root()?,
+        value.custom_root.is_some(),
+        program_writes::PREFERENCES,
+        |file| file.write_all(bytes),
+    )
 }
 fn cleanup_committed() {
     let report = match windows::cleanup_packages() {
@@ -427,7 +532,6 @@ fn cleanup_committed() {
     }
 }
 pub(super) fn commit() -> io::Result<()> {
-    record_generated()?;
     let mut value = pending()?;
     let root = root()?;
     let actual_inventory = if present(&root.join(INVENTORY))? {
@@ -459,7 +563,12 @@ pub(super) fn commit() -> io::Result<()> {
         .new
         .insert(INVENTORY.into(), format!("{:x}", Sha256::digest(&bytes)));
     write(&data()?.join(PENDING), &value)?;
-    hiroute_platform::durable::write_private_atomic(&root.join(INVENTORY), &bytes)?;
+    program_writes::publish(&root, value.custom_root.is_some(), INVENTORY, |file| {
+        file.write_all(&bytes)
+    })?;
+    if value.custom_root.is_some() {
+        program_writes::cleanup(&root)?;
+    }
     value.phase = Phase::Committed;
     write(&data()?.join(PENDING), &value)?;
     complete_commit(&data()?, &value.old)?;
@@ -506,6 +615,31 @@ fn clear(data: &Path, old: &BTreeMap<String, String>) -> io::Result<()> {
         }
     }
     fs::remove_file(data.join(PENDING))
+}
+fn prune_new_directories(root: &Path, files: &BTreeMap<String, String>) -> io::Result<()> {
+    let mut directories = BTreeSet::new();
+    for name in files.keys() {
+        directories.extend(
+            Path::new(name)
+                .ancestors()
+                .skip(1)
+                .filter(|parent| !parent.as_os_str().is_empty()),
+        );
+    }
+    for relative in directories.into_iter().rev() {
+        match security::open_delete(&root.join(relative), true)
+            .and_then(|directory| security::delete_by_handle(&directory))
+        {
+            Ok(()) => {}
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::DirectoryNotEmpty
+                ) => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
 }
 pub(super) fn rollback(allow_unavailable_agent_restore: bool) -> io::Result<()> {
     if !has_pending()? {
@@ -628,6 +762,12 @@ pub(super) fn rollback(allow_unavailable_agent_restore: bool) -> io::Result<()> 
             fs::remove_file(path)?;
         }
     }
+    if value.custom_root.is_some() && value.old.is_empty() {
+        prune_new_directories(&root, &value.new)?;
+    }
+    if value.custom_root.is_some() {
+        program_writes::cleanup(&root)?;
+    }
     if value.service_active {
         super::service::manager(&["service", "start", "--output", "json"])
             .map_err(|_| invalid())?;
@@ -671,6 +811,26 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn custom_first_install_rollback_removes_only_empty_package_directories() {
+        let programs = PayloadDirectory::new();
+        let package_dirs = ["standalone/console/assets", "standalone/other"];
+        for directory in package_dirs {
+            security::ensure_private_directory(&programs.0.join(directory)).unwrap();
+        }
+        programs.file("standalone/other/my-file.txt", b"belongs to the user");
+        let files = BTreeMap::from([
+            ("standalone/console/assets/index.js".into(), "a".repeat(64)),
+            ("standalone/other/product.js".into(), "b".repeat(64)),
+        ]);
+        prune_new_directories(&programs.0, &files).unwrap();
+        assert!(!programs.0.join("standalone/console").exists());
+        assert_eq!(
+            fs::read(programs.0.join("standalone/other/my-file.txt")).unwrap(),
+            b"belongs to the user"
+        );
     }
 
     #[test]

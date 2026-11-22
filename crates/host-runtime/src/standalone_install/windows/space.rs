@@ -31,6 +31,7 @@ fn existing(path: &std::path::Path) -> io::Result<PathBuf> {
 
 pub fn preflight_desktop_space(
     package: &Package,
+    desktop: &std::path::Path,
     shell_state: &std::path::Path,
     shell_bytes: u64,
     recovery_copy_bytes: u64,
@@ -40,12 +41,12 @@ pub fn preflight_desktop_space(
     let payload: u64 = package.files.values().map(|file| file.size).sum();
     let mut allocations = vec![
         (
-            shell_state.to_owned(),
+            desktop.to_owned(),
             payload
-                .saturating_add(shell_bytes)
-                .saturating_add(recovery_copy_bytes)
+                .saturating_add(shell_bytes.saturating_mul(2)) // shell plus the uninstaller's embedded helper
                 .saturating_add(64 * 1024 * 1024),
         ),
+        (shell_state.to_owned(), recovery_copy_bytes),
         (
             layout.home.join(".local/lib/hiroute"),
             payload.saturating_add(32 * 1024 * 1024),

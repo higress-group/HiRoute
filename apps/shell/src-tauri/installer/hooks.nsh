@@ -12,6 +12,8 @@ Var HiRouteDesktopCheckbox
 Var HiRouteDesktopChoice
 Var HiRouteOptionsToggle
 Var HiRouteInstallPath
+Var HiRouteBrowse
+Var HiRouteActiveRoot
 Var HiRouteInstalledVersion
 Var HiRoutePrimary
 Var HiRouteProcessStatus
@@ -70,9 +72,23 @@ Function HiRouteSetOptionsVisibility
     StrCpy $0 ${SW_HIDE}
   ${EndIf}
   ShowWindow $HiRouteInstallPath $0
+  ShowWindow $HiRouteBrowse $0
   ShowWindow $HiRouteLoginCheckbox $0
   ShowWindow $HiRouteTrayCheckbox $0
   ShowWindow $HiRouteDesktopCheckbox $0
+FunctionEnd
+
+Function HiRouteBrowseDirectory
+  Pop $0
+  nsDialogs::SelectFolderDialog "Choose the folder in which to create the HiRoute program directory" "$INSTDIR\.."
+  Pop $0
+  ${If} $0 != error
+    ${GetFileName} "$0" $1
+    ${If} $1 != "HiRoute"
+      GetFullPathName $0 "$0\HiRoute"
+    ${EndIf}
+    ${NSD_SetText} $HiRouteInstallPath "$0"
+  ${EndIf}
 FunctionEnd
 
 Function HiRouteOptions
@@ -112,9 +128,15 @@ Function HiRouteOptions
   ${NSD_CreateCheckbox} 0 58u 100% 13u "Show installation options"
   Pop $HiRouteOptionsToggle
   ${NSD_OnClick} $HiRouteOptionsToggle HiRouteSetOptionsVisibility
-  ${NSD_CreateText} 8u 75u -8u 13u "$INSTDIR"
+  ${NSD_CreateText} 8u 75u -64u 13u "$INSTDIR"
   Pop $HiRouteInstallPath
-  SendMessage $HiRouteInstallPath ${EM_SETREADONLY} 1 0
+  ${NSD_CreateButton} -58u 74u 50u 15u "Browse..."
+  Pop $HiRouteBrowse
+  ${NSD_OnClick} $HiRouteBrowse HiRouteBrowseDirectory
+  ${If} $HiRouteActiveRoot != ""
+    SendMessage $HiRouteInstallPath ${EM_SETREADONLY} 1 0
+    EnableWindow $HiRouteBrowse 0
+  ${EndIf}
   ${NSD_CreateCheckbox} 8u 93u -8u 12u "Start HiRoute and its background service at login"
   Pop $HiRouteLoginCheckbox
   ${If} $HiRouteLoginChoice != 0
@@ -141,6 +163,24 @@ Function HiRouteOptions
   ${NSD_FreeIcon} $HiRoutePageIcon
 FunctionEnd
 Function HiRouteOptionsLeave
+  ${NSD_GetText} $HiRouteInstallPath $0
+  StrCpy $4 $INSTDIR
+  StrCpy $INSTDIR $0
+  StrCpy $1 1
+  ${If} $0 == $INSTDIR
+    nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-check-directory "$INSTDIR"'
+    Pop $1
+    Pop $2
+  ${EndIf}
+  ${If} $1 != 0
+    StrCpy $INSTDIR $4
+    MessageBox MB_ICONEXCLAMATION "Choose a new program folder on a writable local drive, outside HiRoute's data directories."
+    ${NSD_Check} $HiRouteOptionsToggle
+    Push $HiRouteOptionsToggle
+    Call HiRouteSetOptionsVisibility
+    ${NSD_SetFocus} $HiRouteInstallPath
+    Abort
+  ${EndIf}
   hiroute_verify_desktop:
     nsis_tauri_utils::FindProcessCurrentUser "${MAINBINARYNAME}.exe"
     Pop $0
@@ -184,10 +224,7 @@ FunctionEnd
 !macro NSIS_HOOK_PREINSTALL
   !insertmacro HiRouteRequireDesktopExit 0
   !insertmacro HiRoutePhase "Preparing installation and checking existing data..."
-  StrCmp $INSTDIR "$LOCALAPPDATA\Programs\HiRoute" +3
-    MessageBox MB_ICONSTOP "HiRoute install directory is invalid. No product files were written." /SD IDOK
-    Abort
-  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-prepare "$PLUGINSDIR\hiroute-package.json" "$PLUGINSDIR\hirouted-preflight.exe"'
+  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-prepare "$PLUGINSDIR\hiroute-package.json" "$PLUGINSDIR\hirouted-preflight.exe" "$INSTDIR"'
   Pop $0
   Pop $1
   ${If} $0 != 0

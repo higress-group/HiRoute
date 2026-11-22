@@ -37,10 +37,28 @@ def plain(path):
 
 
 def locations(native_home, local_app_data):
+    programs = local_app_data / 'Programs/HiRoute'
+    if os.name == 'nt' and native_home == Path.home() and local_app_data == Path(os.environ['LOCALAPPDATA']):
+        import winreg
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                                r'Software\Microsoft\Windows\CurrentVersion\Uninstall\HiRoute',
+                                0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY) as key:
+                value, kind = winreg.QueryValueEx(key, 'InstallLocation')
+        except FileNotFoundError:
+            pass
+        else:
+            if kind != winreg.REG_SZ or not isinstance(value, str) or not re.fullmatch(r'"[^"]+"', value):
+                raise ValueError('Invalid Desktop install location')
+            programs = Path(value[1:-1])
+            if (not re.fullmatch(r'[a-zA-Z]:', programs.drive) or not programs.is_absolute()
+                    or programs == Path(programs.anchor) or '..' in programs.parts):
+                raise ValueError('Invalid Desktop install location')
+            plain(programs)
     return {'data': native_home / '.local/share/hiroute',
             'state': local_app_data / 'HiRoute/cli',
             'shell_state': local_app_data / 'HiRoute/shell',
-            'programs': local_app_data / 'Programs/HiRoute',
+            'programs': programs,
             'stable_cli': native_home / '.local/bin/hiroute.exe'}
 
 

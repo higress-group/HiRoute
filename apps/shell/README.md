@@ -22,7 +22,9 @@ authentication, confirmations and operations stay in `hirouted` and
   console failures never load an older storage recovery report.
 - `tray` / platform `shell_login`: window visibility and current-user login start;
   quitting the shell leaves the Task running.
-- `installer`: NSIS's fixed adapter to the native Rust installation transaction.
+- `installer`: NSIS options and the native Rust installation transaction. The
+  [program location resolver](../../crates/platform/src/windows/shell_location.rs)
+  reads the current user's Installed Apps entry for Desktop and login startup.
 - `install_transaction`: shell-only digest inventory, prepared/committed backup
   record, removal of obsolete owned payload assets before strict package validation,
   and failure recovery; unchanged cores are retained, successful manual repair
