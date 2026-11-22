@@ -168,6 +168,8 @@ fn install(args: &[String]) -> Result<Value, Failure> {
     windows::preflight().map_err(|error| Failure::io("check-service-ownership", error))?;
     let root = program_root().map_err(|code| Failure::new("verify-program-directory", code))?;
     let package = root.join("standalone");
+    super::install_transaction::verify_uninstaller(&root)
+        .map_err(|error| Failure::io("verify-uninstaller", error))?;
     super::install_transaction::prune_payload()
         .map_err(|error| Failure::io("prune-previous-payload", error))?;
     Package::read(&package).map_err(|error| Failure::io("verify-embedded-package", error))?;

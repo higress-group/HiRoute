@@ -164,10 +164,16 @@ Function HiRouteOptions
 FunctionEnd
 Function HiRouteOptionsLeave
   ${NSD_GetText} $HiRouteInstallPath $0
-  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-check-directory "$0"'
-  Pop $1
-  Pop $2
+  StrCpy $4 $INSTDIR
+  StrCpy $INSTDIR $0
+  StrCpy $1 1
+  ${If} $0 == $INSTDIR
+    nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-check-directory "$INSTDIR"'
+    Pop $1
+    Pop $2
+  ${EndIf}
   ${If} $1 != 0
+    StrCpy $INSTDIR $4
     MessageBox MB_ICONEXCLAMATION "Choose a new program folder on a writable local drive, outside HiRoute's data directories."
     ${NSD_Check} $HiRouteOptionsToggle
     Push $HiRouteOptionsToggle
@@ -175,7 +181,6 @@ Function HiRouteOptionsLeave
     ${NSD_SetFocus} $HiRouteInstallPath
     Abort
   ${EndIf}
-  ${NSD_GetText} $HiRouteInstallPath $INSTDIR
   hiroute_verify_desktop:
     nsis_tauri_utils::FindProcessCurrentUser "${MAINBINARYNAME}.exe"
     Pop $0

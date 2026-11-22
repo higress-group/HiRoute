@@ -215,6 +215,17 @@ fn nsis_lifecycle(custom: bool) {
         assert!(!default.exists());
         assert!(shell_location::registered_root().unwrap().is_none());
         let occupied = tempfile::tempdir_in(programs.parent().unwrap()).unwrap();
+        let invalid = occupied.path().join("Hi?Route");
+        run_expecting(
+            &installer,
+            &["/S", &format!("/D={}", invalid.display())],
+            &evidence,
+            "altered-directory-argument",
+            false,
+        );
+        assert!(!occupied.path().join("HiRoute").exists());
+        assert!(!default.exists());
+        assert!(shell_location::registered_root().unwrap().is_none());
         let occupied_programs = occupied.path().join("HiRoute");
         hiroute_platform::windows::security::create_owner_only_directory(&occupied_programs)
             .unwrap();

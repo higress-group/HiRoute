@@ -7,10 +7,11 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::{self, File},
-    io::{self, Read},
+    io::{self, Read, Write},
     path::{Path, PathBuf},
 };
 
+mod program_writes;
 mod recovery;
 
 const INVENTORY: &str = "shell-package.json";
@@ -330,6 +331,7 @@ pub(super) fn prepare(manifest: &Path, daemon: &Path, root: &Path) -> io::Result
         let directory = security::ensure_private_directory(root)?;
         security::verify_owner_only_handle(&directory, true)?;
         shell_location::validate_custom(root)?;
+        program_writes::reserve(root)?;
     }
     let mut old = BTreeMap::new();
     let inventory = root.join(INVENTORY);
@@ -473,7 +475,8 @@ pub(super) fn publish_uninstaller(source: &Path) -> io::Result<()> {
     }
     let source = security::open_read_lease(source)?;
     let expected = hash_file(source.file())?;
-    let target = root()?.join(UNINSTALLER);
+    let root = root()?;
+    let target = root.join(UNINSTALLER);
     let prepared = value.new.get(UNINSTALLER);
     if prepared.is_some_and(|digest| digest != &expected) {
         return Err(invalid());
@@ -489,20 +492,35 @@ pub(super) fn publish_uninstaller(source: &Path) -> io::Result<()> {
     }
     value.new.insert(UNINSTALLER.into(), expected);
     write(&data()?.join(PENDING), &value)?;
-    let permissions = hiroute_platform::file_security::private_defaults(false)?;
-    hiroute_platform::durable::write_windows_atomic_with(&target, &permissions, |file| {
+    program_writes::publish(&root, value.custom_root.is_some(), UNINSTALLER, |file| {
         io::copy(&mut source.reopen_file()?, file)?;
         Ok(())
     })
 }
+pub(super) fn verify_uninstaller(root: &Path) -> io::Result<()> {
+    let value = pending()?;
+    let unavailable = || io::Error::other("SHELL_UNINSTALLER_PUBLICATION_REQUIRED");
+    let expected = value.new.get(UNINSTALLER).ok_or_else(unavailable)?;
+    if value.phase != Phase::Prepared
+        || &hash(&root.join(UNINSTALLER)).map_err(|_| unavailable())? != expected
+    {
+        return Err(unavailable());
+    }
+    Ok(())
+}
 pub(super) fn write_preferences(bytes: &[u8]) -> io::Result<()> {
     let mut value = pending()?;
     value.new.insert(
-        "shell-install.json".into(),
+        program_writes::PREFERENCES.into(),
         format!("{:x}", Sha256::digest(bytes)),
     );
     write(&data()?.join(PENDING), &value)?;
-    hiroute_platform::durable::write_private_atomic(&root()?.join("shell-install.json"), bytes)
+    program_writes::publish(
+        &root()?,
+        value.custom_root.is_some(),
+        program_writes::PREFERENCES,
+        |file| file.write_all(bytes),
+    )
 }
 fn cleanup_committed() {
     let report = match windows::cleanup_packages() {
@@ -545,7 +563,12 @@ pub(super) fn commit() -> io::Result<()> {
         .new
         .insert(INVENTORY.into(), format!("{:x}", Sha256::digest(&bytes)));
     write(&data()?.join(PENDING), &value)?;
-    hiroute_platform::durable::write_private_atomic(&root.join(INVENTORY), &bytes)?;
+    program_writes::publish(&root, value.custom_root.is_some(), INVENTORY, |file| {
+        file.write_all(&bytes)
+    })?;
+    if value.custom_root.is_some() {
+        program_writes::cleanup(&root)?;
+    }
     value.phase = Phase::Committed;
     write(&data()?.join(PENDING), &value)?;
     complete_commit(&data()?, &value.old)?;
@@ -741,6 +764,9 @@ pub(super) fn rollback(allow_unavailable_agent_restore: bool) -> io::Result<()> 
     }
     if value.custom_root.is_some() && value.old.is_empty() {
         prune_new_directories(&root, &value.new)?;
+    }
+    if value.custom_root.is_some() {
+        program_writes::cleanup(&root)?;
     }
     if value.service_active {
         super::service::manager(&["service", "start", "--output", "json"])

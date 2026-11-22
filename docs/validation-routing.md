@@ -256,7 +256,9 @@ For a failed NSIS attempt with a prepared shell transaction, `installer-resume`
 captures the actual post-install adapter's output. It requires the matching
 recent inspection in `--observation-run`, the exact retained `--from-product`,
 the measured replacement shell/CLI/daemon and no running shell. It resumes the
-normal Rust installation entry with the captured login/tray defaults; it does
+normal Rust installation entry with the captured login/tray defaults. Current
+packages require the journaled uninstaller to be on disk before this phase.
+If it is missing, rerun the full matching NSIS installer. This action does
 not force a stop or bypass restoration. This mutates the prepared installation
 and is diagnostic evidence, never a successful full NSIS result. Inspect its
 output and resulting transaction before any further installation attempt.

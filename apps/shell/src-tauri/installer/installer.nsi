@@ -462,13 +462,18 @@ Function .onInit
     Abort
   ${EndIf}
   ; NSIS removes /D= from $CMDLINE and substitutes InstallDir if it cannot
-  ; use that destination. Compare lengths before assuming it was omitted.
+  ; use that destination. It also strips invalid characters while expanding
+  ; $INSTDIR. An explicit argument must survive both steps intact.
   System::Call 'kernel32::GetCommandLineW() p .r0'
   System::Call 'kernel32::lstrlenW(p r0) i .r0'
   StrLen $1 $CMDLINE
-  ${If} $0 >= ${NSIS_MAX_STRLEN}
-  ${OrIf} $INSTDIR == "${PLACEHOLDER_INSTALL_DIR}"
-    ${If} $0 != $1
+  ${If} $0 != $1
+    StrLen $2 $INSTDIR
+    IntOp $1 $1 + $2
+    IntOp $1 $1 + 4 ; " /D="
+    ${If} $0 >= ${NSIS_MAX_STRLEN}
+    ${OrIf} $INSTDIR == "${PLACEHOLDER_INSTALL_DIR}"
+    ${OrIf} $0 != $1
       MessageBox MB_ICONSTOP "Use an absolute local program directory in the final /D= argument." /SD IDOK
       SetErrorLevel 1
       Abort
