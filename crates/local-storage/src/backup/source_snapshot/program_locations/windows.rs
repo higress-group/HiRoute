@@ -52,6 +52,9 @@ If `hiroute` is not on PATH, invoke the installed entry at `{cli}` directly (Pow
             return Err(LocalStorageError::InvalidData);
         }
         text.push_str(r"
+For a custom Desktop directory, keep its original account-owned folder and permissions when restoring the listed files. Keep any other files in the directory.
+如使用自定义桌面程序目录，请保留当前账户原有的目录、权限及其他文件，再还原清单中的文件。
+
 The complete Desktop includes its matching shell, uninstaller and closed inventory. Export the current `HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\HiRoute` entry separately. After restoring the old programs, import `recovery-package/installation/uninstall.reg` with Windows `reg.exe import`. This restores the old current-user Apps registration. Do not substitute another account or another revision's installer.
 旧桌面包包含配套外壳、卸载程序和完整清单。另行导出当前账户上述 HiRoute 注册项；还原旧程序后，用 Windows `reg.exe import` 导入保留的 uninstall.reg，恢复对应旧版的应用注册。不要换账户或使用其它修订的安装器。
 

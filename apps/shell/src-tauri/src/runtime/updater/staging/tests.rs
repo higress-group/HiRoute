@@ -144,9 +144,7 @@ fn installed_finisher_failure_preserves_native_diagnostic_and_service() {
             .ends_with(&revision[..12])
     );
     assert!(service::available_blocking());
-    let programs = background::local_app_data()
-        .unwrap()
-        .join("Programs/HiRoute");
+    let programs = hiroute_platform::windows::shell_location::installed_root().unwrap();
     let shell = programs.join("hiroute-shell.exe");
     let bundle = PathBuf::from(std::env::var_os("HIROUTE_VALIDATION_PRODUCT_BIN_DIR").unwrap());
     let manifest: serde_json::Value =
@@ -310,9 +308,9 @@ fn native_finisher_nsis(cancelled: bool) {
     let bundle = PathBuf::from(std::env::var_os("HIROUTE_VALIDATION_PRODUCT_BIN_DIR").unwrap());
     let manifest: serde_json::Value =
         serde_json::from_slice(&fs::read(bundle.join("manifest.json")).unwrap()).unwrap();
-    let shell = background::local_app_data()
+    let shell = hiroute_platform::windows::shell_location::installed_root()
         .unwrap()
-        .join("Programs/HiRoute/hiroute-shell.exe");
+        .join("hiroute-shell.exe");
     let hash = super::super::super::install_transaction::hash(&shell).unwrap();
     assert_eq!(manifest["shell_sha256"], hash);
     let mut release = release('f');

@@ -16,6 +16,8 @@ HiRoute Windows 桌面版提供按当前用户安装的 NSIS 安装包，只支�
 本页文档：https://hiroute.ai/zh/docs/install-windows/
 CLI 参考：https://hiroute.ai/zh/docs/cli/
 
+首次安装如需指定盘符，使用 Show installation options，或将 /D= 目录参数放在安装命令末尾。修复和升级时沿用原目录。这个选项只决定桌面程序的位置。
+
 先按文档完成本次安装或检查目标。安装后，引导我在“Agent → HiRoute 管理 → 启用”中开启产品内置管理技能，后续配置交给该技能：https://hiroute.ai/zh/docs/#management-skill
 
 操作线索（按本次目标选用；下面均为 hiroute 子命令）：
@@ -46,7 +48,7 @@ Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\YOUR-INS
 
 ## 安装与启动
 
-1. 在普通用户会话打开安装包。安装目录固定为 `%LOCALAPPDATA%\Programs\HiRoute`；后台服务的数据单独存放在 `%LOCALAPPDATA%\HiRoute\cli`。
+1. 用普通用户账户打开安装包。要把桌面程序装到其他盘，展开 **Show installation options**，点击 **Browse...** 或输入新目录，例如 `D:\Apps\HiRoute`。请选择本机固定磁盘上的目录，并确保只有你的账户或管理员能替换该目录。默认路径为 `%LOCALAPPDATA%\Programs\HiRoute`，后台服务数据仍保存在 `%LOCALAPPDATA%\HiRoute\cli`。
 2. 登录自启和托盘默认开启，安装时可以分别取消。关闭托盘后，关闭窗口会退出壳，后台服务继续运行。
 3. 打开 HiRoute。壳检查当前用户的 Task，启动服务，等待 Gateway 就绪后打开本机控制台。不需要口令或解锁，受保护操作仍在页面内逐次确认。
 
@@ -57,6 +59,8 @@ Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\YOUR-INS
 无人值守安装可在校验安装包后，使用 `/S` 运行并等待进程退出码。安装器采用默认的登录自启和托盘选项，全程不弹提示，完成后启动服务，失败时返回非零退出码。仅使用 CLI 和 daemon 的用户也安装同一包。Windows 没有单独的 standalone 归档，也没有 ARM64 包。
 
 ## 更新与恢复
+
+首次静默安装时，把目录参数放在最后，例如 `installer.exe /S /D=D:\My Apps\HiRoute`。即使路径含空格也无需加引号。修复和升级会沿用原目录。已安装的用户要换盘，可以先卸载并保留数据，再安装到新目录。
 
 侧栏显示「有新版本」时，点击即可进入「设置 → 通用 → 版本升级」。侧栏收起时，点击带紫点的设置齿轮也能直达该区域。你可以在那里查看版本并选择「下载更新」，也可以手动点「检查更新」。
 

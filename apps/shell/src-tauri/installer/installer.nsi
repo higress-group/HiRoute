@@ -387,7 +387,7 @@ Function PageLeaveReinstall
   reinst_done:
 FunctionEnd
 
-; Fixed per-user program directory; never a standalone state directory.
+; Per-user Desktop location and login/tray choices.
 Page custom HiRouteOptions HiRouteOptionsLeave
 
 ; 6. Start menu shortcut page
@@ -545,30 +545,27 @@ Function .onInit
 
   !insertmacro SetContext
 
-  ${If} $INSTDIR == "${PLACEHOLDER_INSTALL_DIR}"
-    ; Set default install location
-    !if "${INSTALLMODE}" == "perMachine"
-      ${If} ${RunningX64}
-        !if "${ARCH}" == "x64"
-          StrCpy $INSTDIR "$PROGRAMFILES64\${PRODUCTNAME}"
-        !else if "${ARCH}" == "arm64"
-          StrCpy $INSTDIR "$PROGRAMFILES64\${PRODUCTNAME}"
-        !else
-          StrCpy $INSTDIR "$PROGRAMFILES\${PRODUCTNAME}"
-        !endif
-      ${Else}
-        StrCpy $INSTDIR "$PROGRAMFILES\${PRODUCTNAME}"
-      ${EndIf}
-    !else if "${INSTALLMODE}" == "currentUser"
-      StrCpy $INSTDIR "$LOCALAPPDATA\Programs\HiRoute"
-    !endif
-
-    Call RestorePreviousInstallLocation
+  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-location'
+  Pop $0
+  Pop $1
+  ${If} $0 = 0
+    ReadINIStr $HiRouteActiveRoot "$PLUGINSDIR\hiroute-location.ini" "Desktop" "Location"
+    ${If} $HiRouteActiveRoot == ""
+      Abort "The current HiRoute installation directory could not be read."
+    ${EndIf}
+    ${If} $INSTDIR != "${PLACEHOLDER_INSTALL_DIR}"
+    ${AndIf} $INSTDIR != $HiRouteActiveRoot
+      MessageBox MB_ICONSTOP "Use the existing HiRoute directory for repair or upgrade." /SD IDOK
+      SetErrorLevel 1
+      Abort
+    ${EndIf}
+    StrCpy $INSTDIR $HiRouteActiveRoot
+  ${ElseIf} $0 = 3
+    ${IfThen} $INSTDIR == "${PLACEHOLDER_INSTALL_DIR}" ${|} StrCpy $INSTDIR "$LOCALAPPDATA\Programs\HiRoute" ${|}
+  ${Else}
+    MessageBox MB_ICONSTOP "HiRoute could not verify the current installation directory." /SD IDOK
+    Abort
   ${EndIf}
-
-
-  ; Ignore stale registry locations and /D overrides. This directory is intentionally fixed.
-  StrCpy $INSTDIR "$LOCALAPPDATA\Programs\HiRoute"
   ReadRegStr $HiRouteInstalledVersion SHCTX "${UNINSTKEY}" "DisplayVersion"
   StrCpy $HiRouteDesktopChoice 0
 
@@ -836,17 +833,11 @@ Function .onInstFailed
 FunctionEnd
 
 Function un.onInit
-  StrCmp $INSTDIR "$LOCALAPPDATA\Programs\HiRoute" +3
-    MessageBox MB_ICONSTOP "HiRoute uninstall directory is invalid. No files were removed." /SD IDOK
-    Abort
   InitPluginsDir
-  System::Call 'kernel32::CopyFileW(w "$INSTDIR\hiroute-shell.exe", w "$PLUGINSDIR\hiroute-uninstall-helper.exe", i 1) i .r0 ?e'
-  Pop $1
-  ${If} $0 = 0
-    StrCpy $1 "Windows error: $1"
-    !insertmacro HiRouteDiagnostic "HiRoute could not prepare its uninstall helper. Close HiRoute and try again." "copy-uninstall-helper"
-    Abort
-  ${EndIf}
+  ; Verify the target using code from this uninstaller before running anything
+  ; in the selected directory, including for a scripted _?= invocation.
+  SetOutPath $PLUGINSDIR
+  File /oname=hiroute-uninstall-helper.exe "${MAINBINARYSRCPATH}"
   nsExec::ExecToStack '"$PLUGINSDIR\hiroute-uninstall-helper.exe" --installer-mutex'
   Pop $0
   Pop $1
@@ -862,6 +853,13 @@ Function un.onInit
     Pop $0
     Pop $1
     !insertmacro HiRouteDiagnostic "Another HiRoute installation or uninstall is active for this account." "uninstall-admission"
+    Abort
+  ${EndIf}
+  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-uninstall-helper.exe" --installer-check-uninstall-root "$INSTDIR"'
+  Pop $0
+  Pop $1
+  ${If} $0 != 0
+    MessageBox MB_ICONSTOP "HiRoute uninstall directory is invalid. No files were removed." /SD IDOK
     Abort
   ${EndIf}
   !insertmacro SetContext

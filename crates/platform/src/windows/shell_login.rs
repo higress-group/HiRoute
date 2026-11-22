@@ -15,7 +15,7 @@ fn wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(Some(0)).collect()
 }
 fn checked_binary(path: &Path) -> io::Result<()> {
-    let expected = super::background::local_app_data()?.join("Programs/HiRoute/hiroute-shell.exe");
+    let expected = super::shell_location::installed_root()?.join("hiroute-shell.exe");
     if !path.is_absolute()
         || path != expected
         || path
@@ -136,9 +136,9 @@ mod tests {
     use super::*;
     #[test]
     fn fixed_login_command_is_quoted_even_for_paths_without_spaces() {
-        let binary = super::super::background::local_app_data()
+        let binary = super::super::shell_location::installed_root()
             .unwrap()
-            .join("Programs/HiRoute/hiroute-shell.exe");
+            .join("hiroute-shell.exe");
         let command = command_line(&binary);
         let decoded = command
             .strip_prefix('"')

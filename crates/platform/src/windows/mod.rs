@@ -18,6 +18,7 @@ pub mod scm_owner;
 pub mod sealed_host;
 pub mod security;
 pub mod service;
+pub mod shell_location;
 pub mod shell_login;
 pub mod shell_open;
 pub mod shell_registration;

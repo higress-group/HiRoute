@@ -7,7 +7,9 @@
 mod windows_account;
 
 use hiroute_host_runtime::{StandaloneInstallRecordV1, StandaloneLayout};
-use hiroute_platform::windows::{background, install, installed_apps, shell_login, task};
+use hiroute_platform::windows::{
+    background, install, installed_apps, shell_location, shell_login, task,
+};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
@@ -39,12 +41,22 @@ fn hash(path: &Path) -> String {
 }
 
 fn run(program: &Path, args: &[&str], evidence: &Path, phase: &str) -> Vec<u8> {
+    run_expecting(program, args, evidence, phase, true)
+}
+
+fn run_expecting(
+    program: &Path,
+    args: &[&str],
+    evidence: &Path,
+    phase: &str,
+    success: bool,
+) -> Vec<u8> {
     let output = evidence.join(format!("{phase}.stdout"));
     let error = evidence.join(format!("{phase}.stderr"));
     use std::os::windows::process::CommandExt;
     let mut command = Command::new(program);
     for argument in args {
-        if argument.starts_with("_?=") {
+        if argument.starts_with("_?=") || argument.starts_with("/D=") {
             command.raw_arg(argument);
         } else {
             command.arg(argument);
@@ -69,7 +81,11 @@ fn run(program: &Path, args: &[&str], evidence: &Path, phase: &str) -> Vec<u8> {
     let deadline = Instant::now() + Duration::from_secs(seconds);
     loop {
         if let Some(status) = child.try_wait().unwrap() {
-            assert!(status.success(), "native phase {phase} failed: {status}");
+            assert_eq!(
+                status.success(),
+                success,
+                "unexpected native result for {phase}: {status}"
+            );
             return std::fs::read(output).unwrap();
         }
         if Instant::now() >= deadline {
@@ -139,12 +155,30 @@ fn console_ready(cli_path: &Path, evidence: &Path, phase: &str) {
 #[test]
 #[ignore = "requires the verified NSIS bundle and a fresh existing standard-user session"]
 fn actual_nsis_silent_install_repeat_console_and_uninstall_preserve_data() {
+    nsis_lifecycle(false);
+}
+
+#[test]
+#[ignore = "requires the verified NSIS bundle and a fresh existing standard-user session"]
+fn actual_nsis_custom_directory_repair_update_and_uninstall() {
+    nsis_lifecycle(true);
+}
+
+fn nsis_lifecycle(custom: bool) {
     standard_session();
     let layout = StandaloneLayout::from_environment().unwrap();
-    let programs = background::local_app_data()
-        .unwrap()
-        .join("Programs/HiRoute");
+    let default = shell_location::default_root().unwrap();
+    let programs = if custom {
+        std::env::var_os("HIROUTE_VALIDATION_DESKTOP_PARENT")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| background::local_app_data().unwrap())
+            .join("HiRoute 测试")
+    } else {
+        default.clone()
+    };
+    assert!(shell_location::registered_root().unwrap().is_none());
     for path in [
+        &default,
         &programs,
         &layout.data_root,
         &layout.state_root,
@@ -170,7 +204,43 @@ fn actual_nsis_silent_install_repeat_console_and_uninstall_preserve_data() {
     let shell_sha256 = manifest["shell_sha256"].as_str().unwrap();
     assert_eq!(shell_sha256.len(), 64);
 
-    run(&installer, &["/S"], &evidence, "install");
+    if custom {
+        let occupied = tempfile::tempdir_in(programs.parent().unwrap()).unwrap();
+        let foreign = occupied.path().join("uninstall.exe");
+        std::fs::write(&foreign, b"belongs to another application").unwrap();
+        run_expecting(
+            &installer,
+            &["/S", &format!("/D={}", occupied.path().display())],
+            &evidence,
+            "occupied-directory",
+            false,
+        );
+        assert_eq!(
+            std::fs::read(foreign).unwrap(),
+            b"belongs to another application"
+        );
+        run(
+            &installer,
+            &["/S", &format!("/D={}", programs.display())],
+            &evidence,
+            "install",
+        );
+        assert!(!default.exists());
+        run_expecting(
+            &installer,
+            &["/S", &format!("/D={}", default.display())],
+            &evidence,
+            "conflicting-repair",
+            false,
+        );
+        assert!(!default.exists());
+    } else {
+        run(&installer, &["/S"], &evidence, "install");
+    }
+    assert_eq!(
+        shell_location::registered_root().unwrap().as_ref(),
+        Some(&programs)
+    );
     assert!(programs.join("hiroute-shell.exe").is_file());
     assert_eq!(hash(&programs.join("hiroute-shell.exe")), shell_sha256);
     assert!(!programs.starts_with(&layout.state_root));
@@ -221,6 +291,10 @@ fn actual_nsis_silent_install_repeat_console_and_uninstall_preserve_data() {
 
     let sentinel = layout.state_root.join("nsis-preserved-data.txt");
     std::fs::write(&sentinel, b"native NSIS acceptance data").unwrap();
+    let unrelated = programs.join("user-notes.txt");
+    if custom {
+        std::fs::write(&unrelated, b"user file").unwrap();
+    }
     let uninstall = evidence.join("uninstall-worker.exe");
     std::fs::copy(programs.join("uninstall.exe"), &uninstall).unwrap();
     assert_eq!(hash(&uninstall), hash(&programs.join("uninstall.exe")));
@@ -249,7 +323,14 @@ fn actual_nsis_silent_install_repeat_console_and_uninstall_preserve_data() {
         std::fs::read(&sentinel).unwrap(),
         b"native NSIS acceptance data"
     );
-    assert!(!shell_login::enabled(&programs.join("hiroute-shell.exe")).unwrap());
+    assert!(shell_login::configured_binary().unwrap().is_none());
+    assert!(shell_location::registered_root().unwrap().is_none());
+    if custom {
+        assert!(!default.exists());
+        assert_eq!(std::fs::read(&unrelated).unwrap(), b"user file");
+        std::fs::remove_file(unrelated).unwrap();
+        std::fs::remove_dir(&programs).unwrap();
+    }
     std::fs::write(
         evidence.join("nsis-result.json"),
         serde_json::to_vec_pretty(&json!({

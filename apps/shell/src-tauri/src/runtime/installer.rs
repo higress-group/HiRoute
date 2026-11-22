@@ -2,7 +2,7 @@
 use super::service;
 use crate::installer_diagnostic::{Failure, safe_code};
 use hiroute_host_runtime::standalone_install::{Package, windows};
-use hiroute_platform::windows::{security, shell_login, user_path};
+use hiroute_platform::windows::{security, shell_location, shell_login, user_path};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
@@ -49,9 +49,7 @@ pub(super) fn tray_enabled() -> bool {
         .is_none_or(|record| record.tray_enabled)
 }
 fn options() -> Result<i32, &'static str> {
-    let root = hiroute_platform::windows::background::local_app_data()
-        .map_err(|_| "INSTALL_DIRECTORY_INVALID")?
-        .join("Programs/HiRoute");
+    let root = super::install_transaction::root().map_err(|_| "INSTALL_DIRECTORY_INVALID")?;
     let Some(preferences) = read_preferences(&root)? else {
         return Ok(3);
     };
@@ -68,9 +66,7 @@ fn options() -> Result<i32, &'static str> {
     Ok(i32::from(login) | (i32::from(preferences.tray_enabled) << 1))
 }
 pub(super) fn program_root() -> Result<PathBuf, &'static str> {
-    let expected = hiroute_platform::windows::background::local_app_data()
-        .map_err(|_| "INSTALL_DIRECTORY_INVALID")?
-        .join("Programs/HiRoute");
+    let expected = shell_location::installed_root().map_err(|_| "INSTALL_DIRECTORY_INVALID")?;
     let exe = std::env::current_exe().map_err(|_| "INSTALL_DIRECTORY_INVALID")?;
     let actual = exe.parent().ok_or("INSTALL_DIRECTORY_INVALID")?;
     let held = security::open_identity(actual, true).map_err(|_| "INSTALL_DIRECTORY_INVALID")?;
@@ -85,9 +81,8 @@ pub(super) fn program_root() -> Result<PathBuf, &'static str> {
 }
 fn preflight() -> Result<(), Failure> {
     windows::preflight().map_err(|error| Failure::io("check-service-ownership", error))?;
-    let path = hiroute_platform::windows::background::local_app_data()
-        .map_err(|error| Failure::io("resolve-install-directory", error))?
-        .join("Programs/HiRoute");
+    let path = super::install_transaction::root()
+        .map_err(|error| Failure::io("resolve-install-directory", error))?;
     for ancestor in path.ancestors() {
         match security::open_identity(ancestor, true) {
             Ok(_) => {}
@@ -96,6 +91,19 @@ fn preflight() -> Result<(), Failure> {
         }
     }
     Ok(())
+}
+
+// ReadINIStr handles Unicode without passing a Windows path through the
+// console code page. The extracted helper and this file share the NSIS temp dir.
+fn write_active_location() -> std::io::Result<i32> {
+    let Some(root) = super::install_transaction::active_root()? else {
+        return Ok(3);
+    };
+    let ini = std::env::current_exe()?.with_file_name("hiroute-location.ini");
+    let content = format!("\u{feff}[Desktop]\r\nLocation={}\r\n", root.display());
+    let bytes: Vec<_> = content.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    std::fs::File::create_new(ini)?.write_all(&bytes)?;
+    Ok(0)
 }
 fn prepare_failure(error: &std::io::Error) -> String {
     if error.to_string() == "UPGRADE_REGISTRATION_UNAVAILABLE" {
@@ -368,11 +376,26 @@ pub fn run_if_requested() -> Option<i32> {
             }
         });
     }
+    if verb == "--installer-location" && args.len() == 1 {
+        return Some(write_active_location().unwrap_or(1));
+    }
+    if verb == "--installer-check-directory" && args.len() == 2 {
+        return Some(i32::from(
+            super::install_transaction::check_destination(std::path::Path::new(&args[1])).is_err(),
+        ));
+    }
+    if verb == "--installer-check-uninstall-root" && args.len() == 2 {
+        return Some(match super::install_transaction::active_root() {
+            Ok(Some(root)) if root == std::path::Path::new(&args[1]) => 0,
+            _ => 1,
+        });
+    }
     if verb == "--installer-prepare" {
-        let result = if args.len() == 3 {
+        let result = if args.len() == 4 {
             super::install_transaction::prepare(
                 std::path::Path::new(&args[1]),
                 std::path::Path::new(&args[2]),
+                std::path::Path::new(&args[3]),
             )
         } else {
             Err(std::io::ErrorKind::InvalidInput.into())

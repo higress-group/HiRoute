@@ -302,6 +302,11 @@ HiRoute SHALL provide a Windows x64 Desktop installer that a standard user can r
 - **WHEN** a standard user without Python runs the installer on Windows x64 and accepts the defaults
 - **THEN** installation completes without elevation, the HiRoute window opens with a healthy service, and `hiroute` in a new terminal reaches the same instance.
 
+#### Scenario: Choose a Desktop program directory
+
+- **WHEN** a user selects a new Desktop directory on a writable local fixed drive in the first-install options, or supplies it as the final NSIS `/D=` argument
+- **THEN** the installer SHALL place the Desktop package there, keep standalone data and CLI locations independent, and use that same directory for login, repair, update, interrupted-install recovery and uninstall. Uninstall SHALL preserve unrelated files. Omitting a destination on a fresh install SHALL use the current user's LocalAppData Programs directory.
+
 #### Scenario: Existing user installation
 
 - **WHEN** the user already has a Task Scheduler installation of HiRoute with saved sources and plans

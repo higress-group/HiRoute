@@ -6,7 +6,11 @@ own the user steps, SHA-256 verification and SmartScreen prompts. The NSIS packa
 supports native Windows x64 and installs for the current ordinary user without
 Python, WSL or administrator privileges.
 
-The shell's program directory is fixed at `%LOCALAPPDATA%\Programs\HiRoute`.
+The shell defaults to `%LOCALAPPDATA%\Programs\HiRoute`. Fresh interactive
+installations can choose a new Desktop folder on a local fixed drive. Silent
+installations accept a final unquoted argument such as `/D=D:\My Apps\HiRoute`.
+Repair and update use the current user's Installed Apps location. An interrupted
+install uses its prepared journal, including before Installed Apps registration.
 Standalone service state remains under `%LOCALAPPDATA%\HiRoute\cli`; neither root
 can contain the other. The native adapter checks KnownFolders, architecture,
 existing manager ownership and reparse-free paths before product writes. An
@@ -72,7 +76,7 @@ narrow window to open **Settings → General → Updates**. The section controls
 checking, downloading and installing updates.
 
 The interactive installer shows Install, Upgrade or Repair on its first screen.
-The optional controls show the fixed installation path and the login, notification
+The optional controls show the installation path and the login, notification
 area and desktop shortcut choices. To upgrade a running Desktop from a downloaded
 installer, exit it from its notification area icon, then continue in the installer.
 The installer checks again before replacing files. It shows Open HiRoute after

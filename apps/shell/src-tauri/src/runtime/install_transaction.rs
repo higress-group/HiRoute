@@ -1,7 +1,7 @@
 //! Shell files and the standalone journal have separate owners. Retain shell bytes until
 //! the native standalone transaction, login settings and readiness check all succeed.
 use hiroute_host_runtime::standalone_install::{Package, windows};
-use hiroute_platform::windows::security;
+use hiroute_platform::windows::{security, shell_location};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -25,6 +25,9 @@ struct Inventory {
 #[serde(deny_unknown_fields)]
 struct Pending {
     schema: String,
+    // Released journals without this field always belong to the original default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    custom_root: Option<PathBuf>,
     phase: Phase,
     old: BTreeMap<String, String>,
     new: BTreeMap<String, String>,
@@ -54,7 +57,61 @@ pub(super) fn data() -> io::Result<PathBuf> {
     Ok(hiroute_platform::windows::background::local_app_data()?.join("HiRoute/shell"))
 }
 pub(super) fn root() -> io::Result<PathBuf> {
-    Ok(hiroute_platform::windows::background::local_app_data()?.join("Programs/HiRoute"))
+    match active_root()? {
+        Some(root) => Ok(root),
+        None => shell_location::default_root(),
+    }
+}
+pub(super) fn active_root() -> io::Result<Option<PathBuf>> {
+    let registered = shell_location::registered_root()?;
+    if has_pending()? {
+        let root = match pending()?.custom_root {
+            Some(path) => {
+                shell_location::validate_custom(&path)?;
+                security::open_owner_only(&path, true)?;
+                path
+            }
+            None => shell_location::default_root()?,
+        };
+        if registered.as_ref().is_some_and(|path| path != &root) {
+            return Err(invalid());
+        }
+        return Ok(Some(root));
+    }
+    if registered.is_some() {
+        return Ok(registered);
+    }
+    let default = shell_location::default_root()?;
+    Ok(
+        (present(&default.join(INVENTORY))? || present(&default.join("hiroute-shell.exe"))?)
+            .then_some(default),
+    )
+}
+
+/// Check the choice without changing the filesystem while the options page is open.
+pub(super) fn check_destination(path: &Path) -> io::Result<()> {
+    if let Some(active) = active_root()? {
+        return if path == active {
+            Ok(())
+        } else {
+            Err(shell_location::invalid())
+        };
+    }
+    if path == shell_location::default_root()? {
+        return Ok(());
+    }
+    shell_location::validate_custom(path)?;
+    match security::open_identity(path, true) {
+        Ok(file) => {
+            security::verify_owner_only_handle(&file, true)?;
+            if fs::read_dir(path)?.next().is_some() {
+                return Err(shell_location::invalid());
+            }
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    Ok(())
 }
 pub(super) fn hash(path: &Path) -> io::Result<String> {
     let mut file = security::open_identity(path, false)?;
@@ -204,15 +261,17 @@ pub(super) fn recover_for_candidate(
         && hiroute_host_runtime::storage_upgrade_started(&layout.storage_root())
             .map_err(|error| Failure::io("check-storage-recovery", error))?
     {
-        return prepare(manifest, daemon)
+        let root = root().map_err(read_journal)?;
+        return prepare(manifest, daemon, &root)
             .map(|_| ())
             .map_err(|error| Failure::io("resume-desktop-install", error));
     }
     windows::recover_pending().map_err(|error| Failure::io("recover-standalone", error))?;
     rollback(allow).map_err(|error| Failure::io("rollback-desktop", error))
 }
-pub(super) fn prepare(manifest: &Path, daemon: &Path) -> io::Result<bool> {
+pub(super) fn prepare(manifest: &Path, daemon: &Path, root: &Path) -> io::Result<bool> {
     windows::preflight()?;
+    check_destination(root)?;
     let package: Package = read(manifest, false)?;
     package.validate()?;
     if package.target != "x86_64-pc-windows-msvc" {
@@ -249,7 +308,7 @@ pub(super) fn prepare(manifest: &Path, daemon: &Path) -> io::Result<bool> {
             // Re-running the exact current installer continues its existing
             // journal forward. Never replace its retained original rollback set.
             for name in value.old.keys().chain(value.new.keys()) {
-                let path = root()?.join(name);
+                let path = root.join(name);
                 if present(&path)? {
                     let actual = hash(&path)?;
                     if value.old.get(name) != Some(&actual) && value.new.get(name) != Some(&actual)
@@ -262,7 +321,12 @@ pub(super) fn prepare(manifest: &Path, daemon: &Path) -> io::Result<bool> {
         }
         rollback(false)?;
     }
-    let root = root()?;
+    let custom_root = (root != shell_location::default_root()?).then(|| root.to_owned());
+    if custom_root.is_some() {
+        let directory = security::ensure_private_directory(root)?;
+        security::verify_owner_only_handle(&directory, true)?;
+        shell_location::validate_custom(root)?;
+    }
     let mut old = BTreeMap::new();
     let inventory = root.join(INVENTORY);
     let existed = present(&inventory)?;
@@ -341,6 +405,7 @@ pub(super) fn prepare(manifest: &Path, daemon: &Path) -> io::Result<bool> {
     }
     let value = Pending {
         schema: "hiroute.windows-shell-transaction/v1".into(),
+        custom_root,
         phase: Phase::Prepared,
         old,
         new,
@@ -350,7 +415,7 @@ pub(super) fn prepare(manifest: &Path, daemon: &Path) -> io::Result<bool> {
         console_desired,
         shell_login,
     };
-    let history_cutover = recovery::prepare(&value, &package, daemon)?;
+    let history_cutover = recovery::prepare(&value, &package, daemon, root)?;
     write(&data.join(PENDING), &value)?;
     Ok(history_cutover)
 }

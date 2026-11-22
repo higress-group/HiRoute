@@ -8,9 +8,9 @@ acceptance must still demonstrate `/S` with the actual NSIS package. Passive
 updates skip the options page and reuse saved preferences. Hooks are included
 after the template declares the variables used by their page functions.
 
-Local changes enforce native x64 and Task-only admission before product writes, fix the program directory under LocalAppData/Programs, replace directory selection with login/tray choices, preserve the headless service during shell upgrades, and delegate optional data removal to the Rust Agent-restore/journal transaction. The uninstaller deletes its inventoried files and empty directories; it never recursively removes an application/state directory.
+The options page offers a program folder on first install alongside login and tray preferences. The native transaction checks the destination before NSIS writes the payload. It binds recovery to the prepared directory and subsequent maintenance to the current-user Installed Apps registration. The installed program, background service and Agent restoration transactions retain their separate file inventories.
 
-Recovery/uninstall use an exact shell copy in the private NSIS plugin directory.
+Recovery and uninstall extract the package's matching shell helper into the private NSIS plugin directory.
 Unavailable Agent state has a separate default-No confirmation; silent/passive
 runs refuse it and exceptional removal always keeps business data. Package cleanup
 waits for both transaction owners to commit and preserves rollback sources.

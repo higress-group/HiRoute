@@ -5,7 +5,12 @@ use hiroute_host_runtime::{
     RetainedRecoveryPackage, StandaloneLayout, read_standalone_install_record,
 };
 
-pub(super) fn prepare(value: &Pending, incoming: &Package, daemon: &Path) -> io::Result<bool> {
+pub(super) fn prepare(
+    value: &Pending,
+    incoming: &Package,
+    daemon: &Path,
+    desktop: &Path,
+) -> io::Result<bool> {
     let layout = StandaloneLayout::from_environment().map_err(|_| invalid())?;
     let Some(previous) = &value.previous_package else {
         // An uninstalled old data group still needs its matching package. The
@@ -18,6 +23,7 @@ pub(super) fn prepare(value: &Pending, incoming: &Package, daemon: &Path) -> io:
         .map_err(io::Error::other)?;
         windows::preflight_desktop_space(
             incoming,
+            desktop,
             &data()?,
             fs::metadata(std::env::current_exe()?)?.len(),
             0,
@@ -33,6 +39,7 @@ pub(super) fn prepare(value: &Pending, incoming: &Package, daemon: &Path) -> io:
             .map_err(io::Error::other)?;
     windows::preflight_desktop_space(
         incoming,
+        desktop,
         &data()?,
         fs::metadata(std::env::current_exe()?)?.len(),
         0,
@@ -57,10 +64,11 @@ pub(super) fn prepare(value: &Pending, incoming: &Package, daemon: &Path) -> io:
     let shell_bytes = fs::metadata(std::env::current_exe()?)?.len();
     let mut copy_bytes: u64 = package.files.values().map(|file| file.size).sum();
     for name in value.old.keys() {
-        copy_bytes = copy_bytes.saturating_add(fs::metadata(root()?.join(name))?.len());
+        copy_bytes = copy_bytes.saturating_add(fs::metadata(desktop.join(name))?.len());
     }
     windows::preflight_desktop_space(
         incoming,
+        desktop,
         &data()?,
         shell_bytes,
         copy_bytes.saturating_add(1024 * 1024),
@@ -146,7 +154,7 @@ pub(super) fn prepare(value: &Pending, incoming: &Package, daemon: &Path) -> io:
         desktop: if value.old.is_empty() {
             None
         } else {
-            Some(root()?)
+            Some(desktop.to_owned())
         },
         task_name: definition.name,
         task_autostart: value.previous_autostart,
@@ -191,7 +199,7 @@ pub(super) fn prepare(value: &Pending, incoming: &Package, daemon: &Path) -> io:
     let report =
         hiroute_host_runtime::checked_upgrade_preflight(daemon, &layout.storage_root(), &bundle)
             .map_err(io::Error::other)?;
-    windows::preflight_desktop_space(incoming, &data()?, shell_bytes, 0, Some(&report))?;
+    windows::preflight_desktop_space(incoming, desktop, &data()?, shell_bytes, 0, Some(&report))?;
     retained.store()?;
     Ok(true)
 }
