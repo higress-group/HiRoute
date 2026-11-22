@@ -401,6 +401,13 @@ in that test profile after uninstall; `finish` does not remove it. The complete
 [Windows Desktop inventory](../scripts/windows-desktop-cases.json) retains its
 separate native obligations and artifact-bound release gate.
 
+For directory-selection changes, select
+`actual_nsis_custom_directory_repair_update_and_uninstall` in the same harness.
+To exercise two volumes, set `HIROUTE_VALIDATION_DESKTOP_PARENT` in the private
+Windows validation configuration's `environment` to an existing writable test
+folder on the other local fixed drive. The case requires a disposable account
+and an unused child directory.
+
 Execution uses a one-off `Interactive`/`Limited` Task, with no startup trigger or
 saved password. One workbench lock prevents overlapping product mutation. Product
 profile and request deadlines remain intact; `run --timeout` is only a whole-test

@@ -76,6 +76,9 @@ pub(super) fn prepare(
     )?;
     let mut identity = Sha256::new();
     identity.update(serde_json::to_vec(&value.old).map_err(|_| invalid())?);
+    if let Some(root) = &value.custom_root {
+        identity.update(serde_json::to_vec(root).map_err(|_| invalid())?);
+    }
     identity.update(&marker_bytes);
     identity.update(hash(&marker.service_definition)?);
     identity.update([

@@ -11,7 +11,9 @@ use windows_sys::Win32::{
 };
 
 pub fn default_root() -> io::Result<PathBuf> {
-    Ok(background::local_app_data()?.join("Programs/HiRoute"))
+    Ok(background::local_app_data()?
+        .join("Programs")
+        .join("HiRoute"))
 }
 
 pub fn invalid() -> io::Error {
@@ -136,10 +138,20 @@ pub fn registered_root() -> io::Result<Option<PathBuf>> {
             .ok_or_else(invalid)?,
     );
     if path != default_root()? {
-        validate_custom(&path)?;
-        security::open_owner_only(&path, true)?;
+        validate_existing_or_missing_custom(&path)?;
     }
     Ok(Some(path))
+}
+
+/// A registration or prepared journal can outlive its directory. Repair may
+/// recreate the missing folder after checking the remaining path and owner.
+pub fn validate_existing_or_missing_custom(path: &Path) -> io::Result<()> {
+    validate_custom(path)?;
+    match security::open_owner_only(path, true) {
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
 }
 
 pub fn installed_root() -> io::Result<PathBuf> {
@@ -147,6 +159,12 @@ pub fn installed_root() -> io::Result<PathBuf> {
         Some(root) => Ok(root),
         None => default_root(),
     }
+}
+
+pub fn same_existing_path(left: &Path, right: &Path, directory: bool) -> io::Result<bool> {
+    let left = security::open_identity(left, directory)?;
+    let right = security::open_identity(right, directory)?;
+    Ok(security::file_identity(&left)? == security::file_identity(&right)?)
 }
 
 #[cfg(test)]
@@ -174,9 +192,15 @@ mod tests {
         let local = background::local_app_data().unwrap();
         let parent = tempfile::tempdir_in(&local).unwrap();
         let programs = parent.path().join("My HiRoute");
-        validate_custom(&programs).unwrap();
+        validate_existing_or_missing_custom(&programs).unwrap();
+        // Existing folders are admitted only after verifying the program ACL.
+        std::fs::create_dir(&programs).unwrap();
+        assert!(validate_existing_or_missing_custom(&programs).is_err());
+        std::fs::remove_dir(&programs).unwrap();
         security::create_owner_only_directory(&programs).unwrap();
-        validate_custom(&programs).unwrap();
+        validate_existing_or_missing_custom(&programs).unwrap();
+        std::fs::remove_dir(&programs).unwrap();
+        validate_existing_or_missing_custom(&programs).unwrap();
         assert!(validate_custom(&local.join("HiRoute/cli/Desktop")).is_err());
         assert!(
             validate_custom(&background::profile().unwrap().join(".local/bin/Desktop")).is_err()

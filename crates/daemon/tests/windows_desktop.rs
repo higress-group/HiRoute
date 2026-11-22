@@ -205,12 +205,24 @@ fn nsis_lifecycle(custom: bool) {
     assert_eq!(shell_sha256.len(), 64);
 
     if custom {
+        run_expecting(
+            &installer,
+            &["/S", "/D=relative"],
+            &evidence,
+            "invalid-directory-argument",
+            false,
+        );
+        assert!(!default.exists());
+        assert!(shell_location::registered_root().unwrap().is_none());
         let occupied = tempfile::tempdir_in(programs.parent().unwrap()).unwrap();
-        let foreign = occupied.path().join("uninstall.exe");
+        let occupied_programs = occupied.path().join("HiRoute");
+        hiroute_platform::windows::security::create_owner_only_directory(&occupied_programs)
+            .unwrap();
+        let foreign = occupied_programs.join("uninstall.exe");
         std::fs::write(&foreign, b"belongs to another application").unwrap();
         run_expecting(
             &installer,
-            &["/S", &format!("/D={}", occupied.path().display())],
+            &["/S", &format!("/D={}", occupied_programs.display())],
             &evidence,
             "occupied-directory",
             false,
@@ -241,6 +253,13 @@ fn nsis_lifecycle(custom: bool) {
         shell_location::registered_root().unwrap().as_ref(),
         Some(&programs)
     );
+    if custom {
+        let retained = tempfile::tempdir_in(programs.parent().unwrap()).unwrap();
+        std::fs::rename(&programs, retained.path().join("desktop")).unwrap();
+        assert!(!programs.exists());
+        run(&installer, &["/S"], &evidence, "repair-missing-directory");
+        assert!(!default.exists());
+    }
     assert!(programs.join("hiroute-shell.exe").is_file());
     assert_eq!(hash(&programs.join("hiroute-shell.exe")), shell_sha256);
     assert!(!programs.starts_with(&layout.state_root));
