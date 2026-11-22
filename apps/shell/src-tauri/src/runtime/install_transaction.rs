@@ -163,7 +163,7 @@ fn read<T: serde::de::DeserializeOwned>(path: &Path, private: bool) -> io::Resul
         security::open_identity(path, false)?
     };
     let mut bytes = vec![];
-    file.by_ref()
+    Read::by_ref(&mut file)
         .take(1024 * 1024 + 1)
         .read_to_end(&mut bytes)?;
     if bytes.len() > 1024 * 1024 {
