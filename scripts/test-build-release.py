@@ -516,6 +516,22 @@ class NativeAcceptanceDecisionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "cannot omit actual standard-user"):
             verify(identity, policy)
 
+    def test_unassessed_installer_requires_its_exact_committed_decision(self):
+        verify = MODULES["package-windows-shell"].verify_native_acceptance
+        policy = json.loads((REPO / "scripts/windows-desktop-cases.json").read_text())
+        binding = {"version": "1.2.3", "revision": "a" * 40, "installer_sha256": "b" * 64}
+        url = "https://github.com/higress-group/HiRoute/issues/193#issuecomment-1"
+        identity = {**binding, "native_runtime": "not_assessed", "acceptance_decision": url}
+        with self.assertRaisesRegex(ValueError, "exact committed release decision"):
+            verify(identity, policy)
+
+        policy["release_decisions"].append({**binding, "native_runtime": "not_assessed", "decision_url": url})
+        verify(identity, policy)
+        for change in ({"installer_sha256": "c" * 64}, {"acceptance_decision": url + "0"},
+                       {"native_runtime": "green"}, {"native_evidence": {"runs": []}}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                verify({**identity, **change}, policy)
+
 
 class ReleaseQualificationTests(unittest.TestCase):
     def setUp(self):

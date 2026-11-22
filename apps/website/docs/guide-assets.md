@@ -23,11 +23,12 @@ The website change does not alter those components.
 | `agent-task` | Agent → Codex → Task routing | `interaction-audit-fixtures.mjs` |
 | `tasks` | Agent → Task history → a running task | `interaction-audit-fixtures.mjs` |
 
-Both languages of `trial-entry` and `trial-setup` were recaptured on 2026-11-18
-from Desktop source `1e6b7a1f51a8ab66b6d927622f0af04f97ce5267`. The Home fixture
-shows the current recommendations and the Start configuration action. The trial
-fixture opens the first setup step through Try another model and shows an example
-connected model.
+Both languages of `trial-entry` came from Desktop source
+`1e6b7a1f51a8ab66b6d927622f0af04f97ce5267` on 2026-11-18. The Home fixture
+shows the recommendations and the Start configuration action. Both languages of
+`trial-setup` were recaptured on 2026-11-22 from Desktop source
+`2f5152bb7a88fe7ee73b4f72974969b3b051e412`. That fixture opens the first setup step
+through Try another model and shows an example connected model.
 
 Fixtures are under `apps/desktop/tests/v3/browser/`. English captures translate
 the sample route names at the host boundary. The management capture uses a known

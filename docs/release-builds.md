@@ -446,9 +446,10 @@ private local storage. Shut down the test guest after the smoke.
    have expired. A changed source, channel or asset identity requires qualification
    for the new candidate.
    Attach the Windows Desktop `INSTALLER.exe.identity.json`. The publisher verifies
-   the exact installer digest, source revision, and passing Windows Server x64
-   standard-user cases. Publication replay of a historically deferred installer
-   verifies the original artifact-bound decision and its recorded verdicts.
+   the exact installer digest, source revision and Windows Server x64
+   standard-user evidence. An explicit decision to ship an unassessed installer
+   applies only to the recorded release version, source and SHA-256. Publication
+   replay uses the original artifact-bound decision and its recorded verdicts.
 
 The ordinary website workflow validates the catalog merge and leaves deployment
 of a new release to `publish-release`. The release workflow uploads the verified
