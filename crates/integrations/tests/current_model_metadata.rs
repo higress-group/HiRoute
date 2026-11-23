@@ -9,6 +9,9 @@ mod domestic;
 #[path = "current_model_metadata/november_13.rs"]
 mod november_13;
 
+#[path = "current_model_metadata/qwencloud.rs"]
+mod qwencloud;
+
 fn assert_no_numeric_cost_leaf(value: &serde_json::Value) {
     match value {
         serde_json::Value::Number(number) => {
@@ -935,7 +938,9 @@ fn qwen4_max_metadata_exposes_registered_intents_without_qualifying_accounts() {
         .data
         .pricing_facts
         .iter()
-        .filter(|price| price.model_key == model.model_key)
+        .filter(|price| {
+            price.model_key == model.model_key && price.product_key == "bailian-payg-cn"
+        })
         .collect();
     assert_eq!(prices.len(), 1);
     assert_eq!(prices[0].product_key, "bailian-payg-cn");
