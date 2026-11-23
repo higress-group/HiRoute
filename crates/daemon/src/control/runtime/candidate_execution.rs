@@ -11,7 +11,7 @@ use hiroute_cpa_bridge::{CpaRoutingBatch, ExactCpaAttemptRequest, PreparedCpaTar
 use hiroute_domain::{
     AuthenticationKind, BillingClass, CanonicalDigest, CapabilityFactsV1,
     ComputeProjectionExpectationV1, ConnectorRuntimeKind, CredentialPoolV1,
-    GatewayAuthenticationSemanticsV1, GatewayCandidateProtocolProfileV1,
+    EffectiveInventoryModelV1, GatewayAuthenticationSemanticsV1, GatewayCandidateProtocolProfileV1,
     GatewayNativeProfileTargetV2, GatewayOperationalTargetV1, InventoryDisposition,
     ModelDefinitionV1, ModelEndpointCapabilityV1, ModelNativeReasoningV1, PoolCredentialV1,
     ProtocolEndpointV1, ResolvedConnectionOptionV1, SourceBindingV1, UpstreamProtocol,
@@ -805,12 +805,6 @@ fn materialize_connector_runtime_fallback(
         || fact.authentication != GatewayAuthenticationSemanticsV1::Bearer
         || &registered.source.connector_id != connector_id
         || &registered.source.identity.account_subject_ref != account_ref
-        || !registered.inventory.iter().any(|model| {
-            model.disposition == InventoryDisposition::InventoryOnly
-                && model.model_configuration_id.is_none()
-                && model.upstream_model_id == fact.upstream_model_id
-        })
-        || !catalog.runtime_fallback_allows_observed_text(&fact.upstream_model_id)
     {
         return None;
     }
@@ -874,11 +868,16 @@ fn materialize_connector_runtime_fallback(
         required_adapter_revision: protocol_endpoint.adapter_revision,
         evidence_digest: fact.capability_evidence_digest.clone(),
     };
-    let reasoning = ModelNativeReasoningV1 {
-        model_configuration_id: model_configuration_id.clone(),
-        capability: fact.native_reasoning.clone(),
-        native_render_convention: None,
-    };
+    let reasoning = observed_subscription_reasoning(
+        catalog,
+        registered,
+        &fact.upstream_model_id,
+        ModelNativeReasoningV1 {
+            model_configuration_id: model_configuration_id.clone(),
+            capability: fact.native_reasoning.clone(),
+            native_render_convention: None,
+        },
+    )?;
     let pool_id = format!("pool/runtime-fallback/{suffix}");
     let pool = CredentialPoolV1 {
         pool_id: pool_id.clone(),
@@ -955,6 +954,46 @@ fn materialize_connector_runtime_fallback(
     };
     candidate.validate().ok()?;
     Some(candidate)
+}
+
+pub(super) fn observed_fallback_subscription_model<'a>(
+    catalog: &TrustedReleaseCatalog,
+    registered: &'a CpaRegisteredSourceV1,
+    upstream_model_id: &str,
+) -> Option<&'a EffectiveInventoryModelV1> {
+    if !catalog.runtime_fallback_allows_observed_text(upstream_model_id) {
+        return None;
+    }
+    registered.inventory.iter().find(|model| {
+        model.upstream_model_id == upstream_model_id
+            && match (model.disposition, model.model_configuration_id.as_deref()) {
+                (InventoryDisposition::InventoryOnly, None) => true,
+                (InventoryDisposition::CatalogMatched, Some(id)) => {
+                    catalog.cpa_compute_projection_ids(registered, id).is_ok()
+                }
+                _ => false,
+            }
+    })
+}
+
+fn observed_subscription_reasoning(
+    catalog: &TrustedReleaseCatalog,
+    registered: &CpaRegisteredSourceV1,
+    upstream_model_id: &str,
+    mut saved: ModelNativeReasoningV1,
+) -> Option<ModelNativeReasoningV1> {
+    let observed = observed_fallback_subscription_model(catalog, registered, upstream_model_id)?;
+    // Keep the saved binding usable when a new catalog qualifies its model.
+    if let Some(id) = observed.model_configuration_id.as_deref()
+        && let Some(official) = catalog
+            .native_reasoning()
+            .iter()
+            .find(|reasoning| reasoning.model_configuration_id == id)
+    {
+        saved.capability = official.capability.clone();
+        saved.native_render_convention = official.native_render_convention;
+    }
+    Some(saved)
 }
 
 fn protocol_label(protocol: UpstreamProtocol) -> &'static str {

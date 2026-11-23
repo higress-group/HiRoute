@@ -2215,6 +2215,15 @@
       "digest_state": "not-captured"
     },
     {
+      "source_key": "source-220",
+      "authority": "chatgpt.com",
+      "source_kind": "authenticated-service-metadata",
+      "locator": "https://chatgpt.com/backend-api/codex/models?client_version=0.171.0",
+      "collected_on": "2026-11-23",
+      "bytes_digest": "sha256:1cfedd948b6942957df3f38f9a417de757bd71e2883885982ddef99ede876d3a",
+      "digest_state": "captured"
+    },
+    {
       "source_key": "source-anthropic-lifecycle-20261112",
       "authority": "platform.claude.com",
       "source_kind": "provider-documentation",
@@ -83863,6 +83872,242 @@
       }
     },
     {
+      "model_record_key": "official/openai-codex/gpt-6.2-astra",
+      "provider_record_key": "hermes-agent/openai-codex",
+      "provenance_refs": [
+        {
+          "kind": "evidence-source",
+          "source_key": "source-220"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-openai-gpt-6-2-astra-20261118"
+        }
+      ],
+      "provider_id": "openai-codex",
+      "upstream_model_id": "gpt-6.2-astra",
+      "display_name": "GPT-6.2 Astra",
+      "context_tokens": {
+        "state": "known",
+        "value": 1050000
+      },
+      "max_output_tokens": {
+        "state": "known",
+        "value": 128000
+      },
+      "input_modalities": [
+        "image",
+        "text"
+      ],
+      "capability_hints": {
+        "reasoning": "supported",
+        "streaming": "supported",
+        "tool": "supported",
+        "vision": "supported"
+      },
+      "reasoning_rendering_hints": {
+        "reasoning_effort_maps": [],
+        "supported_reasoning_efforts": [
+          "high",
+          "low",
+          "max",
+          "medium",
+          "xhigh"
+        ],
+        "thinking_level_maps": []
+      },
+      "cost_hints": [],
+      "lifecycle": "active",
+      "status_candidates": [],
+      "replacement_upstream_ids": [],
+      "roles": [],
+      "normalized_model_matches": [
+        "gpt-6.2-astra"
+      ],
+      "metadata_completeness": {
+        "capabilities": "complete",
+        "cost": "missing",
+        "identity": "complete",
+        "lifecycle": "complete",
+        "limits": "complete",
+        "modalities": "complete",
+        "reasoning_rendering": "complete"
+      },
+      "usable_for": [
+        "context-limit-prefill",
+        "custom-api-model-prefill",
+        "lifecycle-warning",
+        "model-directory",
+        "output-limit-prefill",
+        "reasoning-capability-prefill",
+        "reasoning-rendering-hint",
+        "request-limit-prefill",
+        "vision-capability-prefill"
+      ],
+      "source_assertions": [
+        {
+          "slug": "gpt-6.2-astra",
+          "clientVersion": "0.171.0",
+          "contextWindow": 272000,
+          "maxContextWindow": 872000,
+          "defaultReasoningLevel": "low",
+          "inputModalities": [
+            "text",
+            "image"
+          ],
+          "supportedReasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ],
+          "runtimeEffortNote": "The authenticated native Codex model cache confirms the five published OpenAI API profiles. The client also describes ultra as automatic task delegation. The native client window and default are separate from the common model ceiling and wire-level profile choice."
+        }
+      ],
+      "source_locations": [
+        {
+          "source_key": "source-220"
+        },
+        {
+          "source_key": "source-openai-gpt-6-2-astra-20261118"
+        }
+      ],
+      "execution_fit": {
+        "state": "native-text-representable"
+      },
+      "cost_hint_state": "not-recorded",
+      "field_provenance": {
+        "context_tokens": {
+          "basis": "inferred",
+          "rule_key": "rule.codex.gpt-6.2-model-limits/v1"
+        },
+        "max_output_tokens": {
+          "basis": "inferred",
+          "rule_key": "rule.codex.gpt-6.2-model-limits/v1"
+        }
+      }
+    },
+    {
+      "model_record_key": "official/openai-codex/gpt-6.2-sol",
+      "provider_record_key": "hermes-agent/openai-codex",
+      "provenance_refs": [
+        {
+          "kind": "evidence-source",
+          "source_key": "source-220"
+        },
+        {
+          "kind": "evidence-source",
+          "source_key": "source-openai-gpt-6-2-sol-20261118"
+        }
+      ],
+      "provider_id": "openai-codex",
+      "upstream_model_id": "gpt-6.2-sol",
+      "display_name": "GPT-6.2 Sol",
+      "context_tokens": {
+        "state": "known",
+        "value": 1050000
+      },
+      "max_output_tokens": {
+        "state": "known",
+        "value": 128000
+      },
+      "input_modalities": [
+        "image",
+        "text"
+      ],
+      "capability_hints": {
+        "reasoning": "supported",
+        "streaming": "supported",
+        "tool": "supported",
+        "vision": "supported"
+      },
+      "reasoning_rendering_hints": {
+        "reasoning_effort_maps": [],
+        "supported_reasoning_efforts": [
+          "high",
+          "low",
+          "max",
+          "medium",
+          "xhigh"
+        ],
+        "thinking_level_maps": []
+      },
+      "cost_hints": [],
+      "lifecycle": "active",
+      "status_candidates": [],
+      "replacement_upstream_ids": [],
+      "roles": [],
+      "normalized_model_matches": [
+        "gpt-6.2-sol"
+      ],
+      "metadata_completeness": {
+        "capabilities": "complete",
+        "cost": "missing",
+        "identity": "complete",
+        "lifecycle": "complete",
+        "limits": "complete",
+        "modalities": "complete",
+        "reasoning_rendering": "complete"
+      },
+      "usable_for": [
+        "context-limit-prefill",
+        "custom-api-model-prefill",
+        "lifecycle-warning",
+        "model-directory",
+        "output-limit-prefill",
+        "reasoning-capability-prefill",
+        "reasoning-rendering-hint",
+        "request-limit-prefill",
+        "vision-capability-prefill"
+      ],
+      "source_assertions": [
+        {
+          "slug": "gpt-6.2-sol",
+          "clientVersion": "0.171.0",
+          "contextWindow": 500000,
+          "maxContextWindow": 872000,
+          "defaultReasoningLevel": "low",
+          "inputModalities": [
+            "text",
+            "image"
+          ],
+          "supportedReasoningEfforts": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ],
+          "runtimeEffortNote": "The authenticated native Codex model cache confirms the five published OpenAI API profiles. The client also describes ultra as automatic task delegation. The native client window and default are separate from the common model ceiling and wire-level profile choice."
+        }
+      ],
+      "source_locations": [
+        {
+          "source_key": "source-220"
+        },
+        {
+          "source_key": "source-openai-gpt-6-2-sol-20261118"
+        }
+      ],
+      "execution_fit": {
+        "state": "native-text-representable"
+      },
+      "cost_hint_state": "not-recorded",
+      "field_provenance": {
+        "context_tokens": {
+          "basis": "inferred",
+          "rule_key": "rule.codex.gpt-6.2-model-limits/v1"
+        },
+        "max_output_tokens": {
+          "basis": "inferred",
+          "rule_key": "rule.codex.gpt-6.2-model-limits/v1"
+        }
+      }
+    },
+    {
       "model_record_key": "official/openai-platform/gpt-6-luna",
       "provider_record_key": "official/openai-platform",
       "provenance_refs": [
@@ -120886,6 +121131,32 @@
         "source-177"
       ],
       "collected_on": "2026-09-30"
+    },
+    {
+      "rule_key": "rule.codex.gpt-6.2-model-limits/v1",
+      "record_kind": "model",
+      "match": {
+        "provider_id_pattern": "^openai-codex$",
+        "upstream_model_id_pattern": "^gpt-6\\.2-(astra|sol)$"
+      },
+      "assignments": {
+        "context_tokens": {
+          "state": "known",
+          "value": 1050000
+        },
+        "max_output_tokens": {
+          "state": "known",
+          "value": 128000
+        }
+      },
+      "basis": "inferred",
+      "reason": "Project the common public model ceilings for these exact GPT-6.2 identities as inferred subscription facts. The authenticated Codex directory establishes native identity and reasoning profiles and separately records the client windows. Account entitlement and endpoint limits remain runtime evidence.",
+      "evidence_refs": [
+        "source-220",
+        "source-openai-gpt-6-2-astra-20261118",
+        "source-openai-gpt-6-2-sol-20261118"
+      ],
+      "collected_on": "2026-11-23"
     },
     {
       "rule_key": "rule.codex.gpt6-model-context/v1",

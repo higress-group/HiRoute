@@ -40,7 +40,7 @@ import urllib.parse
 VERSION = "8.0.48-hiroute.2"
 MANAGED_NAME = "hiroute-managed-codex.json"
 MODEL_ID = "gpt-5.3-codex-spark"
-ADDED_MODEL_ID = "gpt-5.5"
+ADDED_MODEL_ID = "gpt-6.2-astra"
 
 if "--help" in sys.argv:
     print("CLIProxyAPI Version: " + VERSION)

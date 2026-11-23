@@ -126,6 +126,14 @@ fn current_codex_subscription_catalog_qualifies_gpt6_on_its_exact_account_invent
             &["low", "medium", "high", "xhigh", "max"][..],
         ),
         (
+            "gpt-6.2-astra",
+            &["low", "medium", "high", "xhigh", "max"][..],
+        ),
+        (
+            "gpt-6.2-sol",
+            &["low", "medium", "high", "xhigh", "max"][..],
+        ),
+        (
             "gpt-6-luna",
             &["none", "low", "medium", "high", "xhigh", "max"][..],
         ),

@@ -1009,6 +1009,21 @@ def compile_candidate():
             reference["model"] = runtime_model_definition(
                 source_model, reference["model_configuration_id"], reference["publisher_id"]
             )
+            if "native_capability" not in reference:
+                # Reuse the publisher's ordered profiles. The Codex capability join
+                # below verifies this set against its own subscription evidence.
+                targets = reference["catalog_intent"]["endpoint_capabilities"]
+                if source_model["publisher"] != "OpenAI" or [
+                    target["connector_id"] for target in targets
+                ] != [CODEX_SUBSCRIPTION_CAPABILITY_FIELDS["connector_id"]]:
+                    raise ValueError("only exact Codex subscription references derive reasoning")
+                reasoning = source_model["reasoning"]
+                if reasoning["kind"] != "discrete" or not reasoning["profiles"]:
+                    raise ValueError("reference model has no discrete reasoning profiles")
+                reference["native_capability"] = {
+                    "kind": "discrete", "parameter": "reasoning_effort",
+                    "profiles": list(reasoning["profiles"]),
+                }
         identity = reference["model"]["model_configuration_id"]
         if identity in seen or not reference["sources"]:
             raise ValueError("duplicate or unsourced reference model")
