@@ -3791,6 +3791,56 @@
           "restriction": "Actual provider/model can vary; router IDs are not stable model identities"
         },
         {
+          "billing": "payg-with-cache-pricing",
+          "credential": "API key from a US-scope QwenCloud workspace in Virginia",
+          "disposition": [
+            "catalog-representable",
+            "needs-runtime-qualification"
+          ],
+          "documented_upstream_model_ids": [
+            "qwen4-max"
+          ],
+          "evidence_refs": [
+            "source-qwencloud-model-prices",
+            "source-qwencloud-qwen4-max-model",
+            "source-qwencloud-qwen4-max-release",
+            "source-qwencloud-regions"
+          ],
+          "interfaces": [
+            {
+              "base_url": "https://us-east-1.maas.qwencloudapi.com/apps/anthropic",
+              "base_url_template": null,
+              "interface_key": "qwencloud-payg-us-east-1-us-only/anthropic-messages",
+              "protocol": "anthropic-messages",
+              "request_path": "/v1/messages",
+              "request_path_template": null
+            },
+            {
+              "base_url": "https://us-east-1.maas.qwencloudapi.com/compatible-mode/v1",
+              "base_url_template": null,
+              "interface_key": "qwencloud-payg-us-east-1-us-only/openai-chat",
+              "protocol": "openai-chat",
+              "request_path": "/chat/completions",
+              "request_path_template": null
+            },
+            {
+              "base_url": "https://us-east-1.maas.qwencloudapi.com/compatible-mode/v1",
+              "base_url_template": null,
+              "interface_key": "qwencloud-payg-us-east-1-us-only/openai-responses",
+              "protocol": "openai-responses",
+              "request_path": "/responses",
+              "request_path_template": null
+            }
+          ],
+          "product": "PAYG (Virginia, US-only)",
+          "product_key": "qwencloud-payg-us-east-1-us-only",
+          "product_kind": "api-payg",
+          "provider": "QwenCloud",
+          "quota_facts": [],
+          "region_scope": "US (Virginia, us-east-1) with US-only inference",
+          "restriction": "Requires a Virginia PAYG API key from a workspace created with the fixed US deployment scope. The default Global workspace uses the same base URLs and model ID. These interfaces are documented candidates. Account eligibility and protocol behavior require runtime qualification."
+        },
+        {
           "billing": "credits-subscription",
           "credential": "bearer sk-tp",
           "disposition": [
@@ -4231,7 +4281,7 @@
           "restriction": "General platform credentials"
         }
       ],
-      "as_of": "2026-11-20",
+      "as_of": "2026-11-23",
       "canonical_models": [
         {
           "canonical_identity": "claude-fable-5-1",
@@ -14605,6 +14655,42 @@
           "digest_state": "captured",
           "locator": "https://help.aliyun.com/zh/model-studio/token-plan-team-overview",
           "source_key": "source-qwen4-team",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "docs.qwencloud.com",
+          "bytes_digest": "sha256:13556dd9b6d4bf8f7e46dee94d42a189a009e35472ccfbd121c933f96718a2ef",
+          "collected_on": "2026-11-23",
+          "digest_state": "captured",
+          "locator": "https://docs.qwencloud.com/developer-guides/getting-started/model-prices",
+          "source_key": "source-qwencloud-model-prices",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "docs.qwencloud.com",
+          "bytes_digest": "sha256:586fbf49fb934de394dd2514160e80f004441a61e44533a7928368a1c02e2e6e",
+          "collected_on": "2026-11-23",
+          "digest_state": "captured",
+          "locator": "https://docs.qwencloud.com/developer-guides/getting-started/latest-model",
+          "source_key": "source-qwencloud-qwen4-max-model",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "docs.qwencloud.com",
+          "bytes_digest": "sha256:299b70800aeb89775703edc97f881b10558a5462ac49e482969d5d68219ac4a6",
+          "collected_on": "2026-11-23",
+          "digest_state": "captured",
+          "locator": "https://docs.qwencloud.com/changelog/models",
+          "source_key": "source-qwencloud-qwen4-max-release",
+          "source_kind": "provider-documentation"
+        },
+        {
+          "authority": "docs.qwencloud.com",
+          "bytes_digest": "sha256:7182f86526f98ec3f6432578c87c3f58d32943c11590dbb3b4ec71b6fe9cd365",
+          "collected_on": "2026-11-23",
+          "digest_state": "captured",
+          "locator": "https://docs.qwencloud.com/developer-guides/getting-started/regions",
+          "source_key": "source-qwencloud-regions",
           "source_kind": "provider-documentation"
         },
         {
@@ -107731,7 +107817,7 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:87236224902dbdef108a22511b238f4449b948e65a7415bb36d1e24755426e1d"
+      "source_catalog_digest": "sha256:e7c84f44776ff9e4c037acf34934a7d341f87aca254335da350bdad28190b923"
     },
     "rating_snapshot": {
       "digest": "sha256:3903b9b5f5b0c6111d7dd2e752d9538390d32e72950c3a0edee8d025449f4919",
@@ -109866,7 +109952,7 @@
     "schema": "hiroute.release-model-data/v2"
   },
   "official_model_data": {
-    "data_revision": 21,
+    "data_revision": 22,
     "pricing_facts": [
       {
         "pricing_key": "anthropic-platform/claude-fable-5-2/claude-fable-5-2",
@@ -111576,6 +111662,63 @@
           "source-openai-caching-20261118",
           "source-openai-gpt-6-2-sol-20261118",
           "source-openai-pricing-20261118"
+        ]
+      },
+      {
+        "pricing_key": "qwencloud-payg-us-east-1-us-only/qwen-4-max/qwen4-max",
+        "product_key": "qwencloud-payg-us-east-1-us-only",
+        "model_key": "qwen-4-max",
+        "upstream_model_id": "qwen4-max",
+        "currency": "USD",
+        "unit": "per-1m-tokens",
+        "price_state": "exact",
+        "schedules": [
+          {
+            "schedule_key": "standard",
+            "condition": {
+              "kind": "region",
+              "region": "us-east-1",
+              "deployment_scope": "us-only",
+              "minimum_input_tokens": 1,
+              "maximum_input_tokens": 1000000
+            },
+            "application": "whole-request",
+            "rates": {
+              "input": "1.50",
+              "output": "4.50",
+              "cache-read": "0.075"
+            }
+          },
+          {
+            "schedule_key": "standard-cache-write-300s",
+            "condition": {
+              "kind": "region",
+              "region": "us-east-1",
+              "deployment_scope": "us-only",
+              "cache_ttl_seconds": 300
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "1.875"
+            }
+          },
+          {
+            "schedule_key": "standard-cache-write-3600s",
+            "condition": {
+              "kind": "region",
+              "region": "us-east-1",
+              "deployment_scope": "us-only",
+              "cache_ttl_seconds": 3600
+            },
+            "application": "whole-request",
+            "rates": {
+              "cache-write": "3"
+            }
+          }
+        ],
+        "evidence_refs": [
+          "source-qwencloud-model-prices",
+          "source-qwencloud-regions"
         ]
       },
       {

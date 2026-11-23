@@ -33,6 +33,7 @@
       "authority_key": "alibaba-model-studio",
       "allowed_https_prefixes": [
         "https://docs.bailian.console.aliyun.com/en/model-studio/",
+        "https://docs.qwencloud.com/changelog/models",
         "https://docs.qwencloud.com/developer-guides/",
         "https://help.aliyun.com/"
       ],

@@ -189,7 +189,7 @@ class November11ModelProjectionTests(unittest.TestCase):
                 self.assertEqual(face['request_path'], '/v1/messages')
 
     def test_qwen4_beijing_payg_rates_and_token_plan_credits_remain_product_scoped(self):
-        price, = self.prices('qwen-4-max')
+        price, = self.prices('qwen-4-max', 'bailian-payg-cn')
         self.assertEqual((price['product_key'], price['currency'], price['unit']),
                          ('bailian-payg-cn', 'CNY', 'per-1m-tokens'))
         standard, cache_5m, cache_1h = price['schedules']
@@ -200,6 +200,7 @@ class November11ModelProjectionTests(unittest.TestCase):
         self.assertTrue(all(s['condition']['region'] == 'cn-beijing' for s in price['schedules']))
         for tier in ('personal', 'team'):
             product = self.products[f'bailian-token-{tier}-cn-beijing']
+            self.assertFalse(self.prices('qwen-4-max', product['product_key']))
             self.assertTrue(any(fact.startswith('qwen4-max uses ') for fact in product['quota_facts']))
             record = self.source_records[f"official/{product['product_key']}/qwen4-max"]
             billing = record['source_assertions'][0]['billing']

@@ -3,9 +3,9 @@
   "source_bundle": "assets/model-data/current/rating-seed.json",
   "source_bytes_digest": "sha256:2f3b02526a9263e756c3a94e4d74336aca36724abd984fbec4a0a89833619b9f",
   "metadata_catalog": "assets/model-data/current/inputs/metadata-catalog.json",
-  "metadata_catalog_bytes_digest": "sha256:f303998a7a6ba18a2335cf9bc656228cad6c42e84312e561c99317b0221b455b",
+  "metadata_catalog_bytes_digest": "sha256:9b306e79716a51d2a0e5750e5294b8d8eecacd7e31ec4a653f7423fe15a7600d",
   "client_discovery_runs": "assets/model-data/current/inputs/client-discovery-runs.json",
-  "client_discovery_runs_bytes_digest": "sha256:997dfcfd068b8003ae0c78f2a96138d732e4915b39b4368a80f8aa94e7cd8f96",
+  "client_discovery_runs_bytes_digest": "sha256:0631a125c09fe9150521c1eee2175ea68256c1ed391cb2dcd4eadf7253f397a7",
   "snapshot_version": "hiroute-20260913/current-1",
   "method_revision": "preserved-explicit-native/v1",
   "evidence": {
