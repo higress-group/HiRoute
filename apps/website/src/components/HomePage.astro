@@ -7,6 +7,7 @@ import InstallPlatforms from './InstallPlatforms.astro';
 import { localePath } from '../lib/locale.mjs';
 import { agentGuideHub, agentGuides } from '../lib/agent-guides.mjs';
 import { homeStructuredData } from '../lib/seo.mjs';
+import { homeMetadata } from '../lib/home.mjs';
 const { language = 'zh' } = Astro.props;
 const en = language === 'en';
 const t = (zh, english) => en ? english : zh;
@@ -16,11 +17,10 @@ const featuredPost = posts[0];
 const release = latestRelease('stable');
 const platforms = installPlatforms(release, language);
 const operatingSystems = ['macOS', 'Windows', 'Linux'].filter(platform => release?.artifacts.some(item => item.platform === platform));
-// Search title and snippet name the problem people search for; the hero keeps the slogan.
-const description = t('HiRoute 是开源的本地 Agent 模型路由：在 Codex、Claude Code 等 Agent 中组合订阅、API 和本地模型。常规工作交给经济模型，难点留给主力，订阅额度用得更久；经济模型没做好，主力随时接手。', 'HiRoute is an open-source local model router for Codex, Claude Code and other agents. Combine subscriptions, APIs and local models: routine work goes to economical models and hard parts to your primary model, so your subscriptions go further.');
+const description = t(homeMetadata.description.zh, homeMetadata.description.en);
 ---
 <SiteLayout language={language}
-  title={t('HiRoute · 让 Codex、Claude Code 订阅额度更耐用 · 开源 Agent 模型路由', 'HiRoute · Make Codex and Claude Code subscriptions go further · Open-source model router')}
+  title={t(homeMetadata.title.zh, homeMetadata.title.en)}
   description={description} structuredData={[homeStructuredData({ language, description, operatingSystems })]}
   path={path} alternatePath={alternatePath} fullWidth>
   <section class="hero wrap">

@@ -94,10 +94,10 @@ export const guidePages = {
   },
   'task-routing': {
     zh: 'Agent 智能路由', en: 'Smart Agent routing',
-    title: { zh: 'Agent 智能路由：跨 Harness 委派任务', en: 'Smart Agent routing: delegate across harnesses' },
+    title: { zh: '智能任务路由：跨 Agent 委派任务', en: 'Smart task routing: delegate work across Agents' },
     description: {
-      zh: '用轻量 Pi 执行日志初筛、测试检查和资料整理，减少主力模型的 token 开销。按图配置执行 Agent，发起委派并查看结果。',
-      en: 'Delegate log triage, test checks and document scans to lightweight Pi to reduce primary-model token costs. Set up an executor and check the results.',
+      zh: 'HiRoute 是开源的智能任务路由：把任务从你的 Agent 委派给不同的 Agent 和模型，例如用 Pi 初筛日志，或交给 Codex CLI 编码。',
+      en: 'HiRoute is an open-source smart task router: delegate work from your Agent to different Agents and models, like Pi for log triage or Codex CLI for coding.',
     },
   },
   [agentGuideHub]: {
