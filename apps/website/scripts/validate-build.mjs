@@ -66,8 +66,10 @@ for (const file of htmlFiles) {
   redirectFiles.add(file);
   const script = html.indexOf('<script src="/scripts/language.js">');
   const chinese = html.match(/\bdata-redirect-zh="([^"]+)"/)?.[1];
+  const sharedUrl = html.match(/<meta property="og:url" content="([^"]+)">/)?.[1];
   if (target !== redirects.get(from) || refresh !== target || chinese !== (from === '/' ? '/zh/' : undefined)
     || html.match(/<link rel="canonical" href="([^"]+)"/)?.[1] !== site + target
+    || (sharedUrl !== undefined && sharedUrl !== site + target)
     || script < 0 || script > html.indexOf('http-equiv="refresh"')) throw new Error(`invalid redirect page: ${from}`);
 }
 for (const file of htmlFiles) {
@@ -136,6 +138,14 @@ for (const file of htmlFiles) {
     alternates: languageLinks(head, /<link rel="alternate" hreflang="([^"]+)" href="([^"]+)"/g, relative),
     structuredData: [...head.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(match => match[1]),
   });
+}
+// Redirect pages stay out of the uniqueness check: the root deliberately repeats the
+// English homepage's title and description so its result and shared links describe /en/.
+const rootPage = fs.readFileSync(path.join(dist, 'index.html'), 'utf8');
+const englishHome = pages.get(`${site}/en/`);
+if (rootPage.match(/<title>([^<]+)<\/title>/)?.[1] !== englishHome?.title
+  || rootPage.match(/<meta name="description" content="([^"]+)"/)?.[1] !== englishHome?.description) {
+  throw new Error('root redirect page lacks the English homepage title and description');
 }
 for (const field of ['title', 'description']) {
   const seen = new Map();

@@ -1,7 +1,10 @@
 ---
 import RedirectPage from '../components/RedirectPage.astro';
+import { homeMetadata } from '../lib/home.mjs';
+// Search results and shared links for the root describe the English homepage it opens.
 // Baidu Search Resource Platform re-checks its site verification on the homepage; keep it.
 ---
-<RedirectPage target="/en/" chinese="/zh/">
+<RedirectPage target="/en/" chinese="/zh/" title={homeMetadata.title.en}
+  description={homeMetadata.description.en} image="/brand/social-card-en.png">
   <meta slot="head" name="baidu-site-verification" content="codeva-4Bp3IgU4gn">
 </RedirectPage>

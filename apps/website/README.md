@@ -139,11 +139,14 @@ never part of the website build and must remain a real object/404 boundary.
 
 Every public page has its own title and description: guides in
 `src/lib/user-guides.mjs`, decision documents in `src/lib/decision-docs.mjs`,
-articles in `news/index.json`, and other pages in their component. Keep them
+articles in `news/index.json`, the homepage in `src/lib/home.mjs`, and other pages
+in their component. Keep them
 specific to the page, factual for the shipped product and free of release-version
 wording. Each page is its own canonical URL and declares the same `zh`/`en` pair,
-with English as `x-default`; redirect pages have no metadata of their own and stay
-out of the sitemap. `src/lib/seo.mjs` builds the JSON-LD: site, organization
+with English as `x-default`; redirect pages stay out of the sitemap and the
+uniqueness check. The root repeats the English homepage's title, description and
+social card, with sharing tags pointing at `/en/`; other redirect pages have no
+metadata of their own. `src/lib/seo.mjs` builds the JSON-LD: site, organization
 and software on the homepage, `BlogPosting` for articles and breadcrumbs for docs
 and articles. The sitemap repeats the language pair and sets `lastmod` to the newest
 commit touching each page's own sources (`pageSources`), so it needs full Git

@@ -2,15 +2,31 @@
 // A URL whose page moved. Google treats the immediate meta refresh as a permanent
 // redirect to the canonical destination. language.js runs before the refresh so visitors
 // keep the query and fragment, and the root also opens /zh/ for a saved Chinese choice.
-const { target, chinese } = Astro.props;
+// The optional title, description and image describe the destination in search results
+// and shared links; sharing tags point at the destination.
+const { target, chinese, title, description, image } = Astro.props;
 const destination = new URL(target, Astro.site);
+const imageUrl = image && new URL(image, Astro.site);
+const sharing = Boolean(title || description || image);
 ---
 <!doctype html>
 <html lang={target.startsWith('/zh/') ? 'zh-CN' : 'en'} data-redirect={target} data-redirect-zh={chinese}>
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>HiRoute</title>
+    <title>{title ?? 'HiRoute'}</title>
+    {description && <meta name="description" content={description}>}
+    {sharing && <>
+      <meta property="og:type" content="website">
+      {title && <meta property="og:title" content={title}>}
+      {description && <meta property="og:description" content={description}>}
+      <meta property="og:url" content={destination}>
+      <meta property="og:site_name" content="HiRoute">
+      {imageUrl && <meta property="og:image" content={imageUrl}>}
+      <meta name="twitter:card" content={imageUrl ? 'summary_large_image' : 'summary'}>
+      {imageUrl && <meta name="twitter:image" content={imageUrl}>}
+      {description && <meta name="twitter:description" content={description}>}
+    </>}
     <slot name="head" />
     <link rel="canonical" href={destination}>
     <script is:inline src="/scripts/language.js"></script>
