@@ -67,6 +67,8 @@ The Codex subscription projection uses the same ordered profiles after the scope
 native model record confirms them. Its authenticated directory keeps the client
 window, client default and the additional automatic-delegation `ultra` mode in
 source assertions. The executable subscription uses the five wire-level profiles.
+Its runtime context field carries the 922,000-token input limit. With the
+128,000-token output limit the Gateway budget totals 1,050,000 tokens.
 CPA still verifies each account's model membership and the subscription Offer
 retains its own billing and entitlement.
 

@@ -16,7 +16,7 @@ use hiroute_domain::{
     ModelDefinitionV1, ModelEndpointCapabilityV1, ModelNativeReasoningV1, PoolCredentialV1,
     ProtocolEndpointV1, ResolvedConnectionOptionV1, SourceBindingV1, UpstreamProtocol,
 };
-use hiroute_integrations::{CpaRegisteredSourceV1, TrustedReleaseCatalog};
+use hiroute_integrations::{CpaRegisteredSourceV1, TrustedReleaseCatalog, compute};
 
 #[path = "registered_management_candidate.rs"]
 mod registered_management;
@@ -868,16 +868,8 @@ fn materialize_connector_runtime_fallback(
         required_adapter_revision: protocol_endpoint.adapter_revision,
         evidence_digest: fact.capability_evidence_digest.clone(),
     };
-    let reasoning = observed_subscription_reasoning(
-        catalog,
-        registered,
-        &fact.upstream_model_id,
-        ModelNativeReasoningV1 {
-            model_configuration_id: model_configuration_id.clone(),
-            capability: fact.native_reasoning.clone(),
-            native_render_convention: None,
-        },
-    )?;
+    let reasoning =
+        observed_subscription_reasoning(catalog, registered, fact, model_configuration_id.clone())?;
     let pool_id = format!("pool/runtime-fallback/{suffix}");
     let pool = CredentialPoolV1 {
         pool_id: pool_id.clone(),
@@ -979,21 +971,39 @@ pub(super) fn observed_fallback_subscription_model<'a>(
 fn observed_subscription_reasoning(
     catalog: &TrustedReleaseCatalog,
     registered: &CpaRegisteredSourceV1,
-    upstream_model_id: &str,
-    mut saved: ModelNativeReasoningV1,
+    fact: &ComputeManagementCompilationFactV2,
+    model_configuration_id: String,
 ) -> Option<ModelNativeReasoningV1> {
-    let observed = observed_fallback_subscription_model(catalog, registered, upstream_model_id)?;
-    // Keep the saved binding usable when a new catalog qualifies its model.
-    if let Some(id) = observed.model_configuration_id.as_deref()
-        && let Some(official) = catalog
+    let observed =
+        observed_fallback_subscription_model(catalog, registered, &fact.upstream_model_id)?;
+    let official = observed.model_configuration_id.as_deref().and_then(|id| {
+        catalog
             .native_reasoning()
             .iter()
             .find(|reasoning| reasoning.model_configuration_id == id)
+    });
+    let mut effective = ModelNativeReasoningV1 {
+        model_configuration_id,
+        capability: fact.native_reasoning.clone(),
+        native_render_convention: official.and_then(|official| official.native_render_convention),
+    };
+    if let Some(official) = official
+        && compute::allows_reasoning_default(
+            &fact.capabilities.native_reasoning,
+            fact.default_preferences
+                .get(&hiroute_domain::ModelDefaultFieldV1::NativeReasoning),
+        )
     {
-        saved.capability = official.capability.clone();
-        saved.native_render_convention = official.native_render_convention;
+        effective.capability = official.capability.clone();
+        return Some(effective);
     }
-    Some(saved)
+    let saved =
+        compute::without_current_defaults(&fact.capabilities, &fact.default_preferences, false);
+    let capability = saved
+        .native_reasoning
+        .value
+        .unwrap_or_else(|| fact.native_reasoning.clone());
+    Some(effective.with_source_capability(capability))
 }
 
 fn protocol_label(protocol: UpstreamProtocol) -> &'static str {

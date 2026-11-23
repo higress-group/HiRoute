@@ -58,6 +58,10 @@ class OpenAI62MetadataTests(unittest.TestCase):
                               binding['upstream_protocol'], binding['upstream_model_id']),
                              ('connector.cpa.codex', 'endpoint.cpa.codex', 'responses', model_id))
             self.assertIn(identity, offer['model_configuration_ids'])
+            definition = next(model for model in self.data['models']
+                              if model['model_configuration_id'] == identity)
+            self.assertEqual(definition['capabilities']['context_tokens'], 922_000)
+            self.assertEqual(definition['capabilities']['max_output_tokens'], 128_000)
             native = next(row for row in self.data['rating_snapshot']['models']
                           if row['model_configuration_id'] == identity)
             self.assertEqual(native['capability'], {

@@ -1898,7 +1898,7 @@
           "connector_revision": 1,
           "endpoint_profile_id": "endpoint.cpa.codex",
           "endpoint_profile_revision": 1,
-          "evidence_digest": "sha256:a0cf0029c4fd0c2a7436b2cc7b3ff58ceaa0147c36e3ce7db02954ce34ccf1a8",
+          "evidence_digest": "sha256:3bee2de656775a3408a7b372b71ac9fbe16a0ba8f4b6a6a8c32423d9b367abc1",
           "model_configuration_id": "model.openai.gpt-6.2-astra",
           "protocol_endpoint_id": "endpoint.cpa.codex.responses",
           "required_adapter_ref": "adapter.openai-responses.v1",
@@ -1913,7 +1913,7 @@
           "connector_revision": 1,
           "endpoint_profile_id": "endpoint.cpa.codex",
           "endpoint_profile_revision": 1,
-          "evidence_digest": "sha256:0ad438208ef8f4422696cab02333c91fc6c47561000cbaf2dcdc1f271c7fa34e",
+          "evidence_digest": "sha256:41810f23576a4e36f049737c9f97fee3d8f45e7f569de9792f4bd7f7d3659584",
           "model_configuration_id": "model.openai.gpt-6.2-sol",
           "protocol_endpoint_id": "endpoint.cpa.codex.responses",
           "required_adapter_ref": "adapter.openai-responses.v1",
@@ -2358,7 +2358,7 @@
         },
         {
           "capabilities": {
-            "context_tokens": 1050000,
+            "context_tokens": 922000,
             "max_output_tokens": 128000,
             "streaming": true,
             "tool": true,
@@ -2371,7 +2371,7 @@
         },
         {
           "capabilities": {
-            "context_tokens": 1050000,
+            "context_tokens": 922000,
             "max_output_tokens": 128000,
             "streaming": true,
             "tool": true,
@@ -14947,7 +14947,7 @@
             "source-openai-gpt-6-2-astra-20261118",
             "source-openai-gpt-6-2-sol-20261118"
           ],
-          "reason": "Project the common public model ceilings for these exact GPT-6.2 identities as inferred subscription facts. The authenticated Codex directory establishes native identity and reasoning profiles and separately records the client windows. Account entitlement and endpoint limits remain runtime evidence.",
+          "reason": "Project the documented input and output ceilings for these exact GPT-6.2 identities as inferred subscription facts. The native directory records the client windows and reasoning levels separately. The account inventory establishes subscription entitlement.",
           "record_kind": "model",
           "rule_key": "rule.codex.gpt-6.2-model-limits/v1"
         },
@@ -72851,7 +72851,7 @@
           },
           "context_tokens": {
             "state": "known",
-            "value": 1050000
+            "value": 922000
           },
           "cost_hint_state": "not_recorded",
           "cost_hints": [],
@@ -72939,7 +72939,7 @@
           },
           "context_tokens": {
             "state": "known",
-            "value": 1050000
+            "value": 922000
           },
           "cost_hint_state": "not_recorded",
           "cost_hints": [],
@@ -108072,11 +108072,11 @@
         }
       ],
       "schema": "hiroute.model-metadata-catalog/v1",
-      "source_catalog_digest": "sha256:8d0fc795a20ea95d8712fbb6bbe8c9a7480f91354cfefc429cc5096517a69f5b"
+      "source_catalog_digest": "sha256:f2c1a32ad28e5dc55ddcb4746e628bd750ade1935045c143e76afc28770cc4fd"
     },
     "rating_snapshot": {
-      "digest": "sha256:7083c62784209a63028cd37d232018de63cd50a1e67dfc93b2d86b14260bf46c",
-      "model_catalog_digest": "sha256:b216d2f638c2ff0d6ee0350157d609912f31faefe7042130a8ca4f88fcd85707",
+      "digest": "sha256:382baa606816d0b75733c110306408068f2ce6a99faff9f07fc1a02c4b2e487e",
+      "model_catalog_digest": "sha256:ed5ef21bf8a243e9b41d206c39eaa090120793e41b4c147050c041d54c3fe1a8",
       "models": [
         {
           "capability": {
@@ -110425,7 +110425,7 @@
     "schema": "hiroute.release-model-data/v2"
   },
   "official_model_data": {
-    "data_revision": 23,
+    "data_revision": 24,
     "pricing_facts": [
       {
         "pricing_key": "anthropic-platform/claude-fable-5-2/claude-fable-5-2",

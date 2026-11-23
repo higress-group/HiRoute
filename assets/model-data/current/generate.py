@@ -1020,6 +1020,11 @@ def compile_candidate():
                 reasoning = source_model["reasoning"]
                 if reasoning["kind"] != "discrete" or not reasoning["profiles"]:
                     raise ValueError("reference model has no discrete reasoning profiles")
+                limits = reference["model"]["capabilities"]
+                input_limit = source_model.get("max_input_tokens", 0)
+                if not 0 < input_limit <= limits["context_tokens"] - limits["max_output_tokens"]:
+                    raise ValueError("Codex input and output limits need a representable total window")
+                limits["context_tokens"] = input_limit
                 reference["native_capability"] = {
                     "kind": "discrete", "parameter": "reasoning_effort",
                     "profiles": list(reasoning["profiles"]),

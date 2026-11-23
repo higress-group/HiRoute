@@ -80,14 +80,14 @@
       "assignments": {
         "context_tokens": {
           "state": "known",
-          "value": 1050000
+          "value": 922000
         },
         "max_output_tokens": {
           "state": "known",
           "value": 128000
         }
       },
-      "reason": "Project the common public model ceilings for these exact GPT-6.2 identities as inferred subscription facts. The authenticated Codex directory establishes native identity and reasoning profiles and separately records the client windows. Account entitlement and endpoint limits remain runtime evidence.",
+      "reason": "Project the documented input and output ceilings for these exact GPT-6.2 identities as inferred subscription facts. The native directory records the client windows and reasoning levels separately. The account inventory establishes subscription entitlement.",
       "evidence_refs": [
         "source-220",
         "source-openai-gpt-6-2-astra-20261118",

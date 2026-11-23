@@ -70,6 +70,17 @@ test('missing reasoning evidence cannot assign a historical stage to one of mult
   assert.notEqual(qualityExecutionKey(mixed.execution), qualityExecutionKey(unknown.execution));
 });
 
+test('a published subscription slot keeps its recorded scores when the current catalog gains reasoning controls', () => {
+  const model = configured('writing', 'model/runtime-fallback/astra', null);
+  const recorded = summary('writing', model.model_configuration_id, 'non-thinking', 'digest/published');
+  const overridden = summary('writing', model.model_configuration_id, 'max', 'digest/override');
+  const prior = { ...recorded, execution: { ...recorded.execution, plan_revision: 0 } };
+  const rows = qualityModelRows([model], [recorded, overridden, prior]);
+  assert.deepEqual(rows.map(row => row.summary), [recorded, overridden, prior]);
+  assert.deepEqual(rows.map(row => row.configured), [model, model, undefined]);
+  assert.equal(new Set(rows.map(row => row.key)).size, 3);
+});
+
 test('reasoning controls use readable labels and keep opaque identities out of the overview', () => {
   assert.equal(qualityReasoningLabel('budget-16000', 'zh'), '16000 tokens');
   assert.equal(qualityReasoningLabel('high', 'en'), 'high');

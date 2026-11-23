@@ -158,7 +158,11 @@ fn current_codex_subscription_catalog_qualifies_gpt6_on_its_exact_account_invent
             Some(configuration_id.as_str())
         );
         let definition = catalog.model_data().model(&configuration_id).unwrap();
-        assert_eq!(definition.capabilities.context_tokens, 1_050_000);
+        let input_limit = match upstream_model_id {
+            "gpt-6.2-astra" | "gpt-6.2-sol" => 922_000,
+            _ => 1_050_000,
+        };
+        assert_eq!(definition.capabilities.context_tokens, input_limit);
         assert_eq!(definition.capabilities.max_output_tokens, 128_000);
         let other_provider = catalog
             .reconcile_observed_inventory(

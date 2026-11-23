@@ -5,7 +5,9 @@ mod api_capabilities;
 mod api_scope;
 pub use api_capabilities::{ApiCapabilityCompletion, complete_missing_api_capabilities};
 mod native_reasoning;
-pub use native_reasoning::{ApiReasoningDefault, missing_api_reasoning_default};
+pub use native_reasoning::{
+    ApiReasoningDefault, allows_reasoning_default, missing_api_reasoning_default,
+};
 mod scoped;
 pub use scoped::*;
 pub(crate) mod decision_context;

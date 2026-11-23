@@ -9,6 +9,28 @@ pub struct ApiReasoningDefault {
     pub render_convention: Option<NativeReasoningRenderConventionV1>,
 }
 
+/// Exact current metadata can complete an absent or derived reasoning value.
+pub fn allows_reasoning_default(
+    saved: &ComputeManagementFactValueV2<NativeReasoningCapabilityV1>,
+    preference: Option<&ModelDefaultPreferenceV1>,
+) -> bool {
+    // PreserveSaved is also established automatically on imports with no fact.
+    // Preserve meaningful source values, not the absence of reasoning metadata;
+    // an explicit official locator still keeps its own exact-scoped semantics.
+    match preference {
+        Some(
+            ModelDefaultPreferenceV1::Custom { .. }
+            | ModelDefaultPreferenceV1::FollowOfficial { .. },
+        ) => false,
+        Some(ModelDefaultPreferenceV1::FollowMetadata) => true,
+        Some(ModelDefaultPreferenceV1::PreserveSaved) | None => matches!(
+            (&saved.value, saved.basis),
+            (None, ComputeManagementFactBasisV2::Unknown)
+                | (Some(_), ComputeManagementFactBasisV2::RuntimeFallback)
+        ),
+    }
+}
+
 pub fn missing_api_reasoning_default(
     catalog: &TrustedReleaseCatalog,
     provenance: &ComputeManagementProvenanceV2,
@@ -18,22 +40,7 @@ pub fn missing_api_reasoning_default(
     saved: &ComputeManagementFactValueV2<NativeReasoningCapabilityV1>,
     preference: Option<&ModelDefaultPreferenceV1>,
 ) -> Option<ApiReasoningDefault> {
-    // PreserveSaved is also established automatically on imports with no fact.
-    // Preserve meaningful source values, not the absence of reasoning metadata;
-    // an explicit official locator still keeps its own exact-scoped semantics.
-    if matches!(
-        preference,
-        Some(
-            ModelDefaultPreferenceV1::FollowOfficial { .. }
-                | ModelDefaultPreferenceV1::Custom { .. }
-        )
-    ) || !matches!(preference, Some(ModelDefaultPreferenceV1::FollowMetadata))
-        && !matches!(
-            (&saved.value, saved.basis),
-            (None, ComputeManagementFactBasisV2::Unknown)
-                | (Some(_), ComputeManagementFactBasisV2::RuntimeFallback)
-        )
-    {
+    if !allows_reasoning_default(saved, preference) {
         return None;
     }
     let endpoint = super::api_scope::api_endpoint(catalog, provenance, target, authentication)?;

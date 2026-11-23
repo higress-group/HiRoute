@@ -473,20 +473,16 @@ fn saved_fallback_uses_new_profiles_only_for_observed_codex_members() {
             .collect(),
     };
     let registered = register_cpa_account(&catalog, &materialization).unwrap();
-    let saved = ModelNativeReasoningV1 {
-        model_configuration_id: "model/runtime-fallback/old-binding".into(),
-        capability: NativeReasoningCapabilityV1::Fixed {
-            profile: "non-thinking".into(),
-        },
-        native_render_convention: None,
+    let identity = "model/runtime-fallback/old-binding";
+    let mut fact = source_local_fact(GatewayAuthenticationSemanticsV1::Bearer);
+    fact.upstream_model_id = "gpt-6.2-astra".into();
+    fact.native_reasoning = NativeReasoningCapabilityV1::Fixed {
+        profile: "non-thinking".into(),
     };
+    fact.capabilities.native_reasoning = runtime_fact(fact.native_reasoning.clone());
     let effective =
-        observed_subscription_reasoning(&catalog, &registered, "gpt-6.2-astra", saved.clone())
-            .unwrap();
-    assert_eq!(
-        effective.model_configuration_id,
-        saved.model_configuration_id
-    );
+        observed_subscription_reasoning(&catalog, &registered, &fact, identity.into()).unwrap();
+    assert_eq!(effective.model_configuration_id, identity);
     let profiles = cpa_reasoning_profiles(
         &effective,
         UpstreamProtocol::Responses,
@@ -511,16 +507,14 @@ fn saved_fallback_uses_new_profiles_only_for_observed_codex_members() {
             )],
         }
     );
-    assert_eq!(
-        observed_subscription_reasoning(
-            &catalog,
-            &registered,
-            "gpt-codex-future-text",
-            saved.clone(),
-        ),
-        Some(saved.clone())
+    fact.upstream_model_id = "gpt-codex-future-text".into();
+    let unrelated =
+        observed_subscription_reasoning(&catalog, &registered, &fact, identity.into()).unwrap();
+    assert_eq!(unrelated.capability, fact.native_reasoning);
+    fact.upstream_model_id = "gpt-6.2-sol".into();
+    assert!(
+        observed_subscription_reasoning(&catalog, &registered, &fact, identity.into()).is_none()
     );
-    assert!(observed_subscription_reasoning(&catalog, &registered, "gpt-6.2-sol", saved).is_none());
 }
 
 #[test]

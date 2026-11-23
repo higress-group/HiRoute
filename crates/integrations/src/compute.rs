@@ -15,9 +15,9 @@ mod defaults;
 pub use control_plane::*;
 pub use defaults::{
     ApiCapabilityCompletion, ApiReasoningDefault, DecisionContextResolutionError,
-    complete_missing_api_capabilities, matching_endpoint_metadata, missing_api_reasoning_default,
-    official_capability_defaults, resolve_managed_defaults, saved_native_capability_digest,
-    without_current_defaults,
+    allows_reasoning_default, complete_missing_api_capabilities, matching_endpoint_metadata,
+    missing_api_reasoning_default, official_capability_defaults, resolve_managed_defaults,
+    saved_native_capability_digest, without_current_defaults,
 };
 
 #[derive(Clone, Debug)]
