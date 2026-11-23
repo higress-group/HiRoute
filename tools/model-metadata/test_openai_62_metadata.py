@@ -46,9 +46,33 @@ class OpenAI62MetadataTests(unittest.TestCase):
                 self.assertEqual(binding['product_key'], 'openai-platform-global')
                 self.assertEqual(binding['availability']['state'], 'conditional')
                 self.assertEqual(binding['protocol_qualification'], 'runtime-required')
-            for key in ('models', 'price_rates'):
-                self.assertFalse(any(model_id in row['model_configuration_id'] for row in self.data[key]))
-            self.assertFalse(any(model_id in json.dumps(row) for row in self.source['model_metadata_records']))
+            self.assertFalse(any(model_id in row['model_configuration_id'] for row in self.data['price_rates']))
+
+    def test_codex_subscription_uses_the_same_reasoning_profiles(self):
+        offer = next(offer for offer in self.data['offers'] if offer['offer_id'] == 'offer.codex.subscription')
+        for model_id in IDS:
+            identity = f'model.openai.{model_id}'
+            binding, = [cap for cap in self.data['model_endpoint_capabilities']
+                        if cap['model_configuration_id'] == identity]
+            self.assertEqual((binding['connector_id'], binding['endpoint_profile_id'],
+                              binding['upstream_protocol'], binding['upstream_model_id']),
+                             ('connector.cpa.codex', 'endpoint.cpa.codex', 'responses', model_id))
+            self.assertIn(identity, offer['model_configuration_ids'])
+            definition = next(model for model in self.data['models']
+                              if model['model_configuration_id'] == identity)
+            self.assertEqual(definition['capabilities']['context_tokens'], 922_000)
+            self.assertEqual(definition['capabilities']['max_output_tokens'], 128_000)
+            native = next(row for row in self.data['rating_snapshot']['models']
+                          if row['model_configuration_id'] == identity)
+            self.assertEqual(native['capability'], {
+                'kind': 'discrete', 'parameter': 'reasoning_effort', 'profiles': REASONING_PROFILES,
+            })
+            scoped, = [record for record in self.source['model_metadata_records']
+                       if record['provider_id'] == 'openai-codex' and record['upstream_model_id'] == model_id]
+            self.assertEqual(scoped['normalized_model_matches'], [model_id])
+            self.assertCountEqual(scoped['reasoning_rendering_hints']['supported_reasoning_efforts'],
+                                  REASONING_PROFILES)
+            self.assertIn('ultra', scoped['source_assertions'][0]['supportedReasoningEfforts'])
 
     def test_threshold_tier_and_ttl_prices_are_separate(self):
         # Independent provider table values, including the full-request 272k boundary.

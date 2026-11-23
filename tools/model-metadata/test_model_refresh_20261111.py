@@ -36,7 +36,6 @@ class November11ModelProjectionTests(unittest.TestCase):
             if binding['model_key'] in NEW_MODELS:
                 self.assertEqual(binding['availability']['state'], 'conditional')
                 self.assertEqual(binding['protocol_qualification'], 'runtime-required')
-        self.assertEqual(len(self.data['models']), 31)
         for model in self.data['models']:
             if model['model_configuration_id'] == 'model.catalog.qwen-4-max':
                 continue

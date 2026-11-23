@@ -269,6 +269,59 @@ fn retain_failed_product_diagnostics(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn codex_subscription_astra_exposes_shared_reasoning_in_routing_options() {
+    use hiroute_application_api::{PlanEditorOptionsRequestV1, PlanEditorOptionsV1};
+    use hiroute_domain::NativeReasoningCapabilityV1;
+
+    let (directory, _proxy, mut daemon) = cache_fixture();
+    write_subscription_auth(
+        &directory.path().join("home/.codex/auth.json"),
+        "subscription-product-account",
+        "rights-restricted",
+    );
+    let checked = check_current(&mut daemon, directory.path(), "astra-reasoning").await;
+    let snapshot = save_checked(
+        &daemon,
+        &checked,
+        ComputeManagementIntentV2::SaveReady,
+        "astra-reasoning-save",
+    )
+    .await;
+    let model = &snapshot.sources[0].models[0];
+    assert_eq!(model.upstream_model_id, "gpt-6.2-astra");
+    assert_eq!(
+        model.presentation.availability,
+        ComputeModelAvailabilityV1::Available
+    );
+    let options = succeeded(
+        daemon
+            .client
+            .query::<_, PlanEditorOptionsV1>(
+                "GetPlanEditorOptions",
+                "astra-routing-options",
+                &PlanEditorOptionsRequestV1::default(),
+            )
+            .await
+            .unwrap(),
+    );
+    let astra = options
+        .candidates
+        .iter()
+        .find(|candidate| candidate.binding_id == model.binding_id)
+        .unwrap();
+    assert_eq!(astra.billing_class, BillingClass::Subscription);
+    assert!(astra.routable);
+    let NativeReasoningCapabilityV1::Discrete { profiles, .. } = &astra.reasoning else {
+        panic!(
+            "expected Astra reasoning controls, got {:?}",
+            astra.reasoning
+        );
+    };
+    assert_eq!(profiles, &["low", "medium", "high", "xhigh", "max"]);
+    daemon.stop();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn checked_candidate_cache_supports_ready_disabled_ready_without_restart() {
     let (directory, _proxy, mut daemon) = cache_fixture();
     let mut previous_source: Option<hiroute_application_api::ComputeManagedSourceViewV2> = None;

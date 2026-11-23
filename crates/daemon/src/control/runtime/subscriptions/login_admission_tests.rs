@@ -49,7 +49,7 @@ mod trial_snapshot_tests;
 struct Fixture {
     runtime: Option<ProductionControlRuntime>,
     runtimes: Arc<ManagedCpaRuntimeSet>,
-    root: crate::test_support::PrivateTempDir,
+    root: Arc<crate::test_support::PrivateTempDir>,
 }
 
 impl Fixture {
@@ -58,7 +58,18 @@ impl Fixture {
     }
 
     fn with_native_codex(native_codex: bool) -> Self {
-        let root = crate::test_support::private_tempdir();
+        Self::open(
+            Arc::new(crate::test_support::private_tempdir()),
+            native_codex,
+            crate::release_catalog::fixture_catalog(),
+        )
+    }
+
+    fn open(
+        root: Arc<crate::test_support::PrivateTempDir>,
+        native_codex: bool,
+        catalog: hiroute_integrations::TrustedReleaseCatalog,
+    ) -> Self {
         let source = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../cpa-bridge/src/managed_sessions/cpa_oauth_fixture.py"
@@ -83,7 +94,7 @@ impl Fixture {
             MANAGED_CPA_ARTIFACT_VERSION.parse().unwrap(),
             format!("{:x}", Sha256::digest(source.as_bytes())),
         )));
-        let catalog = Arc::new(crate::release_catalog::fixture_catalog());
+        let catalog = Arc::new(catalog);
         let templates = [CpaAccountKind::Codex, CpaAccountKind::Claude]
             .into_iter()
             .map(|kind| {
@@ -148,7 +159,7 @@ impl Fixture {
         // The production storage initializer requires a fresh empty directory. Keep the
         // external CPA executable, credentials and process logs outside that boundary.
         let storage_root = root.path().join("storage");
-        fs::create_dir(&storage_root).unwrap();
+        fs::create_dir_all(&storage_root).unwrap();
         fs::set_permissions(&storage_root, fs::Permissions::from_mode(0o700)).unwrap();
         let runtime = ProductionControlRuntime::open_inner_with_cpa_and_overrides(
             &storage_root,

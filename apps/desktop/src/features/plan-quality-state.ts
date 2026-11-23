@@ -97,7 +97,8 @@ export function qualityModelRows(configured: readonly PlanQualityModel[], summar
       && s.execution.executed_branch_id === model.branch_id
       && s.execution.group === model.group && s.execution.candidate_index === model.candidate_index
       && (s.reasoning_profile_id === model.reasoning_profile_id
-        || (!s.reasoning_profile_id && configured.filter(c => c.plan_revision === model.plan_revision && c.branch_id === model.branch_id
+        || ((!s.reasoning_profile_id || !model.reasoning_profile_id)
+          && configured.filter(c => c.plan_revision === model.plan_revision && c.branch_id === model.branch_id
           && c.group === model.group && c.candidate_index === model.candidate_index).length === 1)));
     if (!matches.length) rows.push({
       key: JSON.stringify(['configured', model.plan_revision, model.branch_id, model.model_configuration_id, model.reasoning_profile_id, model.group, model.candidate_index]),

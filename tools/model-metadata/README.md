@@ -63,7 +63,14 @@ require Responses. Their documented total context, input limit and output limit
 are independent. The [OpenAI model index](https://developers.openai.com/api/docs/models#flagship-models)
 lists `low`, `medium`, `high`, `xhigh`, and `max` for both models. The catalog records
 those profiles with an unknown model-specific default. Both APIs reject `none`.
-API documentation does not establish subscription access.
+The Codex subscription projection uses the same ordered profiles after the scoped
+native model record confirms them. Its authenticated directory keeps the client
+window, client default and the additional automatic-delegation `ultra` mode in
+source assertions. The executable subscription uses the five wire-level profiles.
+Its runtime context field carries the 922,000-token input limit. With the
+128,000-token output limit the Gateway budget totals 1,050,000 tokens.
+CPA still verifies each account's model membership and the subscription Offer
+retains its own billing and entitlement.
 
 Their prices preserve the whole-request 272,000-input-token boundary, Standard,
 Batch and Fast tiers, and separate 30-minute and Responses-only 12-hour writes.

@@ -70,6 +70,31 @@
       ]
     },
     {
+      "rule_key": "rule.codex.gpt-6.2-model-limits/v1",
+      "record_kind": "model",
+      "collected_on": "2026-11-23",
+      "match": {
+        "provider_id_pattern": "^openai-codex$",
+        "upstream_model_id_pattern": "^gpt-6\\.2-(astra|sol)$"
+      },
+      "assignments": {
+        "context_tokens": {
+          "state": "known",
+          "value": 922000
+        },
+        "max_output_tokens": {
+          "state": "known",
+          "value": 128000
+        }
+      },
+      "reason": "Project the documented input and output ceilings for these exact GPT-6.2 identities as inferred subscription facts. The native directory records the client windows and reasoning levels separately. The account inventory establishes subscription entitlement.",
+      "evidence_refs": [
+        "source-220",
+        "source-openai-gpt-6-2-astra-20261118",
+        "source-openai-gpt-6-2-sol-20261118"
+      ]
+    },
+    {
       "rule_key": "rule.codex.gpt-6.1-sol-output/v1",
       "record_kind": "model",
       "collected_on": "2026-09-30",

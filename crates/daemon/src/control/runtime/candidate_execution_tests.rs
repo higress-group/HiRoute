@@ -445,6 +445,79 @@ fn declared_claude_messages_profiles_emit_both_exact_controls() {
 }
 
 #[test]
+fn saved_fallback_uses_new_profiles_only_for_observed_codex_members() {
+    use hiroute_cpa_bridge::CpaAccountKind;
+    use hiroute_domain::CredentialRefV1;
+    use hiroute_integrations::{CpaAccountMaterializationV1, register_cpa_account};
+
+    let catalog = current_catalog();
+    let kind = CpaAccountKind::Codex;
+    let source_id = "cpa/fixture";
+    let materialization = CpaAccountMaterializationV1 {
+        connector_id: kind.connector_id().into(),
+        connection_option_id: kind.connection_option_id().into(),
+        endpoint_profile_id: kind.endpoint_profile_id().into(),
+        source_id: source_id.into(),
+        account_subject: "account/cpa/fixture".into(),
+        credential_ref: CredentialRefV1::new(
+            "credential/cpa/fixture",
+            format!("source/{source_id}"),
+            format!("connector/{}", kind.connector_id()),
+            "provider-auth",
+            [format!("connection-option/{}", kind.connection_option_id())],
+            1,
+        )
+        .unwrap(),
+        observed_model_ids: ["gpt-6.2-astra".into(), "gpt-codex-future-text".into()]
+            .into_iter()
+            .collect(),
+    };
+    let registered = register_cpa_account(&catalog, &materialization).unwrap();
+    let identity = "model/runtime-fallback/old-binding";
+    let mut fact = source_local_fact(GatewayAuthenticationSemanticsV1::Bearer);
+    fact.upstream_model_id = "gpt-6.2-astra".into();
+    fact.native_reasoning = NativeReasoningCapabilityV1::Fixed {
+        profile: "non-thinking".into(),
+    };
+    fact.capabilities.native_reasoning = runtime_fact(fact.native_reasoning.clone());
+    let effective =
+        observed_subscription_reasoning(&catalog, &registered, &fact, identity.into()).unwrap();
+    assert_eq!(effective.model_configuration_id, identity);
+    let profiles = cpa_reasoning_profiles(
+        &effective,
+        UpstreamProtocol::Responses,
+        UpstreamProtocol::Responses,
+    )
+    .unwrap();
+    assert_eq!(
+        profiles
+            .iter()
+            .map(|profile| profile.profile_id.as_str())
+            .collect::<Vec<_>>(),
+        ["low", "medium", "high", "xhigh", "max"]
+    );
+    assert_eq!(
+        profiles[4].render,
+        GatewayNativeReasoningRenderV1::ExactFields {
+            protocol: UpstreamProtocol::Responses,
+            fields: vec![field(
+                "reasoning.effort",
+                GatewayNativeReasoningValueV1::String("max".into()),
+                UpstreamProtocol::Responses,
+            )],
+        }
+    );
+    fact.upstream_model_id = "gpt-codex-future-text".into();
+    let unrelated =
+        observed_subscription_reasoning(&catalog, &registered, &fact, identity.into()).unwrap();
+    assert_eq!(unrelated.capability, fact.native_reasoning);
+    fact.upstream_model_id = "gpt-6.2-sol".into();
+    assert!(
+        observed_subscription_reasoning(&catalog, &registered, &fact, identity.into()).is_none()
+    );
+}
+
+#[test]
 fn cpa_codex_messages_face_maps_effort_to_adaptive_messages_controls() {
     let native = ModelNativeReasoningV1 {
         model_configuration_id: "model.openai.codex".into(),

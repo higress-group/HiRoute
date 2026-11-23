@@ -28,6 +28,7 @@ use hiroute_domain::{
 };
 use hiroute_integrations::{CpaRegisteredSourceV1, TrustedReleaseCatalog};
 
+use crate::control::runtime::candidate_execution::observed_fallback_subscription_model;
 use crate::control::runtime::subscriptions::maintenance::SubscriptionMaintenancePresentation;
 
 enum ConnectorRuntimeRead {
@@ -451,13 +452,12 @@ fn connector_model_runtime_availability(
                             .is_ok()
                     } else {
                         runtime_fallback_saved_model(model)
-                            && catalog
-                                .runtime_fallback_allows_observed_text(&model.upstream_model_id)
-                            && registered.inventory.iter().any(|inventory| {
-                                inventory.disposition == InventoryDisposition::InventoryOnly
-                                    && inventory.model_configuration_id.is_none()
-                                    && inventory.upstream_model_id == model.upstream_model_id
-                            })
+                            && observed_fallback_subscription_model(
+                                catalog,
+                                registered,
+                                &model.upstream_model_id,
+                            )
+                            .is_some()
                     }
             });
             if available {

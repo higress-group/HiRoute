@@ -29,11 +29,13 @@ class ProductCompletionTests(unittest.TestCase):
         product = self.products['minimax-payg-cn']
         self.assertIn('separate billing', product['restriction'])
         faces = {f['interface_key']: f for f in product['interfaces']}
+        known_upstream_ids = set()
         for model in ('minimax-m3', 'minimax-m3-1-flash'):
             binds = [b for b in self.metadata['endpoint_bindings']
                      if b['model_key'] == model and b['product_key'] == 'minimax-payg-cn']
             self.assertEqual(len(binds), 3)
             for binding in binds:
+                known_upstream_ids.add(binding['upstream_model_id'])
                 self.assertEqual(binding['availability']['state'], 'conditional')
                 self.assertEqual(binding['protocol_qualification'], 'runtime-required')
                 face = faces[binding['interface_candidates'][0]]
@@ -48,7 +50,9 @@ class ProductCompletionTests(unittest.TestCase):
         for schedule in prices['minimax-m3']['schedules']:
             self.assertEqual(schedule['condition']['threshold_token_unit'], 'unresolved')
             self.assertNotIn('cache-write', schedule['rates'])
-        self.assertEqual(len(self.data['models']), 31)
+        self.assertTrue(known_upstream_ids.isdisjoint(
+            cap['upstream_model_id'] for cap in self.data['model_endpoint_capabilities']
+        ))
 
     def test_flashx_china_is_not_a_coding_plan_grant(self):
         binds = [b for b in self.metadata['endpoint_bindings'] if b['model_key'] == 'glm-5-3-flashx-global']
