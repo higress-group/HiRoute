@@ -66,7 +66,12 @@ fn observed_api(
 #[test]
 fn old_api_imports_offer_effort_profiles_and_render_the_actual_native_parameter() {
     let catalog = current_catalog();
-    for model in ["gpt-6.1-sol", "gpt-5.6-luna"] {
+    for model in [
+        "gpt-6.1-sol",
+        "gpt-5.6-luna",
+        "gpt-6.2-astra",
+        "gpt-6.2-sol",
+    ] {
         for protocol in [
             UpstreamProtocol::Responses,
             UpstreamProtocol::ChatCompletions,
