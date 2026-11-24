@@ -518,13 +518,13 @@ Function .onInit
   ; Keep the destination of an interrupted first install even if recovery
   ; consumes its journal before it has written the Installed Apps entry.
   Call HiRouteResolveLocation
-  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-recover "$PLUGINSDIR\hiroute-package.json" "$PLUGINSDIR\hirouted-preflight.exe"'
+  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-recover "$PLUGINSDIR\hiroute-package.json" "$PLUGINSDIR\hirouted-preflight.exe" "$EXEPATH"'
   Pop $0
   Pop $1
   ${If} $0 = 23
     Call HiRouteConfirmUnavailableRestore
     ${If} $HiRouteRestoreConsent = 1
-      nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-recover "$PLUGINSDIR\hiroute-package.json" "$PLUGINSDIR\hirouted-preflight.exe" --allow-unavailable-agent-restore'
+      nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-recover "$PLUGINSDIR\hiroute-package.json" "$PLUGINSDIR\hirouted-preflight.exe" "$EXEPATH" --allow-unavailable-agent-restore'
       Pop $0
       Pop $1
     ${EndIf}

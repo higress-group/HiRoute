@@ -571,7 +571,7 @@ pub fn run_if_requested() -> Option<i32> {
             .last()
             .is_some_and(|arg| arg == "--allow-unavailable-agent-restore");
         let candidate =
-            verb == "--installer-recover" && (args.len() == 3 || args.len() == 4 && allow);
+            verb == "--installer-recover" && (args.len() == 4 || args.len() == 5 && allow);
         if !candidate && (args.len() > 2 || (args.len() == 2 && !allow)) {
             return Some(1);
         }
@@ -579,6 +579,7 @@ pub fn run_if_requested() -> Option<i32> {
             super::install_transaction::recover_for_candidate(
                 std::path::Path::new(&args[1]),
                 std::path::Path::new(&args[2]),
+                std::path::Path::new(&args[3]),
                 allow,
             )
         } else {

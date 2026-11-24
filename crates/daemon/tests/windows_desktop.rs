@@ -325,14 +325,16 @@ fn nsis_lifecycle(directory: Directory) {
     } else if directory == Directory::Shared {
         std::fs::create_dir(&selection).unwrap();
         std::fs::write(selection.join("user-notes.txt"), b"user file").unwrap();
-        assert!(
-            Command::new("icacls")
-                .arg(&selection)
-                .args(["/grant", "*S-1-1-0:(OI)(CI)M"])
-                .status()
-                .unwrap()
-                .success()
-        );
+        if shell_location::validate_custom(&selection).is_ok() {
+            assert!(
+                Command::new("icacls")
+                    .arg(&selection)
+                    .args(["/grant", "*S-1-1-0:(OI)(CI)M"])
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
         run(
             &installer,
             &["/S", &format!("/D={}", selection.display())],
@@ -433,9 +435,41 @@ fn nsis_lifecycle(directory: Directory) {
             .unwrap();
     assert_eq!(preferences["tray_enabled"], true);
     console_ready(&cli_path, &evidence, "fresh");
+    if directory == Directory::Shared {
+        let helper = evidence.join("prepare-interrupted.exe");
+        std::fs::copy(programs.join("hiroute-shell.exe"), &helper).unwrap();
+        assert_eq!(hash(&helper), shell_sha256);
+        let standalone = programs.join("standalone");
+        run(
+            &helper,
+            &[
+                "--installer-prepare",
+                standalone.join("package-manifest.json").to_str().unwrap(),
+                standalone.join("hirouted.exe").to_str().unwrap(),
+                selection.to_str().unwrap(),
+                installer.to_str().unwrap(),
+                "",
+            ],
+            &evidence,
+            "interrupt-after-package-prepare",
+        );
+        assert!(
+            background::local_app_data()
+                .unwrap()
+                .join("HiRoute/shell/install-pending.json")
+                .is_file()
+        );
+        assert_eq!(saved_packages(&selection).len(), 2);
+    }
     run(&installer, &["/S"], &evidence, "repeat");
     if directory == Directory::Shared {
         assert_eq!(saved_packages(&selection).len(), 1);
+        assert!(
+            !background::local_app_data()
+                .unwrap()
+                .join("HiRoute/shell/install-pending.json")
+                .exists()
+        );
     }
     assert_eq!(hash(&programs.join("hiroute-shell.exe")), shell_sha256);
     console_ready(&cli_path, &evidence, "repeated");

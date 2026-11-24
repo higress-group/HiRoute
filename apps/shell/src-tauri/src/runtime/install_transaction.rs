@@ -5,7 +5,7 @@ use hiroute_platform::windows::{security, shell_location};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     fs::{self, File},
     io::{self, Read, Write},
     path::{Path, PathBuf},
@@ -79,7 +79,10 @@ pub(super) fn active_root() -> io::Result<Option<PathBuf>> {
             }
             (None, None) => shell_location::default_root()?,
         };
-        if registered.as_ref().is_some_and(|path| path != &root) {
+        if registered
+            .as_ref()
+            .is_some_and(|path| !same_location(path, &root))
+        {
             return Err(invalid());
         }
         return Ok(Some(root));
@@ -89,7 +92,7 @@ pub(super) fn active_root() -> io::Result<Option<PathBuf>> {
             let root = location.verify_runtime()?;
             if !registered
                 .as_ref()
-                .is_some_and(|path| shell_location::same_name(path, &root))
+                .is_some_and(|path| same_location(path, &root))
             {
                 return Err(invalid());
             }
@@ -102,6 +105,10 @@ pub(super) fn active_root() -> io::Result<Option<PathBuf>> {
         (present(&default.join(INVENTORY))? || present(&default.join("hiroute-shell.exe"))?)
             .then_some(default),
     )
+}
+fn same_location(left: &Path, right: &Path) -> bool {
+    shell_location::same_name(left, right)
+        || shell_location::same_existing_path(left, right, true).unwrap_or(false)
 }
 
 fn active_location() -> io::Result<Option<location::Location>> {
@@ -291,6 +298,7 @@ fn same_repair_payload(
 pub(super) fn recover_for_candidate(
     manifest: &Path,
     daemon: &Path,
+    installer: &Path,
     allow: bool,
 ) -> Result<(), crate::installer_diagnostic::Failure> {
     use crate::installer_diagnostic::Failure;
@@ -302,8 +310,10 @@ pub(super) fn recover_for_candidate(
         && hiroute_host_runtime::storage_upgrade_started(&layout.storage_root())
             .map_err(|error| Failure::io("check-storage-recovery", error))?
     {
-        let root = root().map_err(read_journal)?;
-        return prepare(manifest, daemon, &root)
+        let (_, selection) = active_paths()
+            .map_err(read_journal)?
+            .ok_or_else(|| read_journal(invalid()))?;
+        return prepare(manifest, daemon, &selection, installer, "")
             .map(|_| ())
             .map_err(|error| Failure::io("resume-desktop-install", error));
     }
@@ -671,31 +681,6 @@ fn clear(data: &Path, old: &BTreeMap<String, String>) -> io::Result<()> {
     }
     fs::remove_file(data.join(PENDING))
 }
-fn prune_new_directories(root: &Path, files: &BTreeMap<String, String>) -> io::Result<()> {
-    let mut directories = BTreeSet::new();
-    for name in files.keys() {
-        directories.extend(
-            Path::new(name)
-                .ancestors()
-                .skip(1)
-                .filter(|parent| !parent.as_os_str().is_empty()),
-        );
-    }
-    for relative in directories.into_iter().rev() {
-        match security::open_delete(&root.join(relative), true)
-            .and_then(|directory| security::delete_by_handle(&directory))
-        {
-            Ok(()) => {}
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    io::ErrorKind::NotFound | io::ErrorKind::DirectoryNotEmpty
-                ) => {}
-            Err(error) => return Err(error),
-        }
-    }
-    Ok(())
-}
 pub(super) fn rollback(allow_unavailable_agent_restore: bool) -> io::Result<()> {
     if !has_pending()? {
         return Ok(());
@@ -819,7 +804,7 @@ pub(super) fn rollback(allow_unavailable_agent_restore: bool) -> io::Result<()> 
         }
     }
     if value.custom_root.is_some() && value.old.is_empty() {
-        prune_new_directories(&root, &value.new)?;
+        program_writes::prune_new_directories(&root, &value.new)?;
     }
     if value.custom_root.is_some() {
         program_writes::cleanup(&root)?;
@@ -882,7 +867,7 @@ mod tests {
             ("standalone/console/assets/index.js".into(), "a".repeat(64)),
             ("standalone/other/product.js".into(), "b".repeat(64)),
         ]);
-        prune_new_directories(&programs.0, &files).unwrap();
+        program_writes::prune_new_directories(&programs.0, &files).unwrap();
         assert!(!programs.0.join("standalone/console").exists());
         assert_eq!(
             fs::read(programs.0.join("standalone/other/my-file.txt")).unwrap(),

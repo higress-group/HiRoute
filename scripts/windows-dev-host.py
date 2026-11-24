@@ -524,7 +524,9 @@ def worker(request):
         result['execution_scope'] = admit_test_profile(request, home, Path(os.environ['LOCALAPPDATA']))
         if (request['binary'] == 'windows_desktop.exe' and
                 request['case'] in {'actual_nsis_silent_install_repeat_console_and_uninstall_preserve_data',
-                                    'actual_nsis_custom_directory_repair_update_and_uninstall'}):
+                                    'actual_nsis_custom_directory_repair_update_and_uninstall',
+                                    'actual_nsis_shared_directory_uses_protected_program_and_preserves_foreign_files',
+                                    'actual_nsis_upgrades_released_custom_directory'}):
             profile_helper(request).require_fresh_nsis_packages(home)
         environment = os.environ.copy()
         environment.update(config['environment'])

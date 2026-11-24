@@ -2,7 +2,13 @@
 //! journal reserves this private staging directory before any writer uses it.
 use super::{INVENTORY, UNINSTALLER, invalid, present};
 use hiroute_platform::windows::{durable, security};
-use std::{ffi::OsStr, fs::File, io, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    ffi::OsStr,
+    fs::File,
+    io,
+    path::Path,
+};
 
 pub(super) const STAGING: &str = ".hiroute-install-staging";
 pub(super) const PREFERENCES: &str = "shell-install.json";
@@ -72,6 +78,35 @@ pub(super) fn cleanup(root: &Path) -> io::Result<()> {
         remove_staged_file(&staging, OsStr::new(name))?;
     }
     security::delete_by_handle(&staging)
+}
+
+pub(super) fn prune_new_directories(
+    root: &Path,
+    files: &BTreeMap<String, String>,
+) -> io::Result<()> {
+    let mut directories = BTreeSet::new();
+    for name in files.keys() {
+        directories.extend(
+            Path::new(name)
+                .ancestors()
+                .skip(1)
+                .filter(|parent| !parent.as_os_str().is_empty()),
+        );
+    }
+    for relative in directories.into_iter().rev() {
+        match security::open_delete(&root.join(relative), true)
+            .and_then(|directory| security::delete_by_handle(&directory))
+        {
+            Ok(()) => {}
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::NotFound | io::ErrorKind::DirectoryNotEmpty
+                ) => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

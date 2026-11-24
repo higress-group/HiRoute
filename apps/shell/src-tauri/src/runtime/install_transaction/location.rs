@@ -50,7 +50,11 @@ pub(super) fn choice(
     let destination = shell_location::resolve_destination(&selection).map_err(unavailable)?;
     if let Some(active) = active {
         let expected = old.map_or(active, |value| &value.destination);
-        if !shell_location::same_name(&destination, expected) {
+        if !shell_location::same_name(&destination, expected)
+            && (old.is_some()
+                || !shell_location::same_existing_path(&destination, expected, true)
+                    .unwrap_or(false))
+        {
             return Err(io::Error::other("INSTALL_DESTINATION_ALREADY_REGISTERED"));
         }
         if let Some(value) = old {
@@ -59,11 +63,17 @@ pub(super) fn choice(
                 value.open_destination()?;
             }
         }
+        let local_copy = old.is_some_and(|value| value.package.is_some());
+        let runtime = if local_copy {
+            active.to_owned()
+        } else {
+            destination.clone()
+        };
         return Ok(Choice {
             selection: old.map_or(selection, |value| value.selection.clone()),
             destination,
-            runtime: active.to_path_buf(),
-            local_copy: !shell_location::same_name(expected, active),
+            runtime,
+            local_copy,
         });
     }
     let default = shell_location::default_root()?;
@@ -423,4 +433,54 @@ fn directory_error(error: io::Error) -> io::Error {
         _ => "INSTALL_DESTINATION_WRITE_FAILED",
     };
     io::Error::new(error.kind(), format!("{code}: {error}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shared_package_cleanup_preserves_changed_bytes_and_replacement_directories() {
+        let parent = tempfile::tempdir().unwrap();
+        let selection = parent.path().join("selection");
+        fs::create_dir(&selection).unwrap();
+        let destination = shell_location::resolve_destination(&selection).unwrap();
+        let directory = security::open_identity(&destination, true).unwrap();
+        let mut copy = PackageCopy {
+            nonce: "a".repeat(32),
+            sha256: String::new(),
+            file_id: None,
+        };
+        let path = destination.join(copy.name());
+        fs::write(&path, b"installer package").unwrap();
+        let file = security::open_identity(&path, false).unwrap();
+        copy.sha256 = hash_file(&file).unwrap();
+        copy.file_id = Some(identity(&file).unwrap());
+        let record = Location {
+            schema: SCHEMA.into(),
+            selection,
+            destination,
+            destination_id: identity(&directory).unwrap(),
+            runtime_id: (1, 1),
+            created_runtime: false,
+            package: Some(copy),
+        };
+        drop(file);
+        drop(directory);
+        fs::write(&path, b"changed content").unwrap();
+        record.remove_package().unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"changed content");
+        fs::write(&path, b"installer package").unwrap();
+        let original = parent.path().join("original");
+        fs::rename(&record.destination, &original).unwrap();
+        fs::create_dir(&record.destination).unwrap();
+        fs::write(&path, b"other directory").unwrap();
+        assert!(record.remove_package().is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"other directory");
+        fs::remove_file(&path).unwrap();
+        fs::remove_dir(&record.destination).unwrap();
+        fs::rename(original, &record.destination).unwrap();
+        record.remove_package().unwrap();
+        assert!(!path.exists());
+    }
 }
