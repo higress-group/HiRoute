@@ -438,21 +438,31 @@ fn directory_error(error: io::Error) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
 
     #[test]
     fn shared_package_cleanup_preserves_changed_bytes_and_replacement_directories() {
         let parent = tempfile::tempdir().unwrap();
         let selection = parent.path().join("selection");
-        fs::create_dir(&selection).unwrap();
         let destination = shell_location::resolve_destination(&selection).unwrap();
-        let directory = security::open_identity(&destination, true).unwrap();
+        let directory = shell_location::ensure_package_directory(&destination).unwrap();
         let mut copy = PackageCopy {
             nonce: "a".repeat(32),
             sha256: String::new(),
             file_id: None,
         };
-        let path = destination.join(copy.name());
-        fs::write(&path, b"installer package").unwrap();
+        let name = copy.name();
+        let path = destination.join(&name);
+        let mut created = shell_location::create_package_at(&directory, OsStr::new(&name)).unwrap();
+        created.write_all(b"installer package").unwrap();
+        created.sync_all().unwrap();
+        drop(created);
+        assert_eq!(
+            shell_location::create_package_at(&directory, OsStr::new(&name))
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::AlreadyExists
+        );
         let file = security::open_identity(&path, false).unwrap();
         copy.sha256 = hash_file(&file).unwrap();
         copy.file_id = Some(identity(&file).unwrap());
