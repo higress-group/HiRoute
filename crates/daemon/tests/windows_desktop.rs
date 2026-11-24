@@ -286,7 +286,7 @@ fn nsis_lifecycle(directory: Directory) {
         std::fs::write(selection.join("user-notes.txt"), b"user file").unwrap();
         run(
             &installer,
-            &["/S", &format!("/D={}", programs.display())],
+            &["/S", &format!("/D={}\\", programs.display())],
             &evidence,
             "install",
         );
@@ -335,15 +335,34 @@ fn nsis_lifecycle(directory: Directory) {
                     .success()
             );
         }
+        let selected = selection.clone();
+        let moved = thread::spawn(move || {
+            let saved = selected.join("user-kept-installer");
+            let deadline = Instant::now() + Duration::from_secs(120);
+            while Instant::now() < deadline {
+                if let Some(copy) = saved_packages(&selected).first()
+                    && std::fs::rename(copy, &saved).is_ok()
+                {
+                    return saved;
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+            panic!("the package copy was never published");
+        });
         run(
             &installer,
             &["/S", &format!("/D={}", selection.display())],
             &evidence,
             "install-shared",
         );
+        let saved = moved.join().unwrap();
+        assert_eq!(hash(&saved), hash(&installer));
+        assert!(saved_packages(&selection).is_empty());
+        run(&installer, &["/S"], &evidence, "repair-moved-package");
         let copies = saved_packages(&selection);
         assert_eq!(copies.len(), 1);
         assert_eq!(hash(&copies[0]), hash(&installer));
+        assert_eq!(hash(&saved), hash(&installer));
         assert!(!selection.join("hiroute-shell.exe").exists());
         assert!(!selection.join("uninstall.exe").exists());
     } else {

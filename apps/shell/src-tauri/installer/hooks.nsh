@@ -164,23 +164,27 @@ Function HiRouteOptions
   nsDialogs::Show
   ${NSD_FreeIcon} $HiRoutePageIcon
 FunctionEnd
-Function HiRouteOptionsLeave
-  ${NSD_GetText} $HiRouteInstallPath $0
-  StrCpy $HiRouteSelection $0
-  StrCpy $4 $INSTDIR
+Function HiRouteNormalizeDirectory
+  ; $0 holds the original text, before NSIS sanitizes its special $INSTDIR variable.
+  StrCpy $3 $0
   StrCpy $2 $0 1 -1
   ${While} $2 == "\"
     StrCpy $0 $0 -1
     StrCpy $2 $0 1 -1
   ${EndWhile}
   StrLen $2 $0
-  StrCpy $3 $0 1 1
   ${If} $2 = 2
-  ${AndIf} $3 == ":"
-    ${If} $HiRouteSelection != $0
-      StrCpy $0 "$0\HiRoute"
-    ${EndIf}
+  ${AndIf} $3 != $0
+    StrCpy $2 $0 1 1
+    ${IfThen} $2 == ":" ${|} StrCpy $0 "$0\HiRoute" ${|}
   ${EndIf}
+FunctionEnd
+
+Function HiRouteOptionsLeave
+  ${NSD_GetText} $HiRouteInstallPath $0
+  StrCpy $HiRouteSelection $0
+  StrCpy $4 $INSTDIR
+  Call HiRouteNormalizeDirectory
   StrCpy $INSTDIR $0
   StrCpy $1 1
   StrCpy $2 "Enter an absolute Windows folder path."
@@ -193,7 +197,7 @@ Function HiRouteOptionsLeave
   ${If} $1 != 0
     StrCpy $0 $1
     StrCpy $1 $2
-    !insertmacro HiRouteDiagnostic "HiRoute could not use $HiRouteSelection." "check-selected-directory"
+    !insertmacro HiRouteDiagnostic "HiRoute could not use the selected folder." "check-selected-directory"
     ${NSD_Check} $HiRouteOptionsToggle
     Push $HiRouteOptionsToggle
     Call HiRouteSetOptionsVisibility
@@ -260,7 +264,7 @@ FunctionEnd
   ${If} $0 != 0
   ${AndIf} $0 != 24
     DetailPrint "$1"
-    !insertmacro HiRouteDiagnostic "HiRoute could not prepare the installation in $HiRouteSelection." "prepare-installation"
+    !insertmacro HiRouteDiagnostic "HiRoute could not prepare the installation in the selected folder." "prepare-installation"
     Abort
   ${EndIf}
   ReadINIStr $INSTDIR "$PLUGINSDIR\hiroute-prepared.ini" "Desktop" "Location"

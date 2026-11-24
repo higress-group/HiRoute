@@ -127,6 +127,9 @@ fn destination_guidance(error: &std::io::Error) -> Option<String> {
         "INSTALL_DESTINATION_OVERLAPS_DATA" => {
             "Choose a folder separate from HiRoute's service data and recovery files."
         }
+        "INSTALL_DESTINATION_PROGRAM_FILES" => {
+            "The local HiRoute program folder contains other program files or cannot safely run Desktop."
+        }
         "INSTALL_DESTINATION_OVERLAPS_RUNTIME" => {
             "Choose a package folder separate from the local HiRoute program directory."
         }
@@ -180,7 +183,7 @@ fn prepare_failure(error: &std::io::Error) -> String {
         .and_then(|error| error.downcast_ref::<windows::ReplacementSpaceFailure>())
     {
         return format!(
-            "Free space on the program or recovery volume and retry. Required bytes: {}. Available bytes: {}.",
+            "Free space on the affected installation or recovery volume and retry. Required bytes: {}. Available bytes: {}.",
             failure.required_bytes, failure.available_bytes
         );
     }

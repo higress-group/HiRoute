@@ -10,6 +10,7 @@ pub(super) fn prepare(
     incoming: &Package,
     daemon: &Path,
     desktop: &Path,
+    selected_copy: Option<(&Path, u64)>,
 ) -> io::Result<bool> {
     let layout = StandaloneLayout::from_environment().map_err(|_| invalid())?;
     let Some(previous) = &value.previous_package else {
@@ -28,6 +29,7 @@ pub(super) fn prepare(
             fs::metadata(std::env::current_exe()?)?.len(),
             0,
             Some(&report),
+            selected_copy,
         )?;
         return Ok(false);
     };
@@ -44,6 +46,7 @@ pub(super) fn prepare(
         fs::metadata(std::env::current_exe()?)?.len(),
         0,
         Some(&report),
+        selected_copy,
     )?;
     if !report.history_cutover_required {
         return Ok(false);
@@ -73,6 +76,7 @@ pub(super) fn prepare(
         shell_bytes,
         copy_bytes.saturating_add(1024 * 1024),
         None,
+        selected_copy,
     )?;
     let mut identity = Sha256::new();
     identity.update(serde_json::to_vec(&value.old).map_err(|_| invalid())?);
@@ -211,7 +215,15 @@ pub(super) fn prepare(
     let report =
         hiroute_host_runtime::checked_upgrade_preflight(daemon, &layout.storage_root(), &bundle)
             .map_err(io::Error::other)?;
-    windows::preflight_desktop_space(incoming, desktop, &data()?, shell_bytes, 0, Some(&report))?;
+    windows::preflight_desktop_space(
+        incoming,
+        desktop,
+        &data()?,
+        shell_bytes,
+        0,
+        Some(&report),
+        selected_copy,
+    )?;
     retained.store()?;
     Ok(true)
 }

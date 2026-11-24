@@ -16,7 +16,7 @@ HiRoute Windows 桌面版提供按当前用户安装的 NSIS 安装包，只支�
 本页文档：https://hiroute.ai/zh/docs/install-windows/
 CLI 参考：https://hiroute.ai/zh/docs/cli/
 
-首次安装如需指定目录，使用 Show installation options，或将 /D= 目录参数放在安装命令末尾。受保护的本机目录可以直接运行桌面程序。选移动盘或共享目录时，安装器把包备份到选定目录，桌面程序从本机受保护的 Programs 目录运行。修复和升级沿用已登记的位置。
+首次安装如需指定目录，使用 Show installation options，或将 /D= 目录参数放在安装命令末尾。受保护的本机目录可以直接运行桌面程序。选移动盘、共享目录或包含其他程序加载文件的目录时，安装器把包备份到选定目录，桌面程序从本机受保护的 Programs 目录运行。修复和升级沿用已登记的位置。
 
 先按文档完成本次安装或检查目标。安装后，引导我在“Agent → HiRoute 管理 → 启用”中开启产品内置管理技能，后续配置交给该技能：https://hiroute.ai/zh/docs/#management-skill
 

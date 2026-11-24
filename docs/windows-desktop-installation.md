@@ -10,10 +10,10 @@ The shell defaults to `%LOCALAPPDATA%\Programs\HiRoute`. Fresh installations
 can use a new or existing folder, including on removable volumes and network
 shares that supply a usable native directory identity. Silent installations
 accept a final unquoted argument such as `/D=D:\My Apps\HiRoute`.
-A stable local directory with safe Windows permissions can run Desktop in place.
+A stable local directory with safe Windows permissions and no foreign libraries, manifests or private assembly directories can run Desktop in place.
 Other destinations receive a verified installer copy, while the program, login
 entry and uninstaller use the protected per-user Programs directory.
-Repair and update reuse both recorded locations. An interrupted install uses its
+Moving the verified package copy after publication does not block the local commit. Repair publishes a fresh copy. Repair and update reuse both recorded locations. An interrupted install uses its
 prepared journal, including before Installed Apps registration.
 Standalone service state is under `%LOCALAPPDATA%\HiRoute\cli`. The native
 adapter checks KnownFolders, architecture and existing manager ownership before

@@ -462,19 +462,28 @@ Function .onInit
     MessageBox MB_ICONSTOP "HiRoute Desktop requires a native Windows x64 host." /SD IDOK
     Abort
   ${EndIf}
-  ; NSIS removes /D= from $CMDLINE and substitutes InstallDir if it cannot
-  ; use that destination. It also strips invalid characters while expanding
-  ; $INSTDIR. An explicit argument must survive both steps intact.
+  ; NSIS consumes the final /D= argument and may silently sanitize it or
+  ; substitute InstallDir. Validate the original suffix, also for a drive root.
   System::Call 'kernel32::GetCommandLineW() p .r0'
-  System::Call 'kernel32::lstrlenW(p r0) i .r0'
+  System::Call 'kernel32::lstrlenW(p r0) i .r2'
   StrLen $1 $CMDLINE
-  ${If} $0 != $1
-    StrLen $2 $INSTDIR
-    IntOp $1 $1 + $2
-    IntOp $1 $1 + 4 ; " /D="
-    ${If} $0 >= ${NSIS_MAX_STRLEN}
-    ${OrIf} $INSTDIR == "${PLACEHOLDER_INSTALL_DIR}"
-    ${OrIf} $0 != $1
+  ${If} $2 != $1
+    ${If} $2 >= ${NSIS_MAX_STRLEN}
+      Goto hiroute_invalid_directory_argument
+    ${EndIf}
+    System::Call 'kernel32::GetCommandLineW() w .r0'
+    StrCpy $0 $0 "" $1
+    StrCpy $2 $0 4
+    ${If} $2 != " /D="
+      Goto hiroute_invalid_directory_argument
+    ${EndIf}
+    StrCpy $0 $0 "" 4
+    Call HiRouteNormalizeDirectory
+    StrCpy $INSTDIR $0
+    ${If} $0 == ""
+    ${OrIf} $0 == "${PLACEHOLDER_INSTALL_DIR}"
+    ${OrIf} $0 != $INSTDIR
+      hiroute_invalid_directory_argument:
       MessageBox MB_ICONSTOP "Use an absolute Windows folder path in the final /D= argument." /SD IDOK
       SetErrorLevel 1
       Abort
@@ -726,7 +735,7 @@ Section Install
   Pop $0
   Pop $1
   ${If} $0 != 0
-    !insertmacro HiRouteDiagnostic "HiRoute could not verify the program directory $INSTDIR." "verify-program-directory"
+    !insertmacro HiRouteDiagnostic "HiRoute could not verify the program directory." "verify-program-directory"
     Abort
   ${EndIf}
 
@@ -909,7 +918,7 @@ Function un.onInit
   Pop $0
   Pop $1
   ${If} $0 != 0
-    !insertmacro HiRouteDiagnostic "HiRoute could not verify the uninstall directory $INSTDIR." "check-uninstall-directory"
+    !insertmacro HiRouteDiagnostic "HiRoute could not verify the uninstall directory." "check-uninstall-directory"
     Abort
   ${EndIf}
   !insertmacro SetContext
@@ -941,7 +950,7 @@ Section Uninstall
   Pop $0
   Pop $1
   ${If} $0 != 0
-    !insertmacro HiRouteDiagnostic "HiRoute could not verify the uninstall directory $INSTDIR." "check-uninstall-directory"
+    !insertmacro HiRouteDiagnostic "HiRoute could not verify the uninstall directory." "check-uninstall-directory"
     Abort
   ${EndIf}
 
@@ -1007,7 +1016,7 @@ Section Uninstall
   Pop $0
   Pop $1
   ${If} $0 != 0
-    !insertmacro HiRouteDiagnostic "HiRoute could not finish removing its program directory $INSTDIR." "finish-directory-removal"
+    !insertmacro HiRouteDiagnostic "HiRoute could not finish removing its program directory." "finish-directory-removal"
     Abort
   ${EndIf}
 

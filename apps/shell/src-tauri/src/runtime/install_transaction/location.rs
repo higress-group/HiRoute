@@ -36,7 +36,7 @@ struct PackageCopy {
 
 pub(super) struct Choice {
     pub(super) selection: PathBuf,
-    destination: PathBuf,
+    pub(super) destination: PathBuf,
     pub(super) runtime: PathBuf,
     pub(super) local_copy: bool,
 }
@@ -77,7 +77,12 @@ pub(super) fn choice(
         });
     }
     let default = shell_location::default_root()?;
-    let local_copy = shell_location::validate_custom(&destination).is_err();
+    let local_copy = shell_location::validate_custom(&destination).is_err()
+        || !shell_location::stable_program_volume(&destination)
+        || foreign_program_inputs(&destination)?;
+    if local_copy && shell_location::same_name(&destination, &default) {
+        return Err(io::Error::other("INSTALL_DESTINATION_PROGRAM_FILES"));
+    }
     let runtime = if local_copy {
         default
     } else {
@@ -92,6 +97,9 @@ pub(super) fn choice(
                 .any(|part| shell_location::same_name(part, &destination)))
     {
         return Err(io::Error::other("INSTALL_DESTINATION_OVERLAPS_RUNTIME"));
+    }
+    if local_copy && foreign_program_inputs(&runtime)? {
+        return Err(io::Error::other("INSTALL_DESTINATION_PROGRAM_FILES"));
     }
     for name in [
         "hiroute-shell.exe",
@@ -115,6 +123,38 @@ pub(super) fn choice(
     })
 }
 
+// Windows can resolve libraries, redirection manifests and private assemblies
+// from the executable directory before the shell runs its first instruction.
+fn foreign_program_inputs(root: &Path) -> io::Result<bool> {
+    let entries = match fs::read_dir(root) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    for entry in entries {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+        if matches!(
+            name.as_str(),
+            "standalone" | "hiroute-shell.exe" | "uninstall.exe"
+        ) || name == super::program_writes::STAGING
+        {
+            continue;
+        }
+        if !entry.file_type()?.is_file()
+            || name.rsplit_once('.').is_some_and(|(_, extension)| {
+                matches!(
+                    extension,
+                    "dll" | "exe" | "manifest" | "local" | "ocx" | "drv" | "cpl" | "ax"
+                )
+            })
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 impl Choice {
     pub(super) fn prepare(&self, source: Option<&mut File>) -> io::Result<Location> {
         let previous = committed()?;
@@ -126,13 +166,6 @@ impl Choice {
             let directory = shell_location::ensure_package_directory(&self.destination)
                 .map_err(directory_error)?;
             let source = source.ok_or_else(invalid)?;
-            let bytes = source.metadata()?.len();
-            if fs2::available_space(&self.destination)? < bytes {
-                return Err(io::Error::new(
-                    io::ErrorKind::StorageFull,
-                    "INSTALL_DESTINATION_SPACE",
-                ));
-            }
             let mut nonce = [0; 16];
             getrandom::fill(&mut nonce).map_err(|err| io::Error::other(err.to_string()))?;
             let sha256 = hash_file(source)?;
@@ -343,9 +376,8 @@ pub(super) fn finish_commit(location: Option<&Location>) -> io::Result<()> {
     let Some(location) = location else {
         return Ok(());
     };
-    if location.package.is_some() && location.package_for_removal()?.is_none() {
-        return Err(io::Error::other("INSTALL_DESTINATION_COPY_MISMATCH"));
-    }
+    // publish_package verified and flushed the copy on its exclusive handle.
+    // Its recipient may move or edit it afterwards, including during recovery.
     let new_nonce = location.package.as_ref().map(|v| &v.nonce);
     if let Some(old) = committed()?
         && old
@@ -446,6 +478,10 @@ mod tests {
         let selection = parent.path().join("selection");
         let destination = shell_location::resolve_destination(&selection).unwrap();
         let directory = shell_location::ensure_package_directory(&destination).unwrap();
+        fs::write(destination.join("notes.txt"), b"keep").unwrap();
+        assert!(!foreign_program_inputs(&destination).unwrap());
+        fs::write(destination.join("another-program.manifest"), b"keep").unwrap();
+        assert!(foreign_program_inputs(&destination).unwrap());
         let mut copy = PackageCopy {
             nonce: "a".repeat(32),
             sha256: String::new(),

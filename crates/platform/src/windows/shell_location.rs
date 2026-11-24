@@ -225,6 +225,102 @@ pub fn open_package_for_removal(directory: &File, name: &OsStr) -> io::Result<Fi
     )
 }
 
+/// Fixed-media USB disks can keep their drive type while their letter is reused.
+pub fn stable_program_volume(path: &Path) -> bool {
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows_sys::Win32::{
+        Storage::FileSystem::{
+            BusType1394, BusTypeFileBackedVirtual, BusTypeMmc, BusTypeSd, BusTypeUnknown,
+            BusTypeUsb, FILE_SHARE_DELETE,
+        },
+        System::{
+            IO::DeviceIoControl,
+            Ioctl::{
+                IOCTL_STORAGE_GET_HOTPLUG_INFO, IOCTL_STORAGE_QUERY_PROPERTY,
+                PropertyStandardQuery, STORAGE_DEVICE_DESCRIPTOR, STORAGE_HOTPLUG_INFO,
+                STORAGE_PROPERTY_QUERY, StorageDeviceProperty,
+            },
+            SystemInformation::GetSystemWindowsDirectoryW,
+        },
+    };
+    let Some(Component::Prefix(prefix)) = path.components().next() else {
+        return false;
+    };
+    let Prefix::Disk(letter) = prefix.kind() else {
+        return false;
+    };
+    // The running OS volume is also the normal protected Programs destination.
+    let mut windows = [0u16; 260];
+    let length = unsafe { GetSystemWindowsDirectoryW(windows.as_mut_ptr(), windows.len() as u32) };
+    if (3..windows.len() as u32).contains(&length)
+        && windows[1] == u16::from(b':')
+        && windows[0] == u16::from(letter.to_ascii_uppercase())
+    {
+        return true;
+    }
+    let Ok(volume) = fs::OpenOptions::new()
+        .access_mode(0)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .open(format!(r"\\.\{}:", char::from(letter)))
+    else {
+        return false;
+    };
+    let handle = volume.as_raw_handle().cast();
+    let mut hotplug = STORAGE_HOTPLUG_INFO::default();
+    let mut returned = 0;
+    // These query-only controls use a zero-access volume handle as a standard user.
+    let ok = unsafe {
+        DeviceIoControl(
+            handle,
+            IOCTL_STORAGE_GET_HOTPLUG_INFO,
+            std::ptr::null(),
+            0,
+            (&mut hotplug as *mut STORAGE_HOTPLUG_INFO).cast(),
+            size_of_val(&hotplug) as u32,
+            &mut returned,
+            std::ptr::null_mut(),
+        )
+    };
+    if ok == 0
+        || returned < size_of_val(&hotplug) as u32
+        || hotplug.DeviceHotplug
+        || hotplug.MediaHotplug
+        || hotplug.MediaRemovable
+    {
+        return false;
+    }
+    let query = STORAGE_PROPERTY_QUERY {
+        PropertyId: StorageDeviceProperty,
+        QueryType: PropertyStandardQuery,
+        ..Default::default()
+    };
+    let mut descriptor = STORAGE_DEVICE_DESCRIPTOR::default();
+    let ok = unsafe {
+        DeviceIoControl(
+            handle,
+            IOCTL_STORAGE_QUERY_PROPERTY,
+            (&query as *const STORAGE_PROPERTY_QUERY).cast(),
+            size_of_val(&query) as u32,
+            (&mut descriptor as *mut STORAGE_DEVICE_DESCRIPTOR).cast(),
+            size_of_val(&descriptor) as u32,
+            &mut returned,
+            std::ptr::null_mut(),
+        )
+    };
+    ok != 0
+        && returned >= std::mem::offset_of!(STORAGE_DEVICE_DESCRIPTOR, RawPropertiesLength) as u32
+        && !descriptor.RemovableMedia
+        && ![
+            BusTypeUsb,
+            BusType1394,
+            BusTypeSd,
+            BusTypeMmc,
+            BusTypeFileBackedVirtual,
+            BusTypeUnknown,
+        ]
+        .contains(&descriptor.BusType)
+}
+
 pub fn validate_custom(path: &Path) -> io::Result<()> {
     folder(path)?;
     let drive = path.ancestors().last().ok_or_else(invalid)?;

@@ -16,7 +16,7 @@ Read the documentation below, then use the HiRoute CLI to carry out my goal for 
 Page documentation: https://hiroute.ai/en/docs/install-windows/
 CLI reference: https://hiroute.ai/en/docs/cli/
 
-For a first install in a specific folder, use Show installation options or the installer's final /D= argument. Desktop runs in a stable, protected local folder. On a shared or removable location, the installer saves a package copy there and runs Desktop from the protected local Programs directory. Repairs and upgrades use the recorded locations.
+For a first install in a specific folder, use Show installation options or the installer's final /D= argument. Desktop runs in a stable, protected local folder. For shared folders, removable drives or folders containing other program libraries, the installer saves a package copy there and runs Desktop from the protected local Programs directory. Repairs and upgrades use the recorded locations.
 
 Follow the guide for the requested installation or checks. Once installed, help me enable the built-in management Skill under “Agent → HiRoute management → Enable” for further configuration: https://hiroute.ai/en/docs/#management-skill
 

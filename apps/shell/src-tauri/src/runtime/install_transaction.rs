@@ -482,7 +482,14 @@ pub(super) fn prepare(
         console_desired,
         shell_login,
     };
-    let history_cutover = recovery::prepare(&value, &package, daemon, root)?;
+    let selected_copy = source
+        .as_ref()
+        .map(|file| {
+            file.metadata()
+                .map(|m| (choice.destination.as_path(), m.len()))
+        })
+        .transpose()?;
+    let history_cutover = recovery::prepare(&value, &package, daemon, root, selected_copy)?;
     write(&data.join(PENDING), &value)?;
     if let Some(source) = source.as_mut() {
         location::publish_package(&mut value, source)?;
@@ -803,7 +810,9 @@ pub(super) fn rollback(allow_unavailable_agent_restore: bool) -> io::Result<()> 
             fs::remove_file(path)?;
         }
     }
-    if value.custom_root.is_some() && value.old.is_empty() {
+    // Fresh v2 installs reserved the entire standalone namespace, including
+    // the default Programs directory used by a shared-volume installation.
+    if value.old.is_empty() && (value.location.is_some() || value.custom_root.is_some()) {
         program_writes::prune_new_directories(&root, &value.new)?;
     }
     if value.custom_root.is_some() {

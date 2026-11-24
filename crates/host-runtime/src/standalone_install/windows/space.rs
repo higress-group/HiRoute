@@ -36,6 +36,7 @@ pub fn preflight_desktop_space(
     shell_bytes: u64,
     recovery_copy_bytes: u64,
     storage: Option<&crate::UpgradePreflight>,
+    selected_copy: Option<(&std::path::Path, u64)>,
 ) -> io::Result<()> {
     let layout = layout()?;
     let payload: u64 = package.files.values().map(|file| file.size).sum();
@@ -52,6 +53,9 @@ pub fn preflight_desktop_space(
             payload.saturating_add(32 * 1024 * 1024),
         ),
     ];
+    if let Some((path, bytes)) = selected_copy {
+        allocations.push((path.to_owned(), bytes));
+    }
     if let Some(report) = storage
         && report.required_bytes > 0
     {
