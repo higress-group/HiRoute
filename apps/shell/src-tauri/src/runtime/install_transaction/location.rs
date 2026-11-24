@@ -162,7 +162,12 @@ impl Choice {
     pub(super) fn prepare(&self, source: Option<&mut File>) -> io::Result<Location> {
         let mut previous = committed()?;
         let (runtime, created) = match security::open_identity(&self.runtime, true) {
-            Ok(directory) => (directory, false),
+            Ok(directory) => {
+                if let Some(old) = &previous {
+                    require_identity(&directory, old.runtime_id)?;
+                }
+                (directory, false)
+            }
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
                 if let Some(old) = &previous
                     && !shell_location::same_name(&old.verify_runtime()?, &self.runtime)
@@ -189,8 +194,11 @@ impl Choice {
         shell_location::validate_custom(&self.runtime).map_err(directory_error)?;
         let runtime_id = identity(&runtime)?;
         let (destination_id, package) = if self.local_copy {
-            let directory = shell_location::ensure_package_directory(&self.destination)
-                .map_err(directory_error)?;
+            let directory = match &previous {
+                Some(old) => old.open_destination()?,
+                None => shell_location::ensure_package_directory(&self.destination)
+                    .map_err(directory_error)?,
+            };
             let source = source.ok_or_else(invalid)?;
             let mut nonce = [0; 16];
             getrandom::fill(&mut nonce).map_err(|err| io::Error::other(err.to_string()))?;
