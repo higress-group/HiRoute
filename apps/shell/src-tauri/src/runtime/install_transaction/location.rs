@@ -276,7 +276,7 @@ impl Location {
 }
 
 pub(super) fn committed() -> io::Result<Option<Location>> {
-    match read::<Location>(&data()?.join(RECORD), true) {
+    match read::<Location>(&record_path()?, true) {
         Ok(value) => {
             value.validate()?;
             Ok(Some(value))
@@ -284,6 +284,19 @@ pub(super) fn committed() -> io::Result<Option<Location>> {
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error),
     }
+}
+
+fn record_path() -> io::Result<PathBuf> {
+    Ok(data()?.join(RECORD))
+}
+
+pub(super) fn recovery_record() -> io::Result<Option<(PathBuf, String)>> {
+    if committed()?.is_none() {
+        return Ok(None);
+    }
+    let path = record_path()?;
+    let digest = hash_file(&security::open_owner_only(&path, false)?)?;
+    Ok(Some((path, digest)))
 }
 
 pub(super) fn publish_package(pending: &mut super::Pending, source: &mut File) -> io::Result<()> {
@@ -332,7 +345,7 @@ pub(super) fn finish_commit(location: Option<&Location>) -> io::Result<()> {
     {
         old.remove_package()?;
     }
-    write(&data()?.join(RECORD), location)
+    write(&record_path()?, location)
 }
 
 pub(super) fn rollback(location: Option<&Location>) -> io::Result<()> {
@@ -368,7 +381,7 @@ pub(super) fn finish_uninstall(runtime: &Path) -> io::Result<()> {
             Err(error) => return Err(error),
         }
     }
-    fs::remove_file(data()?.join(RECORD))
+    fs::remove_file(record_path()?)
 }
 
 fn identity(file: &File) -> io::Result<Identity> {

@@ -72,7 +72,7 @@ fn run_expecting(
     // Keep CLI and uninstall requests on their existing watchdog.
     let seconds = if program
         .file_name()
-        .is_some_and(|name| name == "installer.exe")
+        .is_some_and(|name| name == "installer.exe" || name == "baseline.exe")
     {
         720
     } else {
@@ -170,11 +170,18 @@ fn actual_nsis_shared_directory_uses_protected_program_and_preserves_foreign_fil
     nsis_lifecycle(Directory::Shared);
 }
 
+#[test]
+#[ignore = "requires the verified NSIS bundle with released v0.6.5 and a fresh standard-user session"]
+fn actual_nsis_upgrades_released_custom_directory() {
+    nsis_lifecycle(Directory::Released);
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Directory {
     Default,
     Direct,
     Shared,
+    Released,
 }
 
 fn saved_packages(folder: &Path) -> Vec<PathBuf> {
@@ -201,7 +208,7 @@ fn nsis_lifecycle(directory: Directory) {
     } else {
         default.clone()
     };
-    let programs = if directory == Directory::Direct {
+    let programs = if matches!(directory, Directory::Direct | Directory::Released) {
         selection.clone()
     } else {
         default.clone()
@@ -296,6 +303,25 @@ fn nsis_lifecycle(directory: Directory) {
             std::fs::read(selection.join("user-notes.txt")).unwrap(),
             b"user file"
         );
+    } else if directory == Directory::Released {
+        let baseline = bundle.join("baseline.exe");
+        assert_eq!(
+            hash(&baseline),
+            "2fa78a011c38142c1c9d05191d33d813b0429519c85e28096723cc6e098f2ad7"
+        );
+        run(
+            &baseline,
+            &["/S", &format!("/D={}", selection.display())],
+            &evidence,
+            "install-released-v0-6-5",
+        );
+        let cli = layout.home.join(".local/bin/hiroute.exe");
+        console_ready(&cli, &evidence, "released-v0-6-5");
+        let marker = layout.state_root.join("preserve-on-upgrade.txt");
+        std::fs::write(&marker, b"released-profile data").unwrap();
+        run(&installer, &["/S"], &evidence, "upgrade-released");
+        assert_eq!(std::fs::read(marker).unwrap(), b"released-profile data");
+        assert!(!default.exists());
     } else if directory == Directory::Shared {
         std::fs::create_dir(&selection).unwrap();
         std::fs::write(selection.join("user-notes.txt"), b"user file").unwrap();

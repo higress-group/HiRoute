@@ -79,6 +79,10 @@ pub(super) fn prepare(
     if let Some(root) = &value.custom_root {
         identity.update(serde_json::to_vec(root).map_err(|_| invalid())?);
     }
+    let desktop_location = super::location::recovery_record()?;
+    if let Some((_, digest)) = &desktop_location {
+        identity.update(digest);
+    }
     identity.update(&marker_bytes);
     identity.update(hash(&marker.service_definition)?);
     identity.update([
@@ -123,6 +127,11 @@ pub(super) fn prepare(
     for (source, relative, expected) in windows::recovery_files()? {
         backup_file(&source, &bundle.join(&relative), &expected)?;
         files.insert(relative, source);
+    }
+    if let Some((source, digest)) = desktop_location {
+        let relative = "installation/desktop-location.json";
+        backup_file(&source, &bundle.join(relative), &digest)?;
+        files.insert(relative.into(), source);
     }
     let definition =
         hiroute_platform::windows::background::read_definition(&marker.service_definition)?;

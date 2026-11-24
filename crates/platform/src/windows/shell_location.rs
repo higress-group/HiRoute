@@ -6,11 +6,14 @@ use std::{
     fs::{self, File},
     io,
     os::windows::ffi::OsStrExt,
+    os::windows::io::AsRawHandle,
     path::{Component, Path, PathBuf, Prefix},
 };
 use windows_sys::Win32::{
     Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS, GENERIC_READ, GENERIC_WRITE},
-    Storage::FileSystem::{DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE},
+    Storage::FileSystem::{
+        DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, GetVolumeInformationByHandleW,
+    },
     System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_SZ, RegGetValueW},
 };
 
@@ -232,6 +235,28 @@ pub fn validate_custom(path: &Path) -> io::Result<()> {
         return Err(io::ErrorKind::PermissionDenied.into());
     }
     validate_reserved(path)?;
+    let volume = security::open_identity(drive, true)?;
+    let mut flags = 0;
+    // SAFETY: the volume directory handle and output flags remain live.
+    let status = unsafe {
+        GetVolumeInformationByHandleW(
+            volume.as_raw_handle().cast(),
+            std::ptr::null_mut(),
+            0,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut flags,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if status == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    const FILE_PERSISTENT_ACLS: u32 = 0x0000_0008;
+    if flags & FILE_PERSISTENT_ACLS == 0 {
+        return Err(io::ErrorKind::PermissionDenied.into());
+    }
     let user = security::current_user_sid()?;
     // Include DOS short-name aliases and check every existing parent before use.
     for ancestor in path.ancestors() {

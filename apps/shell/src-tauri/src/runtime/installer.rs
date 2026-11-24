@@ -504,7 +504,7 @@ pub fn run_if_requested() -> Option<i32> {
             }
         });
     }
-    if verb == "--installer-check-uninstall-root" && args.len() == 2 {
+    if verb == "--installer-check-program-directory" && args.len() == 2 {
         return Some(match super::install_transaction::active_root() {
             Ok(Some(root))
                 if shell_location::same_existing_path(
@@ -519,12 +519,18 @@ pub fn run_if_requested() -> Option<i32> {
             Err(error) => {
                 let advice = destination_guidance(&error);
                 write_diagnostic(
-                    &Failure::io("check-uninstall-directory", error),
+                    &Failure::io("verify-program-directory", error),
                     advice.as_deref(),
                 );
                 1
             }
-            _ => 1,
+            _ => {
+                write_diagnostic(
+                    &Failure::new("verify-program-directory", "INSTALL_DESTINATION_CHANGED"),
+                    Some("The prepared program directory is unavailable or changed."),
+                );
+                1
+            }
         });
     }
     if verb == "--installer-prepare" {

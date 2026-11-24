@@ -722,6 +722,13 @@ Section Install
   !ifmacrodef NSIS_HOOK_PREINSTALL
     !insertmacro NSIS_HOOK_PREINSTALL
   !endif
+  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-check-program-directory "$INSTDIR"'
+  Pop $0
+  Pop $1
+  ${If} $0 != 0
+    !insertmacro HiRouteDiagnostic "HiRoute could not verify the program directory $INSTDIR." "verify-program-directory"
+    Abort
+  ${EndIf}
 
   !insertmacro HiRoutePhase "Installing HiRoute program files..."
   SetOutPath $INSTDIR
@@ -898,7 +905,7 @@ Function un.onInit
     !insertmacro HiRouteDiagnostic "Another HiRoute installation or uninstall is active for this account." "uninstall-admission"
     Abort
   ${EndIf}
-  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-uninstall-helper.exe" --installer-check-uninstall-root "$INSTDIR"'
+  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-uninstall-helper.exe" --installer-check-program-directory "$INSTDIR"'
   Pop $0
   Pop $1
   ${If} $0 != 0
@@ -930,6 +937,13 @@ Section Uninstall
   !ifmacrodef NSIS_HOOK_PREUNINSTALL
     !insertmacro NSIS_HOOK_PREUNINSTALL
   !endif
+  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-uninstall-helper.exe" --installer-check-program-directory "$INSTDIR"'
+  Pop $0
+  Pop $1
+  ${If} $0 != 0
+    !insertmacro HiRouteDiagnostic "HiRoute could not verify the uninstall directory $INSTDIR." "check-uninstall-directory"
+    Abort
+  ${EndIf}
 
   ; Delete the app directory and its content from disk
   ; Copy main executable

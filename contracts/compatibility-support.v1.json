@@ -1169,6 +1169,31 @@
       "legacy_support": []
     },
     {
+      "subject": "windows_desktop_location",
+      "audited_prefixes": [
+        "hiroute.windows-desktop-location",
+        "hiroute.windows-shell-transaction"
+      ],
+      "current_contracts": [
+        "hiroute.windows-desktop-location/v1",
+        "hiroute.windows-shell-transaction/v2"
+      ],
+      "legacy_support": [
+        {
+          "contract": "hiroute.windows-shell-transaction/v1",
+          "mode": "recovery_read_only",
+          "owner": "Windows Desktop installer",
+          "reason": "Recover the released path-based Desktop journal in the directory recorded by the original installer. New transactions also retain the native directory identity and any selected package copy.",
+          "removal_condition": "Retain while a supported published Desktop installer can leave a v1 recovery journal.",
+          "allowed_paths": [
+            "apps/shell/src-tauri/src/runtime/install_transaction.rs",
+            "scripts/windows-desktop-session.py",
+            "scripts/test-windows-dev.py"
+          ]
+        }
+      ]
+    },
+    {
       "subject": "desktop_update",
       "audited_prefixes": [
         "hiroute.windows-desktop-package",
