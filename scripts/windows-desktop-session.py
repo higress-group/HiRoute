@@ -504,7 +504,9 @@ def prepared_installer_replacement(request, pm, helper, activity, manifest, root
         if facts.get(name, {}).get('sha256') != before['installation'].get(name, {}).get('sha256'):
             raise ValueError('Installation changed after inspection')
     pending = facts.get('install-pending.json', {}).get('record', {})
-    if pending.get('schema') != 'hiroute.windows-shell-transaction/v1' or pending.get('phase') != 'prepared':
+    if (pending.get('schema') not in ('hiroute.windows-shell-transaction/v1',
+                                     'hiroute.windows-shell-transaction/v2')
+            or pending.get('phase') != 'prepared'):
         raise ValueError('Only the exact prepared shell installation can be resumed')
     prior = manifest(root / 'bundles' / request['from_product'])
     marker = facts['marker']['record']

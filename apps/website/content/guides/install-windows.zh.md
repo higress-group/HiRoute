@@ -16,7 +16,7 @@ HiRoute Windows 桌面版提供按当前用户安装的 NSIS 安装包，只支�
 本页文档：https://hiroute.ai/zh/docs/install-windows/
 CLI 参考：https://hiroute.ai/zh/docs/cli/
 
-首次安装如需指定盘符，使用 Show installation options，或将 /D= 目录参数放在安装命令末尾。修复和升级时沿用原目录。这个选项只决定桌面程序的位置。
+首次安装如需指定目录，使用 Show installation options，或将 /D= 目录参数放在安装命令末尾。受保护的本机目录可以直接运行桌面程序。选移动盘或共享目录时，安装器把包备份到选定目录，桌面程序从本机受保护的 Programs 目录运行。修复和升级沿用已登记的位置。
 
 先按文档完成本次安装或检查目标。安装后，引导我在“Agent → HiRoute 管理 → 启用”中开启产品内置管理技能，后续配置交给该技能：https://hiroute.ai/zh/docs/#management-skill
 
@@ -48,9 +48,11 @@ Get-FileHash -Algorithm SHA256 -LiteralPath "$env:USERPROFILE\Downloads\YOUR-INS
 
 ## 安装与启动
 
-1. 用普通用户账户打开安装包。要把桌面程序装到其他盘，展开 **Show installation options**，点击 **Browse...** 或输入新目录，例如 `D:\Apps\HiRoute`。请选择本机固定磁盘上的目录，并确保只有你的账户或管理员能替换该目录。默认路径为 `%LOCALAPPDATA%\Programs\HiRoute`，后台服务数据仍保存在 `%LOCALAPPDATA%\HiRoute\cli`。
+1. 用普通用户账户打开安装包。展开 **Show installation options**，输入完整目录，例如 `A:\software\HiRoute`，也可以点 **Browse...** 选择它的上一级目录。已有目录可以保留无关文件。提示某个程序文件名已被占用时，请选择单独的子目录。默认程序目录是 `%LOCALAPPDATA%\Programs\HiRoute`，后台服务数据位于 `%LOCALAPPDATA%\HiRoute\cli`。
 2. 登录自启和托盘默认开启，安装时可以分别取消。关闭托盘后，关闭窗口会退出壳，后台服务继续运行。
 3. 打开 HiRoute。壳检查当前用户的 Task，启动服务，等待 Gateway 就绪后打开本机控制台。不需要口令或解锁，受保护操作仍在页面内逐次确认。
+
+如果选了移动盘、网络共享或其他人可以改写的目录，安装器会显示两处位置和预计空间。选定目录保存扩展名为 `.hiroute-package` 的安装包副本，快捷方式和登录自启使用本机受保护的程序。更新、修复或卸载前请接回原来的盘或共享位置。
 
 同一用户已有的 Task 安装会原地升级。不提供 SCM（Windows 服务）安装；已有 SCM 托管的安装会在产品写入前被拒绝，并保持原样。此桌面安装包不支持 ARM64 或 x86 主机。
 

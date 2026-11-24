@@ -304,8 +304,9 @@ HiRoute SHALL provide a Windows x64 Desktop installer that a standard user can r
 
 #### Scenario: Choose a Desktop program directory
 
-- **WHEN** a user selects a new Desktop directory on a writable local fixed drive in the first-install options, or supplies it as the final NSIS `/D=` argument
-- **THEN** the installer SHALL place the Desktop package there, keep standalone data and CLI locations independent, and use that same directory for login, repair, update, interrupted-install recovery and uninstall. Uninstall SHALL preserve unrelated files. Omitting a destination on a fresh install SHALL use the current user's LocalAppData Programs directory.
+- **WHEN** a user selects a writable, identifiable directory in the first-install options or supplies it as the final NSIS `/D=` argument
+- **THEN** the installer SHALL use an existing directory or create the selected directory. A stable local directory that prevents other ordinary accounts from modifying or replacing the program SHALL run Desktop in place, including with inherited Windows permissions. A removable, shared or otherwise untrusted destination SHALL hold a verified copy of the installer package and run Desktop from the protected current-user Programs directory. The interactive installer SHALL show both locations and their estimated sizes when it uses a local program copy.
+- **AND** the installer SHALL keep service data and CLI locations independent, preserve unrelated files, and refuse conflicting program filenames before replacing anything. It SHALL use the trusted program directory for login, shortcuts and uninstall entry points, and preserve the chosen destination through repair, update and interrupted-install recovery. Operations that write or delete on the chosen volume SHALL verify the original directory identity, preserve replaced or changed foreign items and report an unavailable or changed destination. Omitting a destination on a fresh install SHALL use the current user's LocalAppData Programs directory.
 
 #### Scenario: Existing user installation
 

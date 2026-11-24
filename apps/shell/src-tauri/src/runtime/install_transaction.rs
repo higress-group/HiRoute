@@ -11,6 +11,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+mod location;
 mod program_writes;
 mod recovery;
 
@@ -30,6 +31,8 @@ struct Pending {
     // Released journals without this field always belong to the original default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     custom_root: Option<PathBuf>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    location: Option<location::Location>,
     phase: Phase,
     old: BTreeMap<String, String>,
     new: BTreeMap<String, String>,
@@ -67,12 +70,14 @@ pub(super) fn root() -> io::Result<PathBuf> {
 pub(super) fn active_root() -> io::Result<Option<PathBuf>> {
     let registered = shell_location::registered_root()?;
     if has_pending()? {
-        let root = match pending()?.custom_root {
-            Some(path) => {
+        let value = pending()?;
+        let root = match (value.location, value.custom_root) {
+            (Some(location), _) => location.verify_runtime()?,
+            (None, Some(path)) => {
                 shell_location::validate_existing_or_missing_custom(&path)?;
                 path
             }
-            None => shell_location::default_root()?,
+            (None, None) => shell_location::default_root()?,
         };
         if registered.as_ref().is_some_and(|path| path != &root) {
             return Err(invalid());
@@ -80,6 +85,16 @@ pub(super) fn active_root() -> io::Result<Option<PathBuf>> {
         return Ok(Some(root));
     }
     if registered.is_some() {
+        if let Some(location) = location::committed()? {
+            let root = location.verify_runtime()?;
+            if !registered
+                .as_ref()
+                .is_some_and(|path| shell_location::same_name(path, &root))
+            {
+                return Err(invalid());
+            }
+            return Ok(Some(root));
+        }
         return Ok(registered);
     }
     let default = shell_location::default_root()?;
@@ -89,32 +104,39 @@ pub(super) fn active_root() -> io::Result<Option<PathBuf>> {
     )
 }
 
-/// Check the choice without changing the filesystem while the options page is open.
-pub(super) fn check_destination(path: &Path) -> io::Result<()> {
-    if let Some(active) = active_root()? {
-        return if path == active
-            || shell_location::same_existing_path(path, &active, true).unwrap_or(false)
-        {
-            Ok(())
-        } else {
-            Err(shell_location::invalid())
-        };
+fn active_location() -> io::Result<Option<location::Location>> {
+    if has_pending()? {
+        return Ok(pending()?.location);
     }
-    if path == shell_location::default_root()? {
-        return Ok(());
-    }
-    shell_location::validate_custom(path)?;
-    match security::open_identity(path, true) {
-        Ok(file) => {
-            security::verify_owner_only_handle(&file, true)?;
-            if fs::read_dir(path)?.next().is_some() {
-                return Err(shell_location::invalid());
-            }
-        }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error),
-    }
-    Ok(())
+    location::committed()
+}
+pub(super) fn active_paths() -> io::Result<Option<(PathBuf, PathBuf)>> {
+    let Some(runtime) = active_root()? else {
+        return Ok(None);
+    };
+    let selection =
+        active_location()?.map_or_else(|| runtime.clone(), |v| v.selection().to_owned());
+    Ok(Some((runtime, selection)))
+}
+/// Check the choice without changing any product files.
+pub(super) fn check_destination(path: &Path) -> io::Result<(PathBuf, PathBuf, bool)> {
+    let choice = choose(path)?;
+    Ok((choice.runtime, choice.selection, choice.local_copy))
+}
+fn choose(path: &Path) -> io::Result<location::Choice> {
+    let root = active_root()?;
+    let prior = if root.is_some() {
+        active_location()?
+    } else {
+        None
+    };
+    location::choice(path, root.as_deref(), prior.as_ref())
+}
+pub(super) fn uninstall_package() -> io::Result<Option<File>> {
+    location::uninstall_package()
+}
+pub(super) fn finish_uninstall(runtime: &Path) -> io::Result<()> {
+    location::finish_uninstall(runtime)
 }
 pub(super) fn hash(path: &Path) -> io::Result<String> {
     hash_file(&security::open_identity(path, false)?)
@@ -196,11 +218,25 @@ fn backup_file(source: &Path, dest: &Path, expected: &str) -> io::Result<()> {
 }
 fn pending() -> io::Result<Pending> {
     let value: Pending = read(&data()?.join(PENDING), true)?;
-    if value.schema != "hiroute.windows-shell-transaction/v1" {
+    if !matches!(
+        (value.schema.as_str(), value.location.is_some()),
+        ("hiroute.windows-shell-transaction/v1", false)
+            | ("hiroute.windows-shell-transaction/v2", true)
+    ) {
         return Err(invalid());
     }
     validate(&value.old)?;
     validate(&value.new)?;
+    if let Some(location) = &value.location {
+        location.validate()?;
+        let declared = value
+            .custom_root
+            .clone()
+            .map_or_else(shell_location::default_root, Ok)?;
+        if !shell_location::same_name(&declared, &location.runtime()?) {
+            return Err(invalid());
+        }
+    }
     if let Some(package) = &value.previous_package {
         let layout =
             hiroute_host_runtime::StandaloneLayout::from_environment().map_err(|_| invalid())?;
@@ -274,9 +310,19 @@ pub(super) fn recover_for_candidate(
     windows::recover_pending().map_err(|error| Failure::io("recover-standalone", error))?;
     rollback(allow).map_err(|error| Failure::io("rollback-desktop", error))
 }
-pub(super) fn prepare(manifest: &Path, daemon: &Path, root: &Path) -> io::Result<bool> {
+pub(super) fn prepare(
+    manifest: &Path,
+    daemon: &Path,
+    selection: &Path,
+    installer: &Path,
+    preview: &str,
+) -> io::Result<(bool, PathBuf)> {
     windows::preflight()?;
-    check_destination(root)?;
+    let choice = choose(selection)?;
+    if !preview.is_empty() && preview != if choice.local_copy { "1" } else { "0" } {
+        return Err(io::Error::other("INSTALL_DESTINATION_CHANGED"));
+    }
+    let root = choice.runtime.as_path();
     let package: Package = read(manifest, false)?;
     package.validate()?;
     if package.target != "x86_64-pc-windows-msvc" {
@@ -322,15 +368,19 @@ pub(super) fn prepare(manifest: &Path, daemon: &Path, root: &Path) -> io::Result
                     }
                 }
             }
-            return Ok(false);
+            return Ok((false, choice.runtime));
         }
         rollback(false)?;
     }
-    let custom_root = (root != shell_location::default_root()?).then(|| root.to_owned());
+    let mut source = if choice.local_copy {
+        Some(security::open_read_lease(&fs::canonicalize(installer)?)?.reopen_file()?)
+    } else {
+        None
+    };
+    let location = choice.prepare(source.as_mut())?;
+    let custom_root = (!shell_location::same_name(root, &shell_location::default_root()?))
+        .then(|| root.to_owned());
     if custom_root.is_some() {
-        let directory = security::ensure_private_directory(root)?;
-        security::verify_owner_only_handle(&directory, true)?;
-        shell_location::validate_custom(root)?;
         program_writes::reserve(root)?;
     }
     let mut old = BTreeMap::new();
@@ -409,9 +459,10 @@ pub(super) fn prepare(manifest: &Path, daemon: &Path, root: &Path) -> io::Result
     for (name, expected) in &old {
         backup_file(&root.join(name), &backups.join(name), expected)?;
     }
-    let value = Pending {
-        schema: "hiroute.windows-shell-transaction/v1".into(),
+    let mut value = Pending {
+        schema: "hiroute.windows-shell-transaction/v2".into(),
         custom_root,
+        location: Some(location),
         phase: Phase::Prepared,
         old,
         new,
@@ -423,7 +474,10 @@ pub(super) fn prepare(manifest: &Path, daemon: &Path, root: &Path) -> io::Result
     };
     let history_cutover = recovery::prepare(&value, &package, daemon, root)?;
     write(&data.join(PENDING), &value)?;
-    Ok(history_cutover)
+    if let Some(source) = source.as_mut() {
+        location::publish_package(&mut value, source)?;
+    }
+    Ok((history_cutover, choice.runtime))
 }
 /// NSIS overlays files, so old content-hashed assets must leave the package's
 /// closed file set before the Rust package reader admits the new payload.
@@ -571,6 +625,7 @@ pub(super) fn commit() -> io::Result<()> {
     }
     value.phase = Phase::Committed;
     write(&data()?.join(PENDING), &value)?;
+    location::finish_commit(value.location.as_ref())?;
     complete_commit(&data()?, &value.old)?;
     cleanup_committed();
     Ok(())
@@ -649,6 +704,7 @@ pub(super) fn rollback(allow_unavailable_agent_restore: bool) -> io::Result<()> 
     let root = root()?;
     if value.phase == Phase::Committed {
         validate_installed()?;
+        location::finish_commit(value.location.as_ref())?;
         complete_commit(&data()?, &value.old)?;
         cleanup_committed();
         return Ok(());
@@ -777,6 +833,7 @@ pub(super) fn rollback(allow_unavailable_agent_restore: bool) -> io::Result<()> 
         &data()?.join("update-outcome.json"),
         &serde_json::json!({"schema":"hiroute.windows-shell-update-outcome/v1","status":"failed","code":"UPGRADE_INSTALL_FAILED","service_available":service_available}),
     )?;
+    location::rollback(value.location.as_ref())?;
     clear(&data()?, &value.old)?;
     cleanup_committed();
     Ok(())

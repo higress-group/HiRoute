@@ -4,7 +4,7 @@ use super::{INVENTORY, UNINSTALLER, invalid, present};
 use hiroute_platform::windows::{durable, security};
 use std::{ffi::OsStr, fs::File, io, path::Path};
 
-const STAGING: &str = ".hiroute-install-staging";
+pub(super) const STAGING: &str = ".hiroute-install-staging";
 pub(super) const PREFERENCES: &str = "shell-install.json";
 
 pub(super) fn reserve(root: &Path) -> io::Result<()> {
@@ -28,7 +28,9 @@ pub(super) fn publish(
             write,
         );
     }
-    let parent = security::open_owner_only(root, true)?;
+    // The transaction has admitted the program directory. Only our own
+    // staging namespace needs the exact private descriptor.
+    let parent = security::open_identity(root, true)?;
     let staging_name = OsStr::new(STAGING);
     let staging = match security::create_owner_only_directory_at(&parent, staging_name) {
         Ok(directory) => directory,

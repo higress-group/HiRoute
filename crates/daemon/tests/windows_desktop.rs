@@ -155,20 +155,45 @@ fn console_ready(cli_path: &Path, evidence: &Path, phase: &str) {
 #[test]
 #[ignore = "requires the verified NSIS bundle and a fresh existing standard-user session"]
 fn actual_nsis_silent_install_repeat_console_and_uninstall_preserve_data() {
-    nsis_lifecycle(false);
+    nsis_lifecycle(Directory::Default);
 }
 
 #[test]
 #[ignore = "requires the verified NSIS bundle and a fresh existing standard-user session"]
 fn actual_nsis_custom_directory_repair_update_and_uninstall() {
-    nsis_lifecycle(true);
+    nsis_lifecycle(Directory::Direct);
 }
 
-fn nsis_lifecycle(custom: bool) {
+#[test]
+#[ignore = "requires the verified NSIS bundle and a fresh existing standard-user session"]
+fn actual_nsis_shared_directory_uses_protected_program_and_preserves_foreign_files() {
+    nsis_lifecycle(Directory::Shared);
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Directory {
+    Default,
+    Direct,
+    Shared,
+}
+
+fn saved_packages(folder: &Path) -> Vec<PathBuf> {
+    std::fs::read_dir(folder)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|entry| {
+            entry
+                .extension()
+                .is_some_and(|ext| ext == "hiroute-package")
+        })
+        .collect()
+}
+
+fn nsis_lifecycle(directory: Directory) {
     standard_session();
     let layout = StandaloneLayout::from_environment().unwrap();
     let default = shell_location::default_root().unwrap();
-    let programs = if custom {
+    let selection = if directory != Directory::Default {
         std::env::var_os("HIROUTE_VALIDATION_DESKTOP_PARENT")
             .map(PathBuf::from)
             .unwrap_or_else(|| background::local_app_data().unwrap())
@@ -176,10 +201,16 @@ fn nsis_lifecycle(custom: bool) {
     } else {
         default.clone()
     };
+    let programs = if directory == Directory::Direct {
+        selection.clone()
+    } else {
+        default.clone()
+    };
     assert!(shell_location::registered_root().unwrap().is_none());
     for path in [
         &default,
         &programs,
+        &selection,
         &layout.data_root,
         &layout.state_root,
         &layout.home.join(".local/bin/hiroute.exe"),
@@ -204,7 +235,7 @@ fn nsis_lifecycle(custom: bool) {
     let shell_sha256 = manifest["shell_sha256"].as_str().unwrap();
     assert_eq!(shell_sha256.len(), 64);
 
-    if custom {
+    if directory == Directory::Direct {
         run_expecting(
             &installer,
             &["/S", "/D=relative"],
@@ -242,6 +273,10 @@ fn nsis_lifecycle(custom: bool) {
             std::fs::read(foreign).unwrap(),
             b"belongs to another application"
         );
+        // Ordinary creation inherits the ACL. Keep unrelated content in the
+        // chosen root, including across subsequent maintenance.
+        std::fs::create_dir(&selection).unwrap();
+        std::fs::write(selection.join("user-notes.txt"), b"user file").unwrap();
         run(
             &installer,
             &["/S", &format!("/D={}", programs.display())],
@@ -257,6 +292,32 @@ fn nsis_lifecycle(custom: bool) {
             false,
         );
         assert!(!default.exists());
+        assert_eq!(
+            std::fs::read(selection.join("user-notes.txt")).unwrap(),
+            b"user file"
+        );
+    } else if directory == Directory::Shared {
+        std::fs::create_dir(&selection).unwrap();
+        std::fs::write(selection.join("user-notes.txt"), b"user file").unwrap();
+        assert!(
+            Command::new("icacls")
+                .arg(&selection)
+                .args(["/grant", "*S-1-1-0:(OI)(CI)M"])
+                .status()
+                .unwrap()
+                .success()
+        );
+        run(
+            &installer,
+            &["/S", &format!("/D={}", selection.display())],
+            &evidence,
+            "install-shared",
+        );
+        let copies = saved_packages(&selection);
+        assert_eq!(copies.len(), 1);
+        assert_eq!(hash(&copies[0]), hash(&installer));
+        assert!(!selection.join("hiroute-shell.exe").exists());
+        assert!(!selection.join("uninstall.exe").exists());
     } else {
         run(&installer, &["/S"], &evidence, "install");
     }
@@ -264,12 +325,52 @@ fn nsis_lifecycle(custom: bool) {
         shell_location::registered_root().unwrap().as_ref(),
         Some(&programs)
     );
-    if custom {
+    if directory == Directory::Direct {
         let retained = tempfile::tempdir_in(programs.parent().unwrap()).unwrap();
-        std::fs::rename(&programs, retained.path().join("desktop")).unwrap();
+        let saved = retained.path().join("desktop");
+        std::fs::rename(&programs, &saved).unwrap();
+        std::fs::create_dir(&programs).unwrap();
+        let replacement = programs.join("foreign.txt");
+        std::fs::write(&replacement, b"replacement directory").unwrap();
+        run_expecting(
+            &installer,
+            &["/S"],
+            &evidence,
+            "refuse-replaced-directory",
+            false,
+        );
+        assert_eq!(
+            std::fs::read(&replacement).unwrap(),
+            b"replacement directory"
+        );
+        assert!(!programs.join("hiroute-shell.exe").exists());
+        std::fs::remove_file(replacement).unwrap();
+        std::fs::remove_dir(&programs).unwrap();
         assert!(!programs.exists());
         run(&installer, &["/S"], &evidence, "repair-missing-directory");
         assert!(!default.exists());
+        assert_eq!(
+            std::fs::read(saved.join("user-notes.txt")).unwrap(),
+            b"user file"
+        );
+    } else if directory == Directory::Shared {
+        let saved = selection.with_extension("original");
+        std::fs::rename(&selection, &saved).unwrap();
+        std::fs::create_dir(&selection).unwrap();
+        let foreign = selection.join("foreign.txt");
+        std::fs::write(&foreign, b"replacement directory").unwrap();
+        run_expecting(
+            &installer,
+            &["/S"],
+            &evidence,
+            "refuse-replaced-store",
+            false,
+        );
+        assert_eq!(std::fs::read(&foreign).unwrap(), b"replacement directory");
+        assert!(saved_packages(&selection).is_empty());
+        std::fs::remove_file(foreign).unwrap();
+        std::fs::remove_dir(&selection).unwrap();
+        std::fs::rename(saved, &selection).unwrap();
     }
     assert!(programs.join("hiroute-shell.exe").is_file());
     assert_eq!(hash(&programs.join("hiroute-shell.exe")), shell_sha256);
@@ -307,6 +408,9 @@ fn nsis_lifecycle(custom: bool) {
     assert_eq!(preferences["tray_enabled"], true);
     console_ready(&cli_path, &evidence, "fresh");
     run(&installer, &["/S"], &evidence, "repeat");
+    if directory == Directory::Shared {
+        assert_eq!(saved_packages(&selection).len(), 1);
+    }
     assert_eq!(hash(&programs.join("hiroute-shell.exe")), shell_sha256);
     console_ready(&cli_path, &evidence, "repeated");
     hiroute_platform::windows::lifecycle::drain(
@@ -322,7 +426,7 @@ fn nsis_lifecycle(custom: bool) {
     let sentinel = layout.state_root.join("nsis-preserved-data.txt");
     std::fs::write(&sentinel, b"native NSIS acceptance data").unwrap();
     let unrelated = programs.join("user-notes.txt");
-    if custom {
+    if directory == Directory::Direct {
         std::fs::write(&unrelated, b"user file").unwrap();
     }
     let uninstall = evidence.join("uninstall-worker.exe");
@@ -355,11 +459,18 @@ fn nsis_lifecycle(custom: bool) {
     );
     assert!(shell_login::configured_binary().unwrap().is_none());
     assert!(shell_location::registered_root().unwrap().is_none());
-    if custom {
+    if directory == Directory::Direct {
         assert!(!default.exists());
         assert_eq!(std::fs::read(&unrelated).unwrap(), b"user file");
         std::fs::remove_file(unrelated).unwrap();
         std::fs::remove_dir(&programs).unwrap();
+    }
+    if directory == Directory::Shared {
+        assert!(saved_packages(&selection).is_empty());
+        assert_eq!(
+            std::fs::read(selection.join("user-notes.txt")).unwrap(),
+            b"user file"
+        );
     }
     std::fs::write(
         evidence.join("nsis-result.json"),
