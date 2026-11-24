@@ -387,7 +387,6 @@ pub(super) fn prepare(
     } else {
         None
     };
-    let location = choice.prepare(source.as_mut())?;
     let custom_root = (!shell_location::same_name(root, &shell_location::default_root()?))
         .then(|| root.to_owned());
     if custom_root.is_some() {
@@ -472,7 +471,7 @@ pub(super) fn prepare(
     let mut value = Pending {
         schema: "hiroute.windows-shell-transaction/v2".into(),
         custom_root,
-        location: Some(location),
+        location: None,
         phase: Phase::Prepared,
         old,
         new,
@@ -490,6 +489,7 @@ pub(super) fn prepare(
         })
         .transpose()?;
     let history_cutover = recovery::prepare(&value, &package, daemon, root, selected_copy)?;
+    value.location = Some(choice.prepare(source.as_mut())?);
     write(&data.join(PENDING), &value)?;
     if let Some(source) = source.as_mut() {
         location::publish_package(&mut value, source)?;
@@ -827,7 +827,7 @@ pub(super) fn rollback(allow_unavailable_agent_restore: bool) -> io::Result<()> 
         &data()?.join("update-outcome.json"),
         &serde_json::json!({"schema":"hiroute.windows-shell-update-outcome/v1","status":"failed","code":"UPGRADE_INSTALL_FAILED","service_available":service_available}),
     )?;
-    location::rollback(value.location.as_ref())?;
+    location::rollback(&value, &root)?;
     clear(&data()?, &value.old)?;
     cleanup_committed();
     Ok(())

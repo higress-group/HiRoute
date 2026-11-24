@@ -447,7 +447,6 @@ FunctionEnd
 {{/each}}
 
 Function .onInit
-  StrCpy $HiRoutePrepared 0
   StrCpy $HiRouteCopyMode ""
   StrCpy $PassiveMode 0
   ${GetOptions} $CMDLINE "/P" $PassiveMode
@@ -873,18 +872,6 @@ Function .onInstFailed
       Pop $1
     ${EndIf}
   ${EndIf}
-  ${If} $0 = 0
-  ${AndIf} $HiRoutePrepared = 1
-    ; A completed first-install rollback has no surviving Desktop inventory.
-    ; Remove only the registration written by this attempt, never an older one.
-    IfFileExists "$INSTDIR\shell-package.json" hiroute_rollback_registration_done
-    IfFileExists "$INSTDIR\hiroute-shell.exe" hiroute_rollback_registration_done
-    ReadRegStr $R0 HKCU "${UNINSTKEY}" "InstallLocation"
-    ${If} $R0 == "$\"$INSTDIR$\""
-      DeleteRegKey HKCU "${UNINSTKEY}"
-    ${EndIf}
-  ${EndIf}
-  hiroute_rollback_registration_done:
   ${If} $0 != 0
     !insertmacro HiRouteDiagnostic "HiRoute could not safely restore the previous installation. Keep your existing files and data." "rollback"
   ${EndIf}

@@ -14,7 +14,7 @@ use windows_sys::Win32::{
     Storage::FileSystem::{
         DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, GetVolumeInformationByHandleW,
     },
-    System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_SZ, RegGetValueW},
+    System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_SZ, RegDeleteTreeW, RegGetValueW},
 };
 
 pub fn default_root() -> io::Result<PathBuf> {
@@ -367,12 +367,11 @@ pub fn validate_custom(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-pub fn registered_root() -> io::Result<Option<PathBuf>> {
-    let key: Vec<_> = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\HiRoute"
-        .encode_utf16()
-        .chain(Some(0))
-        .collect();
-    let name: Vec<_> = "InstallLocation".encode_utf16().chain(Some(0)).collect();
+const UNINSTALL_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\HiRoute";
+
+fn registration_value(name: &str) -> io::Result<Option<String>> {
+    let key: Vec<_> = UNINSTALL_KEY.encode_utf16().chain(Some(0)).collect();
+    let name: Vec<_> = name.encode_utf16().chain(Some(0)).collect();
     let mut buffer = [0u16; 1024];
     let mut size = size_of_val(&buffer) as u32;
     // The x64 shell reads the same HKCU view used by the NSIS SetContext macro.
@@ -396,6 +395,13 @@ pub fn registered_root() -> io::Result<Option<PathBuf>> {
     let units = buffer.get(..size as usize / 2).ok_or_else(invalid)?;
     let value =
         String::from_utf16(units.strip_suffix(&[0]).ok_or_else(invalid)?).map_err(|_| invalid())?;
+    Ok(Some(value))
+}
+
+pub fn registered_root() -> io::Result<Option<PathBuf>> {
+    let Some(value) = registration_value("InstallLocation")? else {
+        return Ok(None);
+    };
     let path = PathBuf::from(
         value
             .strip_prefix('"')
@@ -406,6 +412,23 @@ pub fn registered_root() -> io::Result<Option<PathBuf>> {
         validate_existing_or_missing_custom(&path)?;
     }
     Ok(Some(path))
+}
+
+/// NSIS publishes DisplayVersion only after the shell has committed. A
+/// first-install rollback can also run in a new process after NSIS has exited.
+pub fn remove_unpublished_registration(root: &Path) -> io::Result<()> {
+    if registration_value("DisplayVersion")?.is_some()
+        || !registered_root()?.is_some_and(|registered| same_name(&registered, root))
+    {
+        return Ok(());
+    }
+    let key: Vec<_> = UNINSTALL_KEY.encode_utf16().chain(Some(0)).collect();
+    // SAFETY: the fixed current-user product subkey is terminated and live.
+    let status = unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, key.as_ptr()) };
+    match status {
+        ERROR_SUCCESS | ERROR_FILE_NOT_FOUND => Ok(()),
+        _ => Err(io::Error::from_raw_os_error(status as i32)),
+    }
 }
 
 /// A registration or prepared journal can outlive its directory. Repair may
@@ -421,10 +444,69 @@ pub fn installed_root() -> io::Result<PathBuf> {
     }
 }
 
+/// Full object number on file systems such as ReFS. Older Windows volumes
+/// can provide a nonzero 64-bit number. A volume serial alone identifies no entry.
+pub fn entry_identity(file: &File) -> io::Result<(u32, u128)> {
+    use windows_sys::Win32::{
+        Foundation::{ERROR_INVALID_FUNCTION, ERROR_INVALID_PARAMETER, ERROR_NOT_SUPPORTED},
+        Storage::FileSystem::{FILE_ID_INFO, FileIdInfo, GetFileInformationByHandleEx},
+    };
+    let (volume, legacy) = security::file_identity(file)?;
+    let handle = file.as_raw_handle().cast();
+    let mut info = FILE_ID_INFO::default();
+    let unavailable = || io::Error::other("INSTALL_DESTINATION_IDENTITY_UNAVAILABLE");
+    // SAFETY: the handle and the matching fixed-size output remain live.
+    let ok = unsafe {
+        GetFileInformationByHandleEx(
+            handle,
+            FileIdInfo,
+            (&raw mut info).cast(),
+            size_of_val(&info) as u32,
+        )
+    };
+    let object = if ok != 0 {
+        u128::from_le_bytes(info.FileId.Identifier)
+    } else {
+        let error = io::Error::last_os_error();
+        if !matches!(
+            error.raw_os_error().map(|v| v as u32),
+            Some(ERROR_INVALID_FUNCTION | ERROR_INVALID_PARAMETER | ERROR_NOT_SUPPORTED)
+        ) {
+            return Err(error);
+        }
+        // A truncated ReFS file number cannot distinguish same-volume entries.
+        let mut fs_name = [0u16; 32];
+        let ok = unsafe {
+            GetVolumeInformationByHandleW(
+                handle,
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                fs_name.as_mut_ptr(),
+                fs_name.len() as u32,
+            )
+        };
+        if ok == 0
+            || String::from_utf16_lossy(&fs_name)
+                .trim_end_matches(char::from(0))
+                .eq_ignore_ascii_case("ReFS")
+        {
+            return Err(unavailable());
+        }
+        u128::from(legacy)
+    };
+    if object == 0 {
+        return Err(unavailable());
+    }
+    Ok((volume, object))
+}
+
 pub fn same_existing_path(left: &Path, right: &Path, directory: bool) -> io::Result<bool> {
     let left = security::open_identity(left, directory)?;
     let right = security::open_identity(right, directory)?;
-    Ok(security::file_identity(&left)? == security::file_identity(&right)?)
+    Ok(entry_identity(&left)? == entry_identity(&right)?)
 }
 
 #[cfg(test)]

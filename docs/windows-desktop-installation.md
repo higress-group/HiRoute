@@ -13,6 +13,7 @@ accept a final unquoted argument such as `/D=D:\My Apps\HiRoute`.
 A stable local directory with safe Windows permissions and no foreign libraries, manifests or private assembly directories can run Desktop in place.
 Other destinations receive a verified installer copy, while the program, login
 entry and uninstaller use the protected per-user Programs directory.
+Maintenance keeps the registered runtime, including fixed-type external SSDs admitted by earlier releases. It checks the runtime for foreign loader inputs before preparing the replacement. A failed first install removes its unpublished Installed Apps entry during rollback. Repair binds an exclusively recreated directory to its original selection so another repair can retry.
 Moving the verified package copy after publication does not block the local commit. Repair publishes a fresh copy. Repair and update reuse both recorded locations. An interrupted install uses its
 prepared journal, including before Installed Apps registration.
 Standalone service state is under `%LOCALAPPDATA%\HiRoute\cli`. The native

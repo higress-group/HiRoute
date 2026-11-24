@@ -22,7 +22,6 @@ Var HiRouteProcessStatus
 Var HiRoutePageIcon
 Var HiRouteArguments
 Var HiRouteRestoreConsent
-Var HiRoutePrepared
 
 !macro HiRouteRestoreConfirmation PREFIX
 Function ${PREFIX}HiRouteConfirmUnavailableRestore
@@ -271,7 +270,6 @@ FunctionEnd
   ${If} $INSTDIR == ""
     Abort "HiRoute could not read its prepared program directory."
   ${EndIf}
-  StrCpy $HiRoutePrepared 1
   ${If} $0 = 24
     ${AndIf} $PassiveMode != 1
     IfSilent hiroute_history_acknowledged

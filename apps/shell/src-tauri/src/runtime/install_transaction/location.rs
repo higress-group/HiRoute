@@ -12,7 +12,7 @@ use std::{
 
 const RECORD: &str = "desktop-location.json";
 const SCHEMA: &str = "hiroute.windows-desktop-location/v1";
-type Identity = (u32, u64);
+type Identity = (u32, u128);
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -69,6 +69,9 @@ pub(super) fn choice(
         } else {
             destination.clone()
         };
+        if foreign_program_inputs(&runtime)? {
+            return Err(io::Error::other("INSTALL_DESTINATION_PROGRAM_FILES"));
+        }
         return Ok(Choice {
             selection: old.map_or(selection, |value| value.selection.clone()),
             destination,
@@ -157,9 +160,32 @@ fn foreign_program_inputs(root: &Path) -> io::Result<bool> {
 
 impl Choice {
     pub(super) fn prepare(&self, source: Option<&mut File>) -> io::Result<Location> {
-        let previous = committed()?;
-        let missing = !present(&self.runtime)?;
-        let runtime = security::ensure_private_directory(&self.runtime).map_err(directory_error)?;
+        let mut previous = committed()?;
+        let (runtime, created) = match security::open_identity(&self.runtime, true) {
+            Ok(directory) => (directory, false),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                if let Some(old) = &previous
+                    && !shell_location::same_name(&old.verify_runtime()?, &self.runtime)
+                {
+                    return Err(changed());
+                }
+                let parent = self.runtime.parent().ok_or_else(invalid)?;
+                let leaf = self.runtime.file_name().ok_or_else(invalid)?;
+                let parent = security::ensure_private_directory(parent).map_err(directory_error)?;
+                let directory = security::create_owner_only_directory_at(&parent, leaf)
+                    .map_err(directory_error)?;
+                // Only the exclusive creator may bind the replacement. Keep the
+                // original selection and package ownership through a failed repair.
+                if let Some(old) = &mut previous
+                    && let Err(error) = old.bind_recreated_runtime(&directory)
+                {
+                    security::delete_by_handle(&directory)?;
+                    return Err(error);
+                }
+                (directory, true)
+            }
+            Err(error) => return Err(directory_error(error)),
+        };
         shell_location::validate_custom(&self.runtime).map_err(directory_error)?;
         let runtime_id = identity(&runtime)?;
         let (destination_id, package) = if self.local_copy {
@@ -188,7 +214,7 @@ impl Choice {
             destination: self.destination.clone(),
             destination_id,
             runtime_id,
-            created_runtime: missing
+            created_runtime: created
                 || previous.is_some_and(|old| old.created_runtime && old.runtime_id == runtime_id),
             package,
         };
@@ -206,7 +232,10 @@ impl PackageCopy {
     }
 
     fn validate(&self) -> io::Result<()> {
-        if !hex(&self.nonce, 32) || !hex(&self.sha256, 64) {
+        if !hex(&self.nonce, 32)
+            || !hex(&self.sha256, 64)
+            || self.file_id.is_some_and(|id| id.1 == 0)
+        {
             return Err(invalid());
         }
         Ok(())
@@ -218,6 +247,15 @@ fn hex(text: &str, len: usize) -> bool {
 }
 
 impl Location {
+    fn bind_recreated_runtime(&mut self, directory: &File) -> io::Result<()> {
+        self.runtime_id = identity(directory)?;
+        if self.package.is_none() {
+            self.destination_id = self.runtime_id;
+        }
+        self.created_runtime = true;
+        write(&record_path()?, self)
+    }
+
     pub(super) fn selection(&self) -> &Path {
         &self.selection
     }
@@ -234,8 +272,8 @@ impl Location {
         if self.schema != SCHEMA
             || shell_location::normalize_destination(&self.selection)? != self.selection
             || shell_location::normalize_destination(&self.destination)? != self.destination
-            || self.destination_id == (0, 0)
-            || self.runtime_id == (0, 0)
+            || self.destination_id.1 == 0
+            || self.runtime_id.1 == 0
             || self.package.is_none() && self.destination_id != self.runtime_id
         {
             return Err(invalid());
@@ -390,9 +428,12 @@ pub(super) fn finish_commit(location: Option<&Location>) -> io::Result<()> {
     write(&record_path()?, location)
 }
 
-pub(super) fn rollback(location: Option<&Location>) -> io::Result<()> {
-    if let Some(location) = location {
+pub(super) fn rollback(pending: &super::Pending, runtime: &Path) -> io::Result<()> {
+    if let Some(location) = &pending.location {
         location.remove_package()?;
+    }
+    if pending.old.is_empty() && committed()?.is_none() {
+        shell_location::remove_unpublished_registration(runtime)?;
     }
     Ok(())
 }
@@ -427,11 +468,7 @@ pub(super) fn finish_uninstall(runtime: &Path) -> io::Result<()> {
 }
 
 fn identity(file: &File) -> io::Result<Identity> {
-    let id = security::file_identity(file)?;
-    if id == (0, 0) {
-        return Err(io::Error::other("INSTALL_DESTINATION_IDENTITY_UNAVAILABLE"));
-    }
-    Ok(id)
+    shell_location::entry_identity(file)
 }
 
 fn require_identity(file: &File, expected: Identity) -> io::Result<()> {
@@ -511,6 +548,14 @@ mod tests {
             created_runtime: false,
             package: Some(copy),
         };
+        let mut invalid = record.clone();
+        invalid.destination_id = (123, 0);
+        assert!(invalid.validate().is_err());
+        let wide: Identity = (123, (1u128 << 100) | 17);
+        assert_eq!(
+            serde_json::from_slice::<Identity>(&serde_json::to_vec(&wide).unwrap()).unwrap(),
+            wide
+        );
         drop(file);
         drop(directory);
         fs::write(&path, b"changed content").unwrap();

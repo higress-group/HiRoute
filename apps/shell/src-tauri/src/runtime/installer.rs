@@ -128,7 +128,7 @@ fn destination_guidance(error: &std::io::Error) -> Option<String> {
             "Choose a folder separate from HiRoute's service data and recovery files."
         }
         "INSTALL_DESTINATION_PROGRAM_FILES" => {
-            "The local HiRoute program folder contains other program files or cannot safely run Desktop."
+            "The local HiRoute program folder must be safe to run Desktop. If it contains files from another program, move those files elsewhere and retry."
         }
         "INSTALL_DESTINATION_OVERLAPS_RUNTIME" => {
             "Choose a package folder separate from the local HiRoute program directory."
