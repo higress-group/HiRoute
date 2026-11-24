@@ -686,6 +686,20 @@ class Runner(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'explicit NSIS'):
                     host.stage(self.root, archive, controller.digest(archive))
 
+    def test_bundle_can_carry_the_released_installer_for_an_upgrade_case(self):
+        payload = bytearray(70)
+        payload[:2] = b'MZ'
+        struct.pack_into('<I', payload, 60, 64)
+        payload[64:] = b'PE\0\0\x4c\x01'
+        entry = dict(sha256=hashlib.sha256(payload).hexdigest(), bytes=len(payload))
+
+        def mutate(value):
+            value['installer_format'] = 'nsis'
+            value['files']['baseline.exe'] = entry
+
+        archive = self.archive(extra=('baseline.exe', payload), mutate=mutate)
+        self.assertIn('baseline.exe', host.stage(self.root, archive, controller.digest(archive))['files'])
+
     def test_desktop_bundle_binds_installer_and_compiled_harness_to_the_candidate(self):
         sha = 'a' * 40
         binaries = self.root / 'target/x86_64-pc-windows-msvc/release'
