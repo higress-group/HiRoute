@@ -72,7 +72,7 @@ fn run_expecting(
     // Keep CLI and uninstall requests on their existing watchdog.
     let seconds = if program
         .file_name()
-        .is_some_and(|name| name == "installer.exe")
+        .is_some_and(|name| name == "installer.exe" || name == "baseline.exe")
     {
         720
     } else {
@@ -155,20 +155,52 @@ fn console_ready(cli_path: &Path, evidence: &Path, phase: &str) {
 #[test]
 #[ignore = "requires the verified NSIS bundle and a fresh existing standard-user session"]
 fn actual_nsis_silent_install_repeat_console_and_uninstall_preserve_data() {
-    nsis_lifecycle(false);
+    nsis_lifecycle(Directory::Default);
 }
 
 #[test]
 #[ignore = "requires the verified NSIS bundle and a fresh existing standard-user session"]
 fn actual_nsis_custom_directory_repair_update_and_uninstall() {
-    nsis_lifecycle(true);
+    nsis_lifecycle(Directory::Direct);
 }
 
-fn nsis_lifecycle(custom: bool) {
+#[test]
+#[ignore = "requires the verified NSIS bundle and a fresh existing standard-user session"]
+fn actual_nsis_shared_directory_uses_protected_program_and_preserves_foreign_files() {
+    nsis_lifecycle(Directory::Shared);
+}
+
+#[test]
+#[ignore = "requires the verified NSIS bundle with released v0.6.5 and a fresh standard-user session"]
+fn actual_nsis_upgrades_released_custom_directory() {
+    nsis_lifecycle(Directory::Released);
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Directory {
+    Default,
+    Direct,
+    Shared,
+    Released,
+}
+
+fn saved_packages(folder: &Path) -> Vec<PathBuf> {
+    std::fs::read_dir(folder)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|entry| {
+            entry
+                .extension()
+                .is_some_and(|ext| ext == "hiroute-package")
+        })
+        .collect()
+}
+
+fn nsis_lifecycle(directory: Directory) {
     standard_session();
     let layout = StandaloneLayout::from_environment().unwrap();
     let default = shell_location::default_root().unwrap();
-    let programs = if custom {
+    let selection = if directory != Directory::Default {
         std::env::var_os("HIROUTE_VALIDATION_DESKTOP_PARENT")
             .map(PathBuf::from)
             .unwrap_or_else(|| background::local_app_data().unwrap())
@@ -176,10 +208,16 @@ fn nsis_lifecycle(custom: bool) {
     } else {
         default.clone()
     };
+    let programs = if matches!(directory, Directory::Direct | Directory::Released) {
+        selection.clone()
+    } else {
+        default.clone()
+    };
     assert!(shell_location::registered_root().unwrap().is_none());
     for path in [
         &default,
         &programs,
+        &selection,
         &layout.data_root,
         &layout.state_root,
         &layout.home.join(".local/bin/hiroute.exe"),
@@ -204,7 +242,7 @@ fn nsis_lifecycle(custom: bool) {
     let shell_sha256 = manifest["shell_sha256"].as_str().unwrap();
     assert_eq!(shell_sha256.len(), 64);
 
-    if custom {
+    if directory == Directory::Direct {
         run_expecting(
             &installer,
             &["/S", "/D=relative"],
@@ -242,9 +280,13 @@ fn nsis_lifecycle(custom: bool) {
             std::fs::read(foreign).unwrap(),
             b"belongs to another application"
         );
+        // Ordinary creation inherits the ACL. Keep unrelated content in the
+        // chosen root, including across subsequent maintenance.
+        std::fs::create_dir(&selection).unwrap();
+        std::fs::write(selection.join("user-notes.txt"), b"user file").unwrap();
         run(
             &installer,
-            &["/S", &format!("/D={}", programs.display())],
+            &["/S", &format!("/D={}\\", programs.display())],
             &evidence,
             "install",
         );
@@ -257,6 +299,87 @@ fn nsis_lifecycle(custom: bool) {
             false,
         );
         assert!(!default.exists());
+        assert_eq!(
+            std::fs::read(selection.join("user-notes.txt")).unwrap(),
+            b"user file"
+        );
+    } else if directory == Directory::Released {
+        let baseline = bundle.join("baseline.exe");
+        assert_eq!(
+            hash(&baseline),
+            "2fa78a011c38142c1c9d05191d33d813b0429519c85e28096723cc6e098f2ad7"
+        );
+        run(
+            &baseline,
+            &["/S", &format!("/D={}", selection.display())],
+            &evidence,
+            "install-released-v0-6-5",
+        );
+        let cli = layout.home.join(".local/bin/hiroute.exe");
+        console_ready(&cli, &evidence, "released-v0-6-5");
+        let marker = layout.state_root.join("preserve-on-upgrade.txt");
+        std::fs::write(&marker, b"released-profile data").unwrap();
+        let foreign_manifest = selection.join("other-program.manifest");
+        std::fs::write(&foreign_manifest, b"belongs to another application").unwrap();
+        run_expecting(
+            &installer,
+            &["/S"],
+            &evidence,
+            "foreign-input-before-upgrade",
+            false,
+        );
+        assert_eq!(
+            std::fs::read(&foreign_manifest).unwrap(),
+            b"belongs to another application"
+        );
+        console_ready(&cli, &evidence, "released-after-refusal");
+        std::fs::remove_file(foreign_manifest).unwrap();
+        run(&installer, &["/S"], &evidence, "upgrade-released");
+        assert_eq!(std::fs::read(marker).unwrap(), b"released-profile data");
+        assert!(!default.exists());
+    } else if directory == Directory::Shared {
+        std::fs::create_dir(&selection).unwrap();
+        std::fs::write(selection.join("user-notes.txt"), b"user file").unwrap();
+        if shell_location::validate_custom(&selection).is_ok() {
+            assert!(
+                Command::new("icacls")
+                    .arg(&selection)
+                    .args(["/grant", "*S-1-1-0:(OI)(CI)M"])
+                    .status()
+                    .unwrap()
+                    .success()
+            );
+        }
+        let selected = selection.clone();
+        let moved = thread::spawn(move || {
+            let saved = selected.join("user-kept-installer");
+            let deadline = Instant::now() + Duration::from_secs(120);
+            while Instant::now() < deadline {
+                if let Some(copy) = saved_packages(&selected).first()
+                    && std::fs::rename(copy, &saved).is_ok()
+                {
+                    return saved;
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+            panic!("the package copy was never published");
+        });
+        run(
+            &installer,
+            &["/S", &format!("/D={}", selection.display())],
+            &evidence,
+            "install-shared",
+        );
+        let saved = moved.join().unwrap();
+        assert_eq!(hash(&saved), hash(&installer));
+        assert!(saved_packages(&selection).is_empty());
+        run(&installer, &["/S"], &evidence, "repair-moved-package");
+        let copies = saved_packages(&selection);
+        assert_eq!(copies.len(), 1);
+        assert_eq!(hash(&copies[0]), hash(&installer));
+        assert_eq!(hash(&saved), hash(&installer));
+        assert!(!selection.join("hiroute-shell.exe").exists());
+        assert!(!selection.join("uninstall.exe").exists());
     } else {
         run(&installer, &["/S"], &evidence, "install");
     }
@@ -264,12 +387,97 @@ fn nsis_lifecycle(custom: bool) {
         shell_location::registered_root().unwrap().as_ref(),
         Some(&programs)
     );
-    if custom {
+    if directory == Directory::Direct {
         let retained = tempfile::tempdir_in(programs.parent().unwrap()).unwrap();
-        std::fs::rename(&programs, retained.path().join("desktop")).unwrap();
+        let saved = retained.path().join("desktop");
+        std::fs::rename(&programs, &saved).unwrap();
+        std::fs::create_dir(&programs).unwrap();
+        let replacement = programs.join("foreign.txt");
+        std::fs::write(&replacement, b"replacement directory").unwrap();
+        run_expecting(
+            &installer,
+            &["/S"],
+            &evidence,
+            "refuse-replaced-directory",
+            false,
+        );
+        assert_eq!(
+            std::fs::read(&replacement).unwrap(),
+            b"replacement directory"
+        );
+        assert!(!programs.join("hiroute-shell.exe").exists());
+        std::fs::remove_file(replacement).unwrap();
+        std::fs::remove_dir(&programs).unwrap();
         assert!(!programs.exists());
+        let helper = saved.join("hiroute-shell.exe");
+        let manifest = saved.join("standalone/package-manifest.json");
+        let daemon = saved.join("standalone/hirouted.exe");
+        let prepare_args = [
+            "--installer-prepare",
+            manifest.to_str().unwrap(),
+            daemon.to_str().unwrap(),
+            selection.to_str().unwrap(),
+            installer.to_str().unwrap(),
+            "",
+        ];
+        // A transient failure while preparing recovery must not leave an unbound
+        // replacement directory. Release the test's exclusive read handle to retry.
+        use std::os::windows::fs::OpenOptionsExt;
+        let backups = background::local_app_data()
+            .unwrap()
+            .join("HiRoute/shell/install-backups");
+        let busy = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .custom_flags(windows_sys::Win32::Storage::FileSystem::FILE_FLAG_BACKUP_SEMANTICS)
+            .open(backups)
+            .unwrap();
+        run_expecting(
+            &helper,
+            &prepare_args,
+            &evidence,
+            "repair-backups-in-use",
+            false,
+        );
+        assert!(!programs.exists());
+        drop(busy);
+        run(
+            &helper,
+            &prepare_args,
+            &evidence,
+            "prepare-recreated-directory",
+        );
+        assert!(programs.is_dir());
+        run(
+            &helper,
+            &["--installer-rollback"],
+            &evidence,
+            "rollback-recreated-directory",
+        );
         run(&installer, &["/S"], &evidence, "repair-missing-directory");
         assert!(!default.exists());
+        assert_eq!(
+            std::fs::read(saved.join("user-notes.txt")).unwrap(),
+            b"user file"
+        );
+    } else if directory == Directory::Shared {
+        let saved = selection.with_extension("original");
+        std::fs::rename(&selection, &saved).unwrap();
+        std::fs::create_dir(&selection).unwrap();
+        let foreign = selection.join("foreign.txt");
+        std::fs::write(&foreign, b"replacement directory").unwrap();
+        run_expecting(
+            &installer,
+            &["/S"],
+            &evidence,
+            "refuse-replaced-store",
+            false,
+        );
+        assert_eq!(std::fs::read(&foreign).unwrap(), b"replacement directory");
+        assert!(saved_packages(&selection).is_empty());
+        std::fs::remove_file(foreign).unwrap();
+        std::fs::remove_dir(&selection).unwrap();
+        std::fs::rename(saved, &selection).unwrap();
     }
     assert!(programs.join("hiroute-shell.exe").is_file());
     assert_eq!(hash(&programs.join("hiroute-shell.exe")), shell_sha256);
@@ -306,7 +514,47 @@ fn nsis_lifecycle(custom: bool) {
             .unwrap();
     assert_eq!(preferences["tray_enabled"], true);
     console_ready(&cli_path, &evidence, "fresh");
+    if directory == Directory::Shared {
+        let helper = evidence.join("prepare-interrupted.exe");
+        std::fs::copy(programs.join("hiroute-shell.exe"), &helper).unwrap();
+        assert_eq!(hash(&helper), shell_sha256);
+        let standalone = programs.join("standalone");
+        std::fs::copy(
+            standalone.join("package-manifest.json"),
+            evidence.join("shared-manifest.json"),
+        )
+        .unwrap();
+        run(
+            &helper,
+            &[
+                "--installer-prepare",
+                standalone.join("package-manifest.json").to_str().unwrap(),
+                standalone.join("hirouted.exe").to_str().unwrap(),
+                selection.to_str().unwrap(),
+                installer.to_str().unwrap(),
+                "",
+            ],
+            &evidence,
+            "interrupt-after-package-prepare",
+        );
+        assert!(
+            background::local_app_data()
+                .unwrap()
+                .join("HiRoute/shell/install-pending.json")
+                .is_file()
+        );
+        assert_eq!(saved_packages(&selection).len(), 2);
+    }
     run(&installer, &["/S"], &evidence, "repeat");
+    if directory == Directory::Shared {
+        assert_eq!(saved_packages(&selection).len(), 1);
+        assert!(
+            !background::local_app_data()
+                .unwrap()
+                .join("HiRoute/shell/install-pending.json")
+                .exists()
+        );
+    }
     assert_eq!(hash(&programs.join("hiroute-shell.exe")), shell_sha256);
     console_ready(&cli_path, &evidence, "repeated");
     hiroute_platform::windows::lifecycle::drain(
@@ -322,7 +570,7 @@ fn nsis_lifecycle(custom: bool) {
     let sentinel = layout.state_root.join("nsis-preserved-data.txt");
     std::fs::write(&sentinel, b"native NSIS acceptance data").unwrap();
     let unrelated = programs.join("user-notes.txt");
-    if custom {
+    if directory == Directory::Direct {
         std::fs::write(&unrelated, b"user file").unwrap();
     }
     let uninstall = evidence.join("uninstall-worker.exe");
@@ -355,11 +603,75 @@ fn nsis_lifecycle(custom: bool) {
     );
     assert!(shell_login::configured_binary().unwrap().is_none());
     assert!(shell_location::registered_root().unwrap().is_none());
-    if custom {
+    if directory == Directory::Direct {
         assert!(!default.exists());
         assert_eq!(std::fs::read(&unrelated).unwrap(), b"user file");
         std::fs::remove_file(unrelated).unwrap();
         std::fs::remove_dir(&programs).unwrap();
+    }
+    if directory == Directory::Shared {
+        assert!(saved_packages(&selection).is_empty());
+        let helper = evidence.join("prepare-interrupted.exe");
+        run(
+            &helper,
+            &[
+                "--installer-prepare",
+                evidence.join("shared-manifest.json").to_str().unwrap(),
+                bundle.join("hirouted.exe").to_str().unwrap(),
+                selection.to_str().unwrap(),
+                installer.to_str().unwrap(),
+                "",
+            ],
+            &evidence,
+            "prepare-fresh-shared",
+        );
+        // Model an interrupted NSIS process after InstallLocation is written and
+        // before postinstall publishes DisplayVersion. The journal and package are real.
+        let key = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Uninstall\HiRoute";
+        assert!(
+            Command::new("reg.exe")
+                .args([
+                    "add",
+                    key,
+                    "/v",
+                    "InstallLocation",
+                    "/t",
+                    "REG_SZ",
+                    "/d",
+                    &format!("\"{}\"", programs.display()),
+                    "/f",
+                    "/reg:64"
+                ])
+                .status()
+                .unwrap()
+                .success()
+        );
+        assert_eq!(
+            shell_location::registered_root().unwrap().as_ref(),
+            Some(&programs)
+        );
+        run(
+            &installer,
+            &["/S"],
+            &evidence,
+            "retry-after-partial-registration",
+        );
+        assert_eq!(saved_packages(&selection).len(), 1);
+        assert_eq!(hash(&saved_packages(&selection)[0]), hash(&installer));
+        console_ready(&cli_path, &evidence, "retry-after-registration");
+        std::fs::copy(programs.join("uninstall.exe"), &uninstall).unwrap();
+        run(
+            &uninstall,
+            &["/S", &format!("_?={}", programs.display())],
+            &evidence,
+            "uninstall-retried-shared",
+        );
+        assert!(saved_packages(&selection).is_empty());
+        assert!(shell_location::registered_root().unwrap().is_none());
+        assert_eq!(
+            std::fs::read(selection.join("user-notes.txt")).unwrap(),
+            b"user file"
+        );
     }
     std::fs::write(
         evidence.join("nsis-result.json"),

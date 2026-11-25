@@ -61,8 +61,8 @@ def manifest(directory):
         file = plain(directory / name)
         if file.stat().st_nlink != 1 or file.stat().st_size != expected['bytes'] or digest(file) != expected['sha256']:
             raise ValueError('Artifact identity differs from its manifest')
-        installer = name == 'installer.exe' and value.get('installer_format') == 'nsis'
-        if name == 'installer.exe' and not installer:
+        installer = name in ('installer.exe', 'baseline.exe') and value.get('installer_format') == 'nsis'
+        if name in ('installer.exe', 'baseline.exe') and not installer:
             raise ValueError('Installer requires an explicit NSIS bundle declaration')
         pe(file, installer=installer)
     return value
@@ -344,6 +344,12 @@ def admit_test_profile(request, home, localappdata):
     if (not request['ignored']
             and request['case'] in codex_components.get(request['binary'], set())):
         return 'temporary_artifact_component'
+    if not request['ignored'] and (request['binary'], request['case']) in {
+        ('hiroute_shell.exe', 'runtime::install_transaction::location::tests::shared_package_cleanup_preserves_changed_bytes_and_replacement_directories'),
+        ('hiroute_platform.exe', 'windows::shell_location::tests::custom_location_is_an_unambiguous_local_folder'),
+        ('hiroute_platform.exe', 'windows::shell_location::tests::custom_location_accepts_a_new_private_program_folder_and_excludes_service_state'),
+    }:
+        return 'temporary_artifact_component'
     if (request['binary'] == 'hiroute_desktop_host_effects.exe' and request['ignored']
             and request['case'] == 'codex_installation::tests::actual_windows_codex_desktop_package_has_its_own_engine'):
         return 'read_only_installation_component'
@@ -524,7 +530,9 @@ def worker(request):
         result['execution_scope'] = admit_test_profile(request, home, Path(os.environ['LOCALAPPDATA']))
         if (request['binary'] == 'windows_desktop.exe' and
                 request['case'] in {'actual_nsis_silent_install_repeat_console_and_uninstall_preserve_data',
-                                    'actual_nsis_custom_directory_repair_update_and_uninstall'}):
+                                    'actual_nsis_custom_directory_repair_update_and_uninstall',
+                                    'actual_nsis_shared_directory_uses_protected_program_and_preserves_foreign_files',
+                                    'actual_nsis_upgrades_released_custom_directory'}):
             profile_helper(request).require_fresh_nsis_packages(home)
         environment = os.environ.copy()
         environment.update(config['environment'])

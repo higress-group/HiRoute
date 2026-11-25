@@ -14,13 +14,14 @@ Var HiRouteOptionsToggle
 Var HiRouteInstallPath
 Var HiRouteBrowse
 Var HiRouteActiveRoot
+Var HiRouteSelection
+Var HiRouteCopyMode
 Var HiRouteInstalledVersion
 Var HiRoutePrimary
 Var HiRouteProcessStatus
 Var HiRoutePageIcon
 Var HiRouteArguments
 Var HiRouteRestoreConsent
-Var HiRoutePrepared
 
 !macro HiRouteRestoreConfirmation PREFIX
 Function ${PREFIX}HiRouteConfirmUnavailableRestore
@@ -80,7 +81,7 @@ FunctionEnd
 
 Function HiRouteBrowseDirectory
   Pop $0
-  nsDialogs::SelectFolderDialog "Choose the folder in which to create the HiRoute program directory" "$INSTDIR\.."
+  nsDialogs::SelectFolderDialog "Choose a parent folder for HiRoute" "$HiRouteSelection\.."
   Pop $0
   ${If} $0 != error
     ${GetFileName} "$0" $1
@@ -128,7 +129,7 @@ Function HiRouteOptions
   ${NSD_CreateCheckbox} 0 58u 100% 13u "Show installation options"
   Pop $HiRouteOptionsToggle
   ${NSD_OnClick} $HiRouteOptionsToggle HiRouteSetOptionsVisibility
-  ${NSD_CreateText} 8u 75u -64u 13u "$INSTDIR"
+  ${NSD_CreateText} 8u 75u -64u 13u "$HiRouteSelection"
   Pop $HiRouteInstallPath
   ${NSD_CreateButton} -58u 74u 50u 15u "Browse..."
   Pop $HiRouteBrowse
@@ -162,23 +163,55 @@ Function HiRouteOptions
   nsDialogs::Show
   ${NSD_FreeIcon} $HiRoutePageIcon
 FunctionEnd
+Function HiRouteNormalizeDirectory
+  ; $0 holds the original text, before NSIS sanitizes its special $INSTDIR variable.
+  StrCpy $3 $0
+  StrCpy $2 $0 1 -1
+  ${While} $2 == "\"
+    StrCpy $0 $0 -1
+    StrCpy $2 $0 1 -1
+  ${EndWhile}
+  StrLen $2 $0
+  ${If} $2 = 2
+  ${AndIf} $3 != $0
+    StrCpy $2 $0 1 1
+    ${IfThen} $2 == ":" ${|} StrCpy $0 "$0\HiRoute" ${|}
+  ${EndIf}
+FunctionEnd
+
 Function HiRouteOptionsLeave
   ${NSD_GetText} $HiRouteInstallPath $0
+  StrCpy $HiRouteSelection $0
   StrCpy $4 $INSTDIR
+  Call HiRouteNormalizeDirectory
   StrCpy $INSTDIR $0
   StrCpy $1 1
+  StrCpy $2 "Enter an absolute Windows folder path."
   ${If} $0 == $INSTDIR
-    nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-check-directory "$INSTDIR"'
+    nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-check-directory "$INSTDIR" "$EXEPATH"'
     Pop $1
     Pop $2
   ${EndIf}
+  StrCpy $INSTDIR $4
   ${If} $1 != 0
-    StrCpy $INSTDIR $4
-    MessageBox MB_ICONEXCLAMATION "Choose a new program folder on a writable local drive, outside HiRoute's data directories."
+    StrCpy $0 $1
+    StrCpy $1 $2
+    !insertmacro HiRouteDiagnostic "HiRoute could not use the selected folder." "check-selected-directory"
     ${NSD_Check} $HiRouteOptionsToggle
     Push $HiRouteOptionsToggle
     Call HiRouteSetOptionsVisibility
     ${NSD_SetFocus} $HiRouteInstallPath
+    Abort
+  ${EndIf}
+  ReadINIStr $HiRouteSelection "$PLUGINSDIR\hiroute-choice.ini" "Desktop" "Selection"
+  ReadINIStr $HiRouteCopyMode "$PLUGINSDIR\hiroute-choice.ini" "Desktop" "LocalCopy"
+  ${NSD_SetText} $HiRouteInstallPath "$HiRouteSelection"
+  ${If} $HiRouteCopyMode = 1
+  ${AndIf} $HiRouteActiveRoot == ""
+    ReadINIStr $2 "$PLUGINSDIR\hiroute-choice.ini" "Desktop" "Location"
+    ReadINIStr $3 "$PLUGINSDIR\hiroute-choice.ini" "Desktop" "PackageMiB"
+    IntOp $4 ${ESTIMATEDSIZE} / 1024
+    MessageBox MB_OKCANCEL|MB_ICONINFORMATION "HiRoute will save the installer package (about $3 MiB) in:$\r$\n$HiRouteSelection$\r$\n$\r$\nHiRoute will run from this protected folder (about $4 MiB):$\r$\n$2" IDOK hiroute_verify_desktop
     Abort
   ${EndIf}
   hiroute_verify_desktop:
@@ -224,16 +257,19 @@ FunctionEnd
 !macro NSIS_HOOK_PREINSTALL
   !insertmacro HiRouteRequireDesktopExit 0
   !insertmacro HiRoutePhase "Preparing installation and checking existing data..."
-  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-prepare "$PLUGINSDIR\hiroute-package.json" "$PLUGINSDIR\hirouted-preflight.exe" "$INSTDIR"'
+  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-prepare "$PLUGINSDIR\hiroute-package.json" "$PLUGINSDIR\hirouted-preflight.exe" "$HiRouteSelection" "$EXEPATH" "$HiRouteCopyMode"'
   Pop $0
   Pop $1
   ${If} $0 != 0
   ${AndIf} $0 != 24
     DetailPrint "$1"
-    !insertmacro HiRouteDiagnostic "HiRoute could not prepare the installation. Keep your existing data." "prepare-installation"
+    !insertmacro HiRouteDiagnostic "HiRoute could not prepare the installation in the selected folder." "prepare-installation"
     Abort
   ${EndIf}
-  StrCpy $HiRoutePrepared 1
+  ReadINIStr $INSTDIR "$PLUGINSDIR\hiroute-prepared.ini" "Desktop" "Location"
+  ${If} $INSTDIR == ""
+    Abort "HiRoute could not read its prepared program directory."
+  ${EndIf}
   ${If} $0 = 24
     ${AndIf} $PassiveMode != 1
     IfSilent hiroute_history_acknowledged

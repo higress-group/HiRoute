@@ -266,12 +266,21 @@ pub fn open_owner_only(path: &Path, directory: bool) -> io::Result<File> {
 /// A private program folder is only stable if another ordinary account cannot
 /// replace it through a writable ancestor. Allow shared traversal and creation
 /// of siblings. Never change permissions on the user's chosen parent.
-pub(super) fn verify_program_parent(file: &File, drive_root: bool, user: &[u8]) -> io::Result<()> {
+pub(super) fn verify_program_parent(
+    file: &File,
+    drive_root: bool,
+    program_root: bool,
+    user: &[u8],
+) -> io::Result<()> {
     use windows_sys::Win32::{
         Security::{
-            INHERIT_ONLY_ACE, IsWellKnownSid, WinBuiltinAdministratorsSid, WinLocalSystemSid,
+            INHERIT_ONLY_ACE, IsWellKnownSid, WinBuiltinAdministratorsSid, WinCreatorOwnerSid,
+            WinLocalSystemSid,
         },
-        Storage::FileSystem::{FILE_DELETE_CHILD, FILE_WRITE_ATTRIBUTES, WRITE_OWNER},
+        Storage::FileSystem::{
+            FILE_APPEND_DATA, FILE_DELETE_CHILD, FILE_WRITE_ATTRIBUTES, FILE_WRITE_DATA,
+            FILE_WRITE_EA, WRITE_OWNER,
+        },
     };
     let mut owner = null_mut();
     let mut acl: *mut ACL = null_mut();
@@ -318,20 +327,32 @@ pub(super) fn verify_program_parent(file: &File, drive_root: bool, user: &[u8]) 
     if !drive_root {
         unsafe_rights |= DELETE | FILE_WRITE_ATTRIBUTES;
     }
+    if program_root {
+        // Deny both replacing product entries and planting new executable
+        // dependencies. Read access and trusted inherited entries are fine.
+        unsafe_rights |= FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA;
+    }
     for index in 0..unsafe { (*acl).AceCount } {
         let mut entry = null_mut();
         if unsafe { GetAce(acl, index.into(), &mut entry) } == 0 {
             return Err(io::Error::last_os_error());
         }
         let header = unsafe { &*entry.cast::<ACE_HEADER>() };
-        if header.AceFlags & INHERIT_ONLY_ACE as u8 != 0 || header.AceType == 1 {
+        let inherit_only = header.AceFlags & INHERIT_ONLY_ACE as u8 != 0;
+        if header.AceType == 1 || inherit_only && !program_root {
             continue;
         }
         if header.AceType != ACCESS_ALLOWED_ACE_KIND {
             return Err(io::ErrorKind::PermissionDenied.into());
         }
         let ace = unsafe { &*entry.cast::<ACCESS_ALLOWED_ACE>() };
-        if ace.Mask & unsafe_rights != 0 && !trusted(addr_of!(ace.SidStart).cast_mut().cast())? {
+        let sid = addr_of!(ace.SidStart).cast_mut().cast();
+        // CREATOR OWNER is substituted with the owner of a newly created
+        // child. Untrusted accounts cannot create children in this directory.
+        if inherit_only && unsafe { IsWellKnownSid(sid, WinCreatorOwnerSid) } != 0 {
+            continue;
+        }
+        if ace.Mask & unsafe_rights != 0 && !trusted(sid)? {
             return Err(io::ErrorKind::PermissionDenied.into());
         }
     }
@@ -471,7 +492,7 @@ pub fn create_owner_only_buffered_file_at(
         parent,
         name,
         GENERIC_READ | GENERIC_WRITE | DELETE,
-        &security.descriptor,
+        Some(&security.descriptor),
     )?;
     verify_owner_only_handle(&file, false)?;
     Ok(file)

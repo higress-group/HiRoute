@@ -447,7 +447,7 @@ FunctionEnd
 {{/each}}
 
 Function .onInit
-  StrCpy $HiRoutePrepared 0
+  StrCpy $HiRouteCopyMode ""
   StrCpy $PassiveMode 0
   ${GetOptions} $CMDLINE "/P" $PassiveMode
   ${IfNot} ${Errors}
@@ -461,20 +461,29 @@ Function .onInit
     MessageBox MB_ICONSTOP "HiRoute Desktop requires a native Windows x64 host." /SD IDOK
     Abort
   ${EndIf}
-  ; NSIS removes /D= from $CMDLINE and substitutes InstallDir if it cannot
-  ; use that destination. It also strips invalid characters while expanding
-  ; $INSTDIR. An explicit argument must survive both steps intact.
+  ; NSIS consumes the final /D= argument and may silently sanitize it or
+  ; substitute InstallDir. Validate the original suffix, also for a drive root.
   System::Call 'kernel32::GetCommandLineW() p .r0'
-  System::Call 'kernel32::lstrlenW(p r0) i .r0'
+  System::Call 'kernel32::lstrlenW(p r0) i .r2'
   StrLen $1 $CMDLINE
-  ${If} $0 != $1
-    StrLen $2 $INSTDIR
-    IntOp $1 $1 + $2
-    IntOp $1 $1 + 4 ; " /D="
-    ${If} $0 >= ${NSIS_MAX_STRLEN}
-    ${OrIf} $INSTDIR == "${PLACEHOLDER_INSTALL_DIR}"
-    ${OrIf} $0 != $1
-      MessageBox MB_ICONSTOP "Use an absolute local program directory in the final /D= argument." /SD IDOK
+  ${If} $2 != $1
+    ${If} $2 >= ${NSIS_MAX_STRLEN}
+      Goto hiroute_invalid_directory_argument
+    ${EndIf}
+    System::Call 'kernel32::GetCommandLineW() w .r0'
+    StrCpy $0 $0 "" $1
+    StrCpy $2 $0 4
+    ${If} $2 != " /D="
+      Goto hiroute_invalid_directory_argument
+    ${EndIf}
+    StrCpy $0 $0 "" 4
+    Call HiRouteNormalizeDirectory
+    StrCpy $INSTDIR $0
+    ${If} $0 == ""
+    ${OrIf} $0 == "${PLACEHOLDER_INSTALL_DIR}"
+    ${OrIf} $0 != $INSTDIR
+      hiroute_invalid_directory_argument:
+      MessageBox MB_ICONSTOP "Use an absolute Windows folder path in the final /D= argument." /SD IDOK
       SetErrorLevel 1
       Abort
     ${EndIf}
@@ -517,13 +526,13 @@ Function .onInit
   ; Keep the destination of an interrupted first install even if recovery
   ; consumes its journal before it has written the Installed Apps entry.
   Call HiRouteResolveLocation
-  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-recover "$PLUGINSDIR\hiroute-package.json" "$PLUGINSDIR\hirouted-preflight.exe"'
+  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-recover "$PLUGINSDIR\hiroute-package.json" "$PLUGINSDIR\hirouted-preflight.exe" "$EXEPATH"'
   Pop $0
   Pop $1
   ${If} $0 = 23
     Call HiRouteConfirmUnavailableRestore
     ${If} $HiRouteRestoreConsent = 1
-      nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-recover "$PLUGINSDIR\hiroute-package.json" "$PLUGINSDIR\hirouted-preflight.exe" --allow-unavailable-agent-restore'
+      nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-recover "$PLUGINSDIR\hiroute-package.json" "$PLUGINSDIR\hirouted-preflight.exe" "$EXEPATH" --allow-unavailable-agent-restore'
       Pop $0
       Pop $1
     ${EndIf}
@@ -579,12 +588,14 @@ Function HiRouteResolveLocation
   Pop $1
   ${If} $0 = 0
     ReadINIStr $HiRouteActiveRoot "$PLUGINSDIR\hiroute-location.ini" "Desktop" "Location"
+    ReadINIStr $HiRouteSelection "$PLUGINSDIR\hiroute-location.ini" "Desktop" "Selection"
     ${If} $HiRouteActiveRoot == ""
+    ${OrIf} $HiRouteSelection == ""
       Abort "The current HiRoute installation directory could not be read."
     ${EndIf}
     ${If} $INSTDIR != "${PLACEHOLDER_INSTALL_DIR}"
-    ${AndIf} $INSTDIR != $HiRouteActiveRoot
-      nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-check-directory "$INSTDIR"'
+    ${AndIf} $INSTDIR != $HiRouteSelection
+      nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-check-directory "$INSTDIR" "$EXEPATH"'
       Pop $0
       Pop $1
       ${If} $0 != 0
@@ -596,8 +607,9 @@ Function HiRouteResolveLocation
     StrCpy $INSTDIR $HiRouteActiveRoot
   ${ElseIf} $0 = 3
     ${IfThen} $INSTDIR == "${PLACEHOLDER_INSTALL_DIR}" ${|} StrCpy $INSTDIR "$LOCALAPPDATA\Programs\HiRoute" ${|}
+    StrCpy $HiRouteSelection $INSTDIR
   ${Else}
-    MessageBox MB_ICONSTOP "HiRoute could not verify the current installation directory." /SD IDOK
+    !insertmacro HiRouteDiagnostic "HiRoute could not verify the current installation directory." "read-selected-directory"
     Abort
   ${EndIf}
 FunctionEnd
@@ -718,6 +730,13 @@ Section Install
   !ifmacrodef NSIS_HOOK_PREINSTALL
     !insertmacro NSIS_HOOK_PREINSTALL
   !endif
+  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-preflight.exe" --installer-check-program-directory "$INSTDIR"'
+  Pop $0
+  Pop $1
+  ${If} $0 != 0
+    !insertmacro HiRouteDiagnostic "HiRoute could not verify the program directory." "verify-program-directory"
+    Abort
+  ${EndIf}
 
   !insertmacro HiRoutePhase "Installing HiRoute program files..."
   SetOutPath $INSTDIR
@@ -853,18 +872,6 @@ Function .onInstFailed
       Pop $1
     ${EndIf}
   ${EndIf}
-  ${If} $0 = 0
-  ${AndIf} $HiRoutePrepared = 1
-    ; A completed first-install rollback has no surviving Desktop inventory.
-    ; Remove only the registration written by this attempt, never an older one.
-    IfFileExists "$INSTDIR\shell-package.json" hiroute_rollback_registration_done
-    IfFileExists "$INSTDIR\hiroute-shell.exe" hiroute_rollback_registration_done
-    ReadRegStr $R0 HKCU "${UNINSTKEY}" "InstallLocation"
-    ${If} $R0 == "$\"$INSTDIR$\""
-      DeleteRegKey HKCU "${UNINSTKEY}"
-    ${EndIf}
-  ${EndIf}
-  hiroute_rollback_registration_done:
   ${If} $0 != 0
     !insertmacro HiRouteDiagnostic "HiRoute could not safely restore the previous installation. Keep your existing files and data." "rollback"
   ${EndIf}
@@ -894,11 +901,11 @@ Function un.onInit
     !insertmacro HiRouteDiagnostic "Another HiRoute installation or uninstall is active for this account." "uninstall-admission"
     Abort
   ${EndIf}
-  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-uninstall-helper.exe" --installer-check-uninstall-root "$INSTDIR"'
+  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-uninstall-helper.exe" --installer-check-program-directory "$INSTDIR"'
   Pop $0
   Pop $1
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP "HiRoute uninstall directory is invalid. No files were removed." /SD IDOK
+    !insertmacro HiRouteDiagnostic "HiRoute could not verify the uninstall directory." "check-uninstall-directory"
     Abort
   ${EndIf}
   !insertmacro SetContext
@@ -926,6 +933,13 @@ Section Uninstall
   !ifmacrodef NSIS_HOOK_PREUNINSTALL
     !insertmacro NSIS_HOOK_PREUNINSTALL
   !endif
+  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-uninstall-helper.exe" --installer-check-program-directory "$INSTDIR"'
+  Pop $0
+  Pop $1
+  ${If} $0 != 0
+    !insertmacro HiRouteDiagnostic "HiRoute could not verify the uninstall directory." "check-uninstall-directory"
+    Abort
+  ${EndIf}
 
   ; Delete the app directory and its content from disk
   ; Copy main executable
@@ -985,7 +999,13 @@ Section Uninstall
   {{#each resources_ancestors}}
   RMDir /REBOOTOK "$INSTDIR\\{{this}}"
   {{/each}}
-  RMDir "$INSTDIR"
+  nsExec::ExecToStack '"$PLUGINSDIR\hiroute-uninstall-helper.exe" --installer-finish-directory-removal "$INSTDIR"'
+  Pop $0
+  Pop $1
+  ${If} $0 != 0
+    !insertmacro HiRouteDiagnostic "HiRoute could not finish removing its program directory." "finish-directory-removal"
+    Abort
+  ${EndIf}
 
   ; Remove shortcuts if not updating
   ${If} $UpdateMode <> 1

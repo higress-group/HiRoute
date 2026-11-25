@@ -8,7 +8,7 @@ acceptance must still demonstrate `/S` with the actual NSIS package. Passive
 updates skip the options page and reuse saved preferences. Hooks are included
 after the template declares the variables used by their page functions.
 
-The options page offers a program folder on first install alongside login and tray preferences. The native transaction checks the destination before NSIS writes the payload. It binds recovery to the prepared directory and subsequent maintenance to the current-user Installed Apps registration. The installed program, background service and Agent restoration transactions retain their separate file inventories.
+The options page offers a destination on first install alongside login and tray preferences. The native transaction resolves the destination before NSIS writes the payload. It either admits direct execution there or publishes a verified installer copy there and supplies the protected default program path to NSIS. The private Desktop location record binds the selected directory and package copy. Installed Apps registers the actual program path. The installed program, background service and Agent restoration transactions retain their separate file inventories.
 
 Recovery and uninstall extract the package's matching shell helper into the private NSIS plugin directory.
 Unavailable Agent state has a separate default-No confirmation; silent/passive

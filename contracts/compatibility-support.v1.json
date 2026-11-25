@@ -505,6 +505,7 @@
     "hiroute.windows-artifact-fingerprint/v1",
     "hiroute.windows-background-install/v1",
     "hiroute.windows-background/v1",
+    "hiroute.windows-desktop-location/v1",
     "hiroute.windows-desktop-restore/v1",
     "hiroute.windows-install-journal/v1",
     "hiroute.windows-install-layout/v1",
@@ -520,6 +521,7 @@
     "hiroute.windows-shell-install/v1",
     "hiroute.windows-shell-package/v1",
     "hiroute.windows-shell-transaction/v1",
+    "hiroute.windows-shell-transaction/v2",
     "hiroute.windows-shell-uninstall-outcome/v1",
     "hiroute.windows-shell-update-commit/v1",
     "hiroute.windows-shell-update-failure/v1",
@@ -1167,6 +1169,31 @@
       "legacy_support": []
     },
     {
+      "subject": "windows_desktop_location",
+      "audited_prefixes": [
+        "hiroute.windows-desktop-location",
+        "hiroute.windows-shell-transaction"
+      ],
+      "current_contracts": [
+        "hiroute.windows-desktop-location/v1",
+        "hiroute.windows-shell-transaction/v2"
+      ],
+      "legacy_support": [
+        {
+          "contract": "hiroute.windows-shell-transaction/v1",
+          "mode": "recovery_read_only",
+          "owner": "Windows Desktop installer",
+          "reason": "Recover the released path-based Desktop journal in the directory recorded by the original installer. New transactions also retain the native directory identity and any selected package copy.",
+          "removal_condition": "Retain while a supported published Desktop installer can leave a v1 recovery journal.",
+          "allowed_paths": [
+            "apps/shell/src-tauri/src/runtime/install_transaction.rs",
+            "scripts/windows-desktop-session.py",
+            "scripts/test-windows-dev.py"
+          ]
+        }
+      ]
+    },
+    {
       "subject": "desktop_update",
       "audited_prefixes": [
         "hiroute.windows-desktop-package",
@@ -1627,11 +1654,11 @@
   "field_compatibility_support": [
     {
       "contract": "hiroute.windows-shell-transaction/v1",
-      "field": "custom_root absent in default-location Windows Desktop transactions",
+      "field": "Windows Desktop transactions without a directory identity",
       "mode": "recovery_read_only",
       "owner": "Windows Desktop installer",
-      "reason": "Released installers prepared their shell journals in the fixed per-user Programs directory. Recovery resolves an omitted custom_root to that same location. Default-location installations continue to use this representation.",
-      "removal_condition": "Retain while default-location Desktop journals can be recovered.",
+      "reason": "Released installers before v2 recorded only the Desktop path. Recovery uses that path and resolves omitted custom_root to the per-user Programs directory. Completed v2 installations bind the actual directory identity in a private record.",
+      "removal_condition": "Retain while a released Desktop transaction can require recovery.",
       "allowed_paths": [
         "apps/shell/src-tauri/src/runtime/install_transaction.rs"
       ]

@@ -157,24 +157,14 @@ pub(super) fn relative(
     )
 }
 
-/// Buffered creation is reserved for request-owned temporary payloads. The
-/// caller verifies complete writes before sealing; persistence uses other factories.
+/// Buffered creation is for new payloads whose caller syncs before committing.
 pub(super) fn create_buffered_file_relative(
     parent: &File,
     leaf: &OsStr,
     access: u32,
-    descriptor: &SECURITY_DESCRIPTOR,
+    descriptor: Option<&SECURITY_DESCRIPTOR>,
 ) -> io::Result<File> {
-    relative_with_write_policy(
-        parent,
-        leaf,
-        false,
-        access,
-        0,
-        true,
-        Some(descriptor),
-        false,
-    )
+    relative_with_write_policy(parent, leaf, false, access, 0, true, descriptor, false)
 }
 
 #[allow(clippy::too_many_arguments)]

@@ -16,7 +16,7 @@ Read the documentation below, then use the HiRoute CLI to carry out my goal for 
 Page documentation: https://hiroute.ai/en/docs/install-windows/
 CLI reference: https://hiroute.ai/en/docs/cli/
 
-For a first install on a specific drive, use Show installation options or the installer's final /D= argument. Use the existing directory for repair or upgrade. The folder selection applies to the Desktop program.
+For a first install in a specific folder, use Show installation options or the installer's final /D= argument. Desktop runs in a stable, protected local folder. For shared folders, removable drives or folders containing other program libraries, the installer saves a package copy there and runs Desktop from the protected local Programs directory. Repairs and upgrades use the recorded locations.
 
 Follow the guide for the requested installation or checks. Once installed, help me enable the built-in management Skill under “Agent → HiRoute management → Enable” for further configuration: https://hiroute.ai/en/docs/#management-skill
 
@@ -48,9 +48,11 @@ The installer is not code-signed. Windows may show an unknown publisher or a Sma
 
 ## Install and start
 
-1. Open the installer in your ordinary account. To put the Desktop program on another drive, expand **Show installation options** and select **Browse...** or enter a new folder such as `D:\Apps\HiRoute`. Choose a local fixed drive and a folder that only your account or an administrator can replace. The default is `%LOCALAPPDATA%\Programs\HiRoute`. Service data stays in `%LOCALAPPDATA%\HiRoute\cli`.
+1. Open the installer in your ordinary account. Expand **Show installation options** and enter a folder such as `A:\software\HiRoute`, or use **Browse...** to choose its parent. You can keep unrelated files in the folder. If a program filename conflicts with an existing file, choose a separate subfolder. The default program folder is `%LOCALAPPDATA%\Programs\HiRoute`. Service data is in `%LOCALAPPDATA%\HiRoute\cli`.
 2. Login startup and the tray are enabled by default. You can deselect either option. With the tray disabled, closing the window exits the shell; the background service continues.
 3. Open HiRoute. It checks the current-user Task, starts the service, waits for the Gateway and opens its local console. There is no password or unlock step. Protected actions retain their page confirmation.
+
+For a removable drive, network share or folder that others can modify, setup shows the selected package location and the protected local program location with their approximate sizes. The selected folder receives a `.hiroute-package` copy of the installer. Shortcuts and login startup use the local program. Reconnect the original drive or share before updating, repairing or uninstalling. An upgrade keeps an existing program in its registered folder, including an external SSD accepted by an earlier installer. To switch that installation to the protected local Programs folder, uninstall with data retention and reinstall. Move other programs' libraries or manifests out of the registered program folder before retrying a repair or upgrade.
 
 An existing current-user Task installation is upgraded. SCM (Windows service) installation is not offered. An existing SCM-managed installation is refused unchanged before product writes. ARM64 and x86 hosts are unsupported by this Desktop installer.
 

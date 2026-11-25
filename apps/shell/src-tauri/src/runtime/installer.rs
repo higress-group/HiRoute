@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     io::{Read, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     time::Duration,
 };
 
@@ -66,7 +66,7 @@ fn options() -> Result<i32, &'static str> {
     Ok(i32::from(login) | (i32::from(preferences.tray_enabled) << 1))
 }
 pub(super) fn program_root() -> Result<PathBuf, &'static str> {
-    let expected = shell_location::installed_root().map_err(|_| "INSTALL_DIRECTORY_INVALID")?;
+    let expected = super::install_transaction::root().map_err(|_| "INSTALL_DIRECTORY_INVALID")?;
     let exe = std::env::current_exe().map_err(|_| "INSTALL_DIRECTORY_INVALID")?;
     let actual = exe.parent().ok_or("INSTALL_DIRECTORY_INVALID")?;
     if !shell_location::same_existing_path(actual, &expected, true)
@@ -93,16 +93,79 @@ fn preflight() -> Result<(), Failure> {
 // ReadINIStr handles Unicode without passing a Windows path through the
 // console code page. The extracted helper and this file share the NSIS temp dir.
 fn write_active_location() -> std::io::Result<i32> {
-    let Some(root) = super::install_transaction::active_root()? else {
+    let Some((runtime, selection)) = super::install_transaction::active_paths()? else {
         return Ok(3);
     };
-    let ini = std::env::current_exe()?.with_file_name("hiroute-location.ini");
-    let content = format!("\u{feff}[Desktop]\r\nLocation={}\r\n", root.display());
-    let bytes: Vec<_> = content.encode_utf16().flat_map(u16::to_le_bytes).collect();
-    std::fs::File::create_new(ini)?.write_all(&bytes)?;
+    write_installer_ini("hiroute-location.ini", &runtime, &selection, false, 0)?;
     Ok(0)
 }
+fn write_installer_ini(
+    name: &str,
+    runtime: &Path,
+    selection: &Path,
+    local_copy: bool,
+    package_bytes: u64,
+) -> std::io::Result<()> {
+    let ini = std::env::current_exe()?.with_file_name(name);
+    let content = format!(
+        "\u{feff}[Desktop]\r\nLocation={}\r\nSelection={}\r\nLocalCopy={}\r\nPackageMiB={}\r\n",
+        runtime.display(),
+        selection.display(),
+        u8::from(local_copy),
+        package_bytes.div_ceil(1024 * 1024)
+    );
+    let bytes: Vec<_> = content.encode_utf16().flat_map(u16::to_le_bytes).collect();
+    std::fs::write(ini, bytes)
+}
+fn destination_guidance(error: &std::io::Error) -> Option<String> {
+    let message = error.to_string();
+    let guidance = match safe_code(&message)? {
+        "INSTALL_DIRECTORY_INVALID" => "Enter an absolute Windows folder path.",
+        "INSTALL_DESTINATION_ALREADY_REGISTERED" => {
+            "Use the existing HiRoute directory for repair or upgrade."
+        }
+        "INSTALL_DESTINATION_OVERLAPS_DATA" => {
+            "Choose a folder separate from HiRoute's service data and recovery files."
+        }
+        "INSTALL_DESTINATION_PROGRAM_FILES" => {
+            "The local HiRoute program folder must be safe to run Desktop. If it contains files from another program, move those files elsewhere and retry."
+        }
+        "INSTALL_DESTINATION_OVERLAPS_RUNTIME" => {
+            "Choose a package folder separate from the local HiRoute program directory."
+        }
+        "INSTALL_DESTINATION_CHANGED" => {
+            "The drive or directory changed. Reconnect the original location or choose the folder again."
+        }
+        "INSTALL_DESTINATION_UNAVAILABLE" => {
+            "Windows could not open the folder. Check that the drive or share is connected and accessible."
+        }
+        "INSTALL_DESTINATION_IDENTITY_UNAVAILABLE" => {
+            "Windows could not identify the destination reliably. Choose a different volume or share."
+        }
+        "INSTALL_DESTINATION_NOT_WRITABLE" => {
+            "Windows denied permission to create or write files in the installation location."
+        }
+        "INSTALL_DESTINATION_SPACE" => "Free space in the selected location and retry.",
+        "INSTALL_DESTINATION_WRITE_FAILED" => {
+            "Windows could not create or write the program or package files."
+        }
+        "INSTALL_DESTINATION_COPY_MISMATCH" => {
+            "The saved package could not be verified. Check the selected drive or share and retry."
+        }
+        "INSTALL_DESTINATION_OCCUPIED" => {
+            let name = message.split_once(": ")?.1;
+            return Some(format!(
+                "The program folder already contains {name}. Choose another folder or a new subfolder."
+            ));
+        }
+        _ => return None,
+    };
+    Some(guidance.into())
+}
 fn prepare_failure(error: &std::io::Error) -> String {
+    if let Some(guidance) = destination_guidance(error) {
+        return guidance;
+    }
     if error.to_string() == "UPGRADE_REGISTRATION_UNAVAILABLE" {
         return "UPGRADE_REGISTRATION_UNAVAILABLE: The installed Windows Apps registration could not be retained or no longer matches the retained copy. No installed program was replaced. Keep the installed version, all data and recovery material. Repair the known installation with its matching complete installer under the same account; if ownership or the correct registration is unclear, preserve both copies and contact support. / 无法保留已安装程序的 Windows 应用注册，或其内容与保留副本不符。本次尚未替换已安装程序。请保留当前版本、全部数据与恢复材料；使用配套完整安装器在同一账户修复已知安装，无法确认归属或正确注册时请保留两份材料并联系支持。".into();
     }
@@ -120,7 +183,7 @@ fn prepare_failure(error: &std::io::Error) -> String {
         .and_then(|error| error.downcast_ref::<windows::ReplacementSpaceFailure>())
     {
         return format!(
-            "Free space on the program or recovery volume and retry. Required bytes: {}. Available bytes: {}.",
+            "Free space on the affected installation or recovery volume and retry. Required bytes: {}. Available bytes: {}.",
             failure.required_bytes, failure.available_bytes
         );
     }
@@ -300,6 +363,8 @@ fn uninstall(args: &[String]) -> Result<Value, Failure> {
         read_preferences(&root).map_err(|code| Failure::new("read-uninstall-preferences", code))?;
     let package = root.join("standalone");
     Package::read(&package).map_err(|error| Failure::io("verify-uninstall-package", error))?;
+    let stored_package = super::install_transaction::uninstall_package()
+        .map_err(|error| Failure::io("open-selected-package-directory", error))?;
     let cli = package.join("hiroute.exe");
     let result = request(
         "uninstall-standalone",
@@ -307,6 +372,10 @@ fn uninstall(args: &[String]) -> Result<Value, Failure> {
         "__windows-uninstall",
         json!({"schema":"hiroute.windows-uninstall-request/v1", "remove_data":args.iter().any(|arg| arg == "--remove-data"),"allow_legacy_stop":args.iter().any(|arg| arg == "--allow-legacy-stop"),"allow_unavailable_agent_restore":args.iter().any(|arg| arg == "--allow-unavailable-agent-restore")}),
     )?;
+    if let Some(file) = stored_package {
+        security::delete_by_handle(&file)
+            .map_err(|error| Failure::io("remove-selected-package", error))?;
+    }
     shell_login::remove().map_err(|error| Failure::io("remove-login-start", error))?;
     if previous.is_some_and(|v| v.cli_path_added) {
         user_path::configure(false)
@@ -374,12 +443,57 @@ pub fn run_if_requested() -> Option<i32> {
         });
     }
     if verb == "--installer-location" && args.len() == 1 {
-        return Some(write_active_location().unwrap_or(1));
+        return Some(match write_active_location() {
+            Ok(exit) => exit,
+            Err(error) => {
+                let advice = destination_guidance(&error);
+                write_diagnostic(
+                    &Failure::io("read-selected-directory", error),
+                    advice.as_deref(),
+                );
+                1
+            }
+        });
     }
-    if verb == "--installer-check-directory" && args.len() == 2 {
-        return Some(i32::from(
-            super::install_transaction::check_destination(std::path::Path::new(&args[1])).is_err(),
-        ));
+    if verb == "--installer-check-directory" && args.len() == 3 {
+        let result = super::install_transaction::check_destination(Path::new(&args[1])).and_then(
+            |(runtime, selection, local_copy)| {
+                let bytes = if local_copy {
+                    std::fs::metadata(&args[2])?.len()
+                } else {
+                    0
+                };
+                write_installer_ini(
+                    "hiroute-choice.ini",
+                    &runtime,
+                    &selection,
+                    local_copy,
+                    bytes,
+                )
+            },
+        );
+        return Some(match result {
+            Ok(()) => 0,
+            Err(error) => {
+                let advice = destination_guidance(&error);
+                write_diagnostic(
+                    &Failure::io("check-selected-directory", error),
+                    advice.as_deref(),
+                );
+                1
+            }
+        });
+    }
+    if verb == "--installer-finish-directory-removal" && args.len() == 2 {
+        return Some(
+            match super::install_transaction::finish_uninstall(Path::new(&args[1])) {
+                Ok(()) => 0,
+                Err(error) => {
+                    write_diagnostic(&Failure::io("finish-directory-removal", error), None);
+                    1
+                }
+            },
+        );
     }
     if verb == "--installer-publish-uninstaller" && args.len() == 1 {
         let result = std::env::current_exe().and_then(|helper| {
@@ -393,7 +507,7 @@ pub fn run_if_requested() -> Option<i32> {
             }
         });
     }
-    if verb == "--installer-check-uninstall-root" && args.len() == 2 {
+    if verb == "--installer-check-program-directory" && args.len() == 2 {
         return Some(match super::install_transaction::active_root() {
             Ok(Some(root))
                 if shell_location::same_existing_path(
@@ -405,16 +519,36 @@ pub fn run_if_requested() -> Option<i32> {
             {
                 0
             }
-            _ => 1,
+            Err(error) => {
+                let advice = destination_guidance(&error);
+                write_diagnostic(
+                    &Failure::io("verify-program-directory", error),
+                    advice.as_deref(),
+                );
+                1
+            }
+            _ => {
+                write_diagnostic(
+                    &Failure::new("verify-program-directory", "INSTALL_DESTINATION_CHANGED"),
+                    Some("The prepared program directory is unavailable or changed."),
+                );
+                1
+            }
         });
     }
     if verb == "--installer-prepare" {
-        let result = if args.len() == 4 {
+        let result = if args.len() == 6 {
             super::install_transaction::prepare(
-                std::path::Path::new(&args[1]),
-                std::path::Path::new(&args[2]),
-                std::path::Path::new(&args[3]),
+                Path::new(&args[1]),
+                Path::new(&args[2]),
+                Path::new(&args[3]),
+                Path::new(&args[4]),
+                &args[5],
             )
+            .and_then(|(history, runtime)| {
+                write_installer_ini("hiroute-prepared.ini", &runtime, &runtime, false, 0)?;
+                Ok(history)
+            })
         } else {
             Err(std::io::ErrorKind::InvalidInput.into())
         };
@@ -440,7 +574,7 @@ pub fn run_if_requested() -> Option<i32> {
             .last()
             .is_some_and(|arg| arg == "--allow-unavailable-agent-restore");
         let candidate =
-            verb == "--installer-recover" && (args.len() == 3 || args.len() == 4 && allow);
+            verb == "--installer-recover" && (args.len() == 4 || args.len() == 5 && allow);
         if !candidate && (args.len() > 2 || (args.len() == 2 && !allow)) {
             return Some(1);
         }
@@ -448,6 +582,7 @@ pub fn run_if_requested() -> Option<i32> {
             super::install_transaction::recover_for_candidate(
                 std::path::Path::new(&args[1]),
                 std::path::Path::new(&args[2]),
+                std::path::Path::new(&args[3]),
                 allow,
             )
         } else {

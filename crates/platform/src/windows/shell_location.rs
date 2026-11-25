@@ -2,12 +2,19 @@
 //! starting the installed shell and removes it after removing the package.
 use super::{background, security};
 use std::{
+    ffi::OsStr,
+    fs::{self, File},
     io,
+    os::windows::ffi::OsStrExt,
+    os::windows::io::AsRawHandle,
     path::{Component, Path, PathBuf, Prefix},
 };
 use windows_sys::Win32::{
-    Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS},
-    System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_SZ, RegGetValueW},
+    Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS, GENERIC_READ, GENERIC_WRITE},
+    Storage::FileSystem::{
+        DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, GetVolumeInformationByHandleW,
+    },
+    System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_SZ, RegDeleteTreeW, RegGetValueW},
 };
 
 pub fn default_root() -> io::Result<PathBuf> {
@@ -20,64 +27,126 @@ pub fn invalid() -> io::Error {
     io::Error::new(io::ErrorKind::InvalidInput, "INSTALL_DIRECTORY_INVALID")
 }
 
-fn local_folder(path: &Path) -> io::Result<()> {
+fn folder(path: &Path) -> io::Result<()> {
     let text = path.to_str().ok_or_else(invalid)?;
     let mut components = path.components();
     let Some(Component::Prefix(prefix)) = components.next() else {
         return Err(invalid());
     };
-    if !matches!(prefix.kind(), Prefix::Disk(_))
-        || components.next() != Some(Component::RootDir)
+    if !matches!(prefix.kind(), Prefix::Disk(_) | Prefix::UNC(_, _))
+        || !path.is_absolute()
         || path.file_name().is_none()
-        || text[2..].split(['/', '\\']).skip(1).any(|part| {
-            let stem = part
-                .split('.')
-                .next()
-                .unwrap_or("")
-                .trim_end_matches(' ')
-                .to_ascii_uppercase();
-            part.is_empty()
-                || part.ends_with(['.', ' '])
-                || part.contains([':', '"', '*', '?', '<', '>', '|'])
-                || part.chars().any(char::is_control)
-                || matches!(
-                    stem.as_str(),
-                    "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
-                )
-                || stem
-                    .strip_prefix("COM")
-                    .or_else(|| stem.strip_prefix("LPT"))
-                    .is_some_and(|n| {
-                        matches!(n, "¹" | "²" | "³")
-                            || n.len() == 1 && n.as_bytes()[0].is_ascii_digit()
-                    })
-        })
+        || !matches!(components.next(), Some(Component::RootDir))
+        || text[prefix.as_os_str().len()..]
+            .split(['/', '\\'])
+            .skip(1)
+            .any(|part| {
+                let stem = part
+                    .split('.')
+                    .next()
+                    .unwrap_or("")
+                    .trim_end_matches(' ')
+                    .to_ascii_uppercase();
+                part.is_empty()
+                    || part.ends_with(['.', ' '])
+                    || part.contains([':', '"', '*', '?', '<', '>', '|'])
+                    || part.chars().any(char::is_control)
+                    || matches!(
+                        stem.as_str(),
+                        "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$"
+                    )
+                    || stem
+                        .strip_prefix("COM")
+                        .or_else(|| stem.strip_prefix("LPT"))
+                        .is_some_and(|n| {
+                            matches!(n, "¹" | "²" | "³")
+                                || n.len() == 1 && n.as_bytes()[0].is_ascii_digit()
+                        })
+            })
     {
         return Err(invalid());
     }
     Ok(())
 }
 
-pub fn validate_custom(path: &Path) -> io::Result<()> {
-    local_folder(path)?;
-    let drive = path.ancestors().last().ok_or_else(invalid)?;
-    use std::os::windows::ffi::OsStrExt;
-    let wide: Vec<_> = drive.as_os_str().encode_wide().chain(Some(0)).collect();
-    // GetDriveTypeW returns DRIVE_FIXED (3) for a local fixed disk.
-    if unsafe { windows_sys::Win32::Storage::FileSystem::GetDriveTypeW(wide.as_ptr()) } != 3 {
-        return Err(invalid());
+/// Normalize ordinary drive-letter and UNC paths for the directory picker.
+/// A selected volume/share root is a parent for the product directory.
+pub fn normalize_destination(path: &Path) -> io::Result<PathBuf> {
+    let text = path.to_str().ok_or_else(invalid)?.replace('/', "\\");
+    let mut path = PathBuf::from(&text);
+    if path.is_absolute() && path.file_name().is_none() && path.parent().is_none() {
+        path.push("HiRoute");
+    } else {
+        path = PathBuf::from(text.trim_end_matches('\\'));
     }
+    folder(&path)?;
+    Ok(path)
+}
+
+fn canonical(path: &Path) -> io::Result<PathBuf> {
+    let resolved = fs::canonicalize(path)?;
+    let value = resolved.to_str().ok_or_else(invalid)?;
+    if let Some(rest) = value.strip_prefix(r"\\?\UNC\") {
+        return Ok(PathBuf::from(format!(r"\\{rest}")));
+    }
+    Ok(PathBuf::from(value.strip_prefix(r"\\?\").unwrap_or(value)))
+}
+
+/// Resolve junctions and drive aliases before selecting a publication path.
+/// Apply the same reserved-directory rule to the actual target.
+pub fn resolve_destination(path: &Path) -> io::Result<PathBuf> {
+    folder(path)?;
+    for existing in path.ancestors() {
+        match canonical(existing) {
+            Ok(mut resolved) => {
+                resolved.push(path.strip_prefix(existing).map_err(|_| invalid())?);
+                let resolved = PathBuf::from(
+                    resolved
+                        .to_str()
+                        .ok_or_else(invalid)?
+                        .trim_end_matches('\\'),
+                );
+                folder(&resolved)?;
+                validate_reserved(&resolved)?;
+                return Ok(resolved);
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                // An existing dangling junction is not a directory we may create.
+                match fs::symlink_metadata(existing) {
+                    Err(missing) if missing.kind() == io::ErrorKind::NotFound => {}
+                    Err(other) => return Err(other),
+                    Ok(_) => return Err(error),
+                }
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Err(io::ErrorKind::NotFound.into())
+}
+
+pub fn same_name(left: &Path, right: &Path) -> bool {
+    left.to_string_lossy()
+        .replace('/', "\\")
+        .eq_ignore_ascii_case(&right.to_string_lossy().replace('/', "\\"))
+}
+
+pub fn validate_reserved(path: &Path) -> io::Result<()> {
     let mut reserved_directories = Vec::new();
     for reserved in [
         background::local_app_data()?.join("HiRoute"),
         background::profile()?.join(".local"),
     ] {
-        if path.ancestors().any(|p| {
-            p.to_string_lossy()
-                .replace('/', "\\")
-                .eq_ignore_ascii_case(&reserved.to_string_lossy().replace('/', "\\"))
-        }) {
-            return Err(invalid());
+        let reserved = canonical(&reserved).or_else(|error| {
+            if error.kind() == io::ErrorKind::NotFound {
+                Ok(reserved)
+            } else {
+                Err(error)
+            }
+        })?;
+        if path.ancestors().any(|p| same_name(p, &reserved))
+            || reserved.ancestors().any(|p| same_name(p, path))
+        {
+            return Err(reserved_destination());
         }
         match security::open_identity(&reserved, true) {
             Ok(file) => reserved_directories.push(security::file_identity(&file)?),
@@ -85,15 +154,12 @@ pub fn validate_custom(path: &Path) -> io::Result<()> {
             Err(error) => return Err(error),
         }
     }
-    let user = security::current_user_sid()?;
-    // Include DOS short-name aliases and check every existing parent before use.
-    for ancestor in path.ancestors() {
-        match security::open_identity(ancestor, true) {
+    for part in path.ancestors() {
+        match security::open_identity(part, true) {
             Ok(file) => {
                 if reserved_directories.contains(&security::file_identity(&file)?) {
-                    return Err(invalid());
+                    return Err(reserved_destination());
                 }
-                security::verify_program_parent(&file, ancestor == drive, &user)?;
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => return Err(error),
@@ -102,12 +168,210 @@ pub fn validate_custom(path: &Path) -> io::Result<()> {
     Ok(())
 }
 
-pub fn registered_root() -> io::Result<Option<PathBuf>> {
-    let key: Vec<_> = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\HiRoute"
-        .encode_utf16()
-        .chain(Some(0))
-        .collect();
-    let name: Vec<_> = "InstallLocation".encode_utf16().chain(Some(0)).collect();
+fn reserved_destination() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "INSTALL_DESTINATION_OVERLAPS_DATA",
+    )
+}
+
+/// A package destination is borrowed. Create only missing directories and
+/// leave their native permissions alone, including on filesystems without ACLs.
+pub fn ensure_package_directory(path: &Path) -> io::Result<File> {
+    match security::open_identity(path, true) {
+        Ok(file) => return Ok(file),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    let parent = ensure_package_directory(path.parent().ok_or_else(invalid)?)?;
+    let leaf = path.file_name().ok_or_else(invalid)?;
+    match super::path::relative(
+        &parent,
+        leaf,
+        true,
+        GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        true,
+        None,
+    ) {
+        Ok(file) => Ok(file),
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+            security::open_identity_at(&parent, leaf, true)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+pub fn create_package_at(directory: &File, name: &OsStr) -> io::Result<File> {
+    // Create-new, never replace an object at a borrowed destination.
+    super::path::create_buffered_file_relative(
+        directory,
+        name,
+        GENERIC_READ | GENERIC_WRITE | DELETE,
+        None,
+    )
+}
+
+pub fn open_package_for_removal(directory: &File, name: &OsStr) -> io::Result<File> {
+    // Deny write and delete sharing while checking the held file.
+    super::path::relative(
+        directory,
+        name,
+        false,
+        GENERIC_READ | DELETE,
+        FILE_SHARE_READ,
+        false,
+        None,
+    )
+}
+
+/// Fixed-media USB disks can keep their drive type while their letter is reused.
+pub fn stable_program_volume(path: &Path) -> bool {
+    use std::os::windows::fs::OpenOptionsExt;
+    use windows_sys::Win32::{
+        Storage::FileSystem::{
+            BusType1394, BusTypeFileBackedVirtual, BusTypeMmc, BusTypeSd, BusTypeUnknown,
+            BusTypeUsb, FILE_SHARE_DELETE,
+        },
+        System::{
+            IO::DeviceIoControl,
+            Ioctl::{
+                IOCTL_STORAGE_GET_HOTPLUG_INFO, IOCTL_STORAGE_QUERY_PROPERTY,
+                PropertyStandardQuery, STORAGE_DEVICE_DESCRIPTOR, STORAGE_HOTPLUG_INFO,
+                STORAGE_PROPERTY_QUERY, StorageDeviceProperty,
+            },
+            SystemInformation::GetSystemWindowsDirectoryW,
+        },
+    };
+    let Some(Component::Prefix(prefix)) = path.components().next() else {
+        return false;
+    };
+    let Prefix::Disk(letter) = prefix.kind() else {
+        return false;
+    };
+    // The running OS volume is also the normal protected Programs destination.
+    let mut windows = [0u16; 260];
+    let length = unsafe { GetSystemWindowsDirectoryW(windows.as_mut_ptr(), windows.len() as u32) };
+    if (3..windows.len() as u32).contains(&length)
+        && windows[1] == u16::from(b':')
+        && windows[0] == u16::from(letter.to_ascii_uppercase())
+    {
+        return true;
+    }
+    let Ok(volume) = fs::OpenOptions::new()
+        .access_mode(0)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .open(format!(r"\\.\{}:", char::from(letter)))
+    else {
+        return false;
+    };
+    let handle = volume.as_raw_handle().cast();
+    let mut hotplug = STORAGE_HOTPLUG_INFO::default();
+    let mut returned = 0;
+    // These query-only controls use a zero-access volume handle as a standard user.
+    let ok = unsafe {
+        DeviceIoControl(
+            handle,
+            IOCTL_STORAGE_GET_HOTPLUG_INFO,
+            std::ptr::null(),
+            0,
+            (&mut hotplug as *mut STORAGE_HOTPLUG_INFO).cast(),
+            size_of_val(&hotplug) as u32,
+            &mut returned,
+            std::ptr::null_mut(),
+        )
+    };
+    if ok == 0
+        || returned < size_of_val(&hotplug) as u32
+        || hotplug.DeviceHotplug
+        || hotplug.MediaHotplug
+        || hotplug.MediaRemovable
+    {
+        return false;
+    }
+    let query = STORAGE_PROPERTY_QUERY {
+        PropertyId: StorageDeviceProperty,
+        QueryType: PropertyStandardQuery,
+        ..Default::default()
+    };
+    let mut descriptor = STORAGE_DEVICE_DESCRIPTOR::default();
+    let ok = unsafe {
+        DeviceIoControl(
+            handle,
+            IOCTL_STORAGE_QUERY_PROPERTY,
+            (&query as *const STORAGE_PROPERTY_QUERY).cast(),
+            size_of_val(&query) as u32,
+            (&mut descriptor as *mut STORAGE_DEVICE_DESCRIPTOR).cast(),
+            size_of_val(&descriptor) as u32,
+            &mut returned,
+            std::ptr::null_mut(),
+        )
+    };
+    ok != 0
+        && returned >= std::mem::offset_of!(STORAGE_DEVICE_DESCRIPTOR, RawPropertiesLength) as u32
+        && !descriptor.RemovableMedia
+        && ![
+            BusTypeUsb,
+            BusType1394,
+            BusTypeSd,
+            BusTypeMmc,
+            BusTypeFileBackedVirtual,
+            BusTypeUnknown,
+        ]
+        .contains(&descriptor.BusType)
+}
+
+pub fn validate_custom(path: &Path) -> io::Result<()> {
+    folder(path)?;
+    let drive = path.ancestors().last().ok_or_else(invalid)?;
+    let wide: Vec<_> = drive.as_os_str().encode_wide().chain(Some(0)).collect();
+    // Drive type selects where code runs. Any usable volume may store a copy
+    // of the installer, but only stable local volumes are executed in place.
+    if unsafe { windows_sys::Win32::Storage::FileSystem::GetDriveTypeW(wide.as_ptr()) } != 3 {
+        return Err(io::ErrorKind::PermissionDenied.into());
+    }
+    validate_reserved(path)?;
+    let volume = security::open_identity(drive, true)?;
+    let mut flags = 0;
+    // SAFETY: the volume directory handle and output flags remain live.
+    let status = unsafe {
+        GetVolumeInformationByHandleW(
+            volume.as_raw_handle().cast(),
+            std::ptr::null_mut(),
+            0,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &mut flags,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if status == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    const FILE_PERSISTENT_ACLS: u32 = 0x0000_0008;
+    if flags & FILE_PERSISTENT_ACLS == 0 {
+        return Err(io::ErrorKind::PermissionDenied.into());
+    }
+    let user = security::current_user_sid()?;
+    // Include DOS short-name aliases and check every existing parent before use.
+    for ancestor in path.ancestors() {
+        match security::open_identity(ancestor, true) {
+            Ok(file) => {
+                security::verify_program_parent(&file, ancestor == drive, ancestor == path, &user)?;
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
+}
+
+const UNINSTALL_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\HiRoute";
+
+fn registration_value(name: &str) -> io::Result<Option<String>> {
+    let key: Vec<_> = UNINSTALL_KEY.encode_utf16().chain(Some(0)).collect();
+    let name: Vec<_> = name.encode_utf16().chain(Some(0)).collect();
     let mut buffer = [0u16; 1024];
     let mut size = size_of_val(&buffer) as u32;
     // The x64 shell reads the same HKCU view used by the NSIS SetContext macro.
@@ -131,6 +395,13 @@ pub fn registered_root() -> io::Result<Option<PathBuf>> {
     let units = buffer.get(..size as usize / 2).ok_or_else(invalid)?;
     let value =
         String::from_utf16(units.strip_suffix(&[0]).ok_or_else(invalid)?).map_err(|_| invalid())?;
+    Ok(Some(value))
+}
+
+pub fn registered_root() -> io::Result<Option<PathBuf>> {
+    let Some(value) = registration_value("InstallLocation")? else {
+        return Ok(None);
+    };
     let path = PathBuf::from(
         value
             .strip_prefix('"')
@@ -143,15 +414,27 @@ pub fn registered_root() -> io::Result<Option<PathBuf>> {
     Ok(Some(path))
 }
 
+/// NSIS publishes DisplayVersion only after the shell has committed. A
+/// first-install rollback can also run in a new process after NSIS has exited.
+pub fn remove_unpublished_registration(root: &Path) -> io::Result<()> {
+    if registration_value("DisplayVersion")?.is_some()
+        || !registered_root()?.is_some_and(|registered| same_name(&registered, root))
+    {
+        return Ok(());
+    }
+    let key: Vec<_> = UNINSTALL_KEY.encode_utf16().chain(Some(0)).collect();
+    // SAFETY: the fixed current-user product subkey is terminated and live.
+    let status = unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, key.as_ptr()) };
+    match status {
+        ERROR_SUCCESS | ERROR_FILE_NOT_FOUND => Ok(()),
+        _ => Err(io::Error::from_raw_os_error(status as i32)),
+    }
+}
+
 /// A registration or prepared journal can outlive its directory. Repair may
 /// recreate the missing folder after checking the remaining path and owner.
 pub fn validate_existing_or_missing_custom(path: &Path) -> io::Result<()> {
-    validate_custom(path)?;
-    match security::open_owner_only(path, true) {
-        Ok(_) => Ok(()),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error),
-    }
+    validate_custom(path)
 }
 
 pub fn installed_root() -> io::Result<PathBuf> {
@@ -161,10 +444,69 @@ pub fn installed_root() -> io::Result<PathBuf> {
     }
 }
 
+/// Full object number on file systems such as ReFS. Older Windows volumes
+/// can provide a nonzero 64-bit number. A volume serial alone identifies no entry.
+pub fn entry_identity(file: &File) -> io::Result<(u32, u128)> {
+    use windows_sys::Win32::{
+        Foundation::{ERROR_INVALID_FUNCTION, ERROR_INVALID_PARAMETER, ERROR_NOT_SUPPORTED},
+        Storage::FileSystem::{FILE_ID_INFO, FileIdInfo, GetFileInformationByHandleEx},
+    };
+    let (volume, legacy) = security::file_identity(file)?;
+    let handle = file.as_raw_handle().cast();
+    let mut info = FILE_ID_INFO::default();
+    let unavailable = || io::Error::other("INSTALL_DESTINATION_IDENTITY_UNAVAILABLE");
+    // SAFETY: the handle and the matching fixed-size output remain live.
+    let ok = unsafe {
+        GetFileInformationByHandleEx(
+            handle,
+            FileIdInfo,
+            (&raw mut info).cast(),
+            size_of_val(&info) as u32,
+        )
+    };
+    let object = if ok != 0 {
+        u128::from_le_bytes(info.FileId.Identifier)
+    } else {
+        let error = io::Error::last_os_error();
+        if !matches!(
+            error.raw_os_error().map(|v| v as u32),
+            Some(ERROR_INVALID_FUNCTION | ERROR_INVALID_PARAMETER | ERROR_NOT_SUPPORTED)
+        ) {
+            return Err(error);
+        }
+        // A truncated ReFS file number cannot distinguish same-volume entries.
+        let mut fs_name = [0u16; 32];
+        let ok = unsafe {
+            GetVolumeInformationByHandleW(
+                handle,
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                fs_name.as_mut_ptr(),
+                fs_name.len() as u32,
+            )
+        };
+        if ok == 0
+            || String::from_utf16_lossy(&fs_name)
+                .trim_end_matches(char::from(0))
+                .eq_ignore_ascii_case("ReFS")
+        {
+            return Err(unavailable());
+        }
+        u128::from(legacy)
+    };
+    if object == 0 {
+        return Err(unavailable());
+    }
+    Ok((volume, object))
+}
+
 pub fn same_existing_path(left: &Path, right: &Path, directory: bool) -> io::Result<bool> {
     let left = security::open_identity(left, directory)?;
     let right = security::open_identity(right, directory)?;
-    Ok(security::file_identity(&left)? == security::file_identity(&right)?)
+    Ok(entry_identity(&left)? == entry_identity(&right)?)
 }
 
 #[cfg(test)]
@@ -172,10 +514,18 @@ mod tests {
     use super::*;
     #[test]
     fn custom_location_is_an_unambiguous_local_folder() {
-        assert!(local_folder(Path::new(r"D:\My Apps\路由")).is_ok());
+        assert!(folder(Path::new(r"D:\My Apps\路由")).is_ok());
+        assert!(folder(Path::new(r"\\server\share\HiRoute")).is_ok());
+        assert_eq!(
+            normalize_destination(Path::new(r"A:\")).unwrap(),
+            Path::new(r"A:\HiRoute")
+        );
+        assert_eq!(
+            normalize_destination(Path::new(r"\\server\share\")).unwrap(),
+            Path::new(r"\\server\share\HiRoute")
+        );
         for path in [
             r"D:\",
-            r"\\server\share\HiRoute",
             r"\\?\D:\HiRoute",
             r"D:HiRoute",
             r"D:\apps\..\HiRoute",
@@ -183,7 +533,7 @@ mod tests {
             r"D:\HiRoute:stream",
             r"D:\NUL.txt",
         ] {
-            assert!(local_folder(Path::new(path)).is_err(), "{path}");
+            assert!(folder(Path::new(path)).is_err(), "{path}");
         }
     }
 
@@ -193,9 +543,9 @@ mod tests {
         let parent = tempfile::tempdir_in(&local).unwrap();
         let programs = parent.path().join("My HiRoute");
         validate_existing_or_missing_custom(&programs).unwrap();
-        // Existing folders are admitted only after verifying the program ACL.
+        // A normal inherited ACL in the current user's profile is admissible.
         std::fs::create_dir(&programs).unwrap();
-        assert!(validate_existing_or_missing_custom(&programs).is_err());
+        validate_existing_or_missing_custom(&programs).unwrap();
         std::fs::remove_dir(&programs).unwrap();
         security::create_owner_only_directory(&programs).unwrap();
         validate_existing_or_missing_custom(&programs).unwrap();

@@ -6,14 +6,23 @@ own the user steps, SHA-256 verification and SmartScreen prompts. The NSIS packa
 supports native Windows x64 and installs for the current ordinary user without
 Python, WSL or administrator privileges.
 
-The shell defaults to `%LOCALAPPDATA%\Programs\HiRoute`. Fresh interactive
-installations can choose a new Desktop folder on a local fixed drive. Silent
-installations accept a final unquoted argument such as `/D=D:\My Apps\HiRoute`.
-Repair and update use the current user's Installed Apps location. An interrupted
-install uses its prepared journal, including before Installed Apps registration.
-Standalone service state remains under `%LOCALAPPDATA%\HiRoute\cli`; neither root
-can contain the other. The native adapter checks KnownFolders, architecture,
-existing manager ownership and reparse-free paths before product writes. An
+The shell defaults to `%LOCALAPPDATA%\Programs\HiRoute`. Fresh installations
+can use a new or existing folder, including on removable volumes and network
+shares that supply a usable native directory identity. Silent installations
+accept a final unquoted argument such as `/D=D:\My Apps\HiRoute`.
+A stable local directory with safe Windows permissions and no foreign libraries, manifests or private assembly directories can run Desktop in place.
+Other destinations receive a verified installer copy, while the program, login
+entry and uninstaller use the protected per-user Programs directory.
+Maintenance keeps the registered runtime, including fixed-type external SSDs admitted by earlier releases. It checks the runtime for foreign loader inputs before preparing the replacement. A failed first install removes its unpublished Installed Apps entry during rollback. Repair binds an exclusively recreated directory to its original selection so another repair can retry.
+Moving the verified package copy after publication does not block the local commit. Repair publishes a fresh copy. Repair and update reuse both recorded locations. An interrupted install uses its
+prepared journal, including before Installed Apps registration.
+Standalone service state is under `%LOCALAPPDATA%\HiRoute\cli`. The native
+adapter checks KnownFolders, architecture and existing manager ownership before
+product writes. It resolves destination aliases and rejects overlap with service
+data or recovery files. A private location record binds the directory identity
+and the package generation. Directories can contain unrelated files outside
+HiRoute's own package namespace. The installer checks conflicting names and
+cleanup removes only verified package files. An
 SCM-managed installation is refused unchanged because SCM installation is not
 offered in this release.
 
