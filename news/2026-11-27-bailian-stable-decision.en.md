@@ -2,9 +2,9 @@
 
 Alibaba Cloud Bailian (Model Studio) has released an official, stable decision model, with the model ID `decision-model`. HiRoute adds it to Bailian workspace decision connections in this change. Before merging, we compared it with the earlier `decision-model-preview` under identical conditions, on a public set of bilingual engineering checkpoints. On the engineering panel, group-selection accuracy rose from 79.81% to 96.15%, and also surpassed OpenAI Decisions at 89.42% on the same records.
 
-![Engineering group-selection accuracy: Bailian stable 96.15%, tied with Jev 1.14, ahead of OpenAI Decisions at 89.42% and the Bailian preview at 79.81%](assets/bailian-stable-accuracy-en.png)
+![Engineering group-selection accuracy: Bailian stable 96.15%, up 16.34 percentage points from the preview at 79.81%, and 6.73 percentage points ahead of OpenAI Decisions at 89.42%](assets/bailian-stable-accuracy-en.png)
 
-*Engineering scenario, three-question form, 86 records with a determinate label.*
+*Engineering scenario, three-question form, 86 records with a determinate label. Stable is 16.34 percentage points above the preview and 6.73 percentage points ahead of OpenAI Decisions.*
 
 The fuller results first:
 
