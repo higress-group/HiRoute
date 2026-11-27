@@ -72,6 +72,10 @@
 
 保护也不是单向的。每条新消息都重新决策，上一轮用了主力不会锁定后面的轮次。如果第三个问题的答案表明问题已经解决，或者和眼前的工作无关，保护就解除，重新按难度选择。
 
+![会话路由时间线，第 3 轮的低分触发保护，第 4 轮切到主力组，第 5 轮回到常规组](../decision-extensions/assets/readme-session-zh-CN.png)
+
+*这是 Account Export 示例项目的一次真实会话。第 3 轮 Flash 得分 0.32，下一轮由 GPT-6 Astra 接手并得分 0.83。选中第 5 轮，可以看到返回 Flash 的依据：简单概率 0.95，之前的问题相关概率 0.05。*
+
 ### 出了意外怎么兜底
 
 决策模型是一个外部服务：它会超时，会返回不合格的答案，输入也可能长到放不进它的窗口。HiRoute 对每一种情况都有明确的去向：
@@ -96,6 +100,10 @@
 | 简单概率阈值 | 0.9 | 0.8 | 0.65 | 0.5 | 0 |
 
 越往右，越多任务交给常规组，成本越低；无论哪一档，适用的低分保护都照常生效。调信任度改的是阈值，不是问题，所以不用重写提示词。
+
+![路由编辑器的信任度滑块选中“信任”，简单概率阈值显示为 0.65](../decision-extensions/assets/readme-trial-zh-CN.png)
+
+*示例计划在路由编辑器中选中了“信任”。滑块下方的 0.65 就是 HiRoute 用来比较每轮简单概率的阈值。*
 
 除了阈值，还有几处设计直接影响成本：
 
@@ -248,6 +256,10 @@ python3 experiments/results/bailian-decision-20261127/compare.py
 2. 在“凭据”里选择“独立配置”，供应商选百炼，接入方式选“业务空间”；也可以选“使用已有 API 接入”，复用已经保存的百炼 Key。
 3. 在模型 ID 中选择或填写 `decision-model`，再填写北京或新加坡工作空间的完整地址，以 `/compatible-mode/v1/systemone` 结尾。
 4. 选择“保存并测试”。然后在按难度分流的路由计划里选中这个连接版本，发布后生效。
+
+![添加决策模型表单，已选百炼和业务空间，模型 ID 为 decision-model，协议为 System One](assets/bailian-stable-workspace-zh.png)
+
+*HiRoute 的“添加决策模型”界面。图中填写了北京业务空间的示例地址，API Key 留空。配置自己的连接时，请从百炼工作空间复制完整地址。*
 
 用 CLI 的话，对应的参数是 `--provider bailian-workspace --model decision-model`，再用 `--endpoint` 填写完整地址，详见 [HiRoute CLI](https://hiroute.ai/zh/docs/cli/)。图文步骤见[使用智能模型路由](https://hiroute.ai/zh/docs/model-routing/)。
 

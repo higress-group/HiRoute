@@ -73,6 +73,10 @@ A missing score, a score with partial evidence, or a score from another task cat
 
 Protection is not one-way either. Every new message gets a fresh decision, and a Primary turn does not lock the turns that follow. When the third answer says the problem was resolved or does not concern the work at hand, protection is released and difficulty decides again.
 
+![Session routing timeline showing a low score on turn 3, a protected Primary turn 4, and a return to Regular on turn 5](../decision-extensions/assets/readme-session-en.png)
+
+*In this recorded Account Export example session, Flash scored 0.24 on turn 3. Select turn 4 to see why GPT-6 Astra took over: low-score protection applied even though the simple probability was 1.00. Astra scored 0.73, and turn 5 returned to Flash.*
+
 ### When something goes wrong
 
 A decision model is an external service. It can time out, return an unusable answer, or receive input too long for its window. HiRoute has a defined outcome for each case:
@@ -97,6 +101,10 @@ How much work goes to Regular is your call. The **Trust** slider in the route ed
 | Simple-probability threshold | 0.9 | 0.8 | 0.65 | 0.5 | 0 |
 
 Further right sends more work to Regular and lowers cost. At every preset, applicable low-score protection still applies. Changing trust changes the threshold, not the questions, so no prompt needs rewriting.
+
+![The route editor’s Trust slider with Trusted selected and a simple-probability threshold of 0.65](../decision-extensions/assets/readme-trial-en.png)
+
+*This example plan uses the Trusted preset. The 0.65 below the slider is the threshold HiRoute compares with each turn’s simple probability.*
 
 Beyond the threshold, a few design choices affect cost directly:
 
@@ -249,6 +257,10 @@ Every number in the two accuracy tables above is printed directly by this script
 2. Under Credentials, choose Configure independently, pick Bailian as the provider and Workspace as the access type. You can also choose Use existing API connection to reuse a saved Bailian key.
 3. Select or enter `decision-model` as the model ID, then enter the complete URL of your Beijing or Singapore workspace, ending in `/compatible-mode/v1/systemone`.
 4. Select Save and test. Then select this connection revision in a Difficulty routing plan and publish it.
+
+![Add decision model form with Bailian and Workspace selected, decision-model as the model ID, and System One as the protocol](assets/bailian-stable-workspace-en.png)
+
+*HiRoute’s Add decision model form with an example Beijing workspace URL and an empty API key field. When setting up your own connection, copy the complete URL from your Bailian workspace.*
 
 From the CLI, the matching options are `--provider bailian-workspace --model decision-model`, with `--endpoint` for the complete URL. See [HiRoute CLI](https://hiroute.ai/en/docs/cli/) for details and [Use smart model routing](https://hiroute.ai/en/docs/model-routing/) for the illustrated steps.
 
