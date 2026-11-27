@@ -2,7 +2,7 @@
 
 | Date | English | 简体中文 |
 | --- | --- | --- |
-| 2026-11-27 | [Bailian releases its official decision model, a lift for HiRoute routing](2026-11-27-bailian-stable-decision.en.md) | [百炼推出正式版决策模型，智能路由大幅提升](2026-11-27-bailian-stable-decision.zh-CN.md) |
+| 2026-11-27 | [Bailian releases its official decision model, and HiRoute beats OpenAI Decisions in testing](2026-11-27-bailian-stable-decision.en.md) | [百炼推出正式版决策模型，实测超越 OpenAI Decisions](2026-11-27-bailian-stable-decision.zh-CN.md) |
 | 2026-11-19 | [What 30 billion tokens taught me about AI coding](2026-11-19-ai-coding-token-efficiency.en.md) | [300 亿 Token 的 AI Coding 实践](2026-11-19-ai-coding-token-efficiency.zh-CN.md) |
 | 2026-11-18 | [Routine work stays local, hard turns go to the cloud: a d3 test run](2026-11-18-local-d3.en.md) | [日常留在本地，难了再上云：本地 d3 决策实测](2026-11-18-local-d3.zh-CN.md) |
 | 2026-11-03 | [New HiRoute release](2026-11-03-new-model-trials-and-task-routing.en.md) | [HiRoute 新版本发布](2026-11-03-new-model-trials-and-task-routing.zh-CN.md) |

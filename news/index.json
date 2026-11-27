@@ -3,12 +3,12 @@
     "slug": "bailian-stable-decision",
     "date": "2026-11-27",
     "title": {
-      "zh": "百炼推出正式版决策模型，HiRoute 模型智能路由能力大幅提升",
-      "en": "Bailian Releases Its Official Decision Model, a Big Lift for HiRoute Smart Routing"
+      "zh": "百炼推出正式版决策模型，HiRoute 实测超越 OpenAI Decisions",
+      "en": "Bailian Releases Its Official Decision Model, and HiRoute Beats OpenAI Decisions in Testing"
     },
     "shortTitle": {
-      "zh": "百炼推出正式版决策模型，智能路由大幅提升",
-      "en": "Bailian releases its official decision model, a lift for HiRoute routing"
+      "zh": "百炼推出正式版决策模型，实测超越 OpenAI Decisions",
+      "en": "Bailian releases its official decision model, and HiRoute beats OpenAI Decisions in testing"
     },
     "description": {
       "zh": "HiRoute 每一轮向决策模型问三个问题，再按你发布的阈值选模型组。本文先完整介绍这套决策与路由机制，再用公开的中英文工程检查点对比百炼决策模型正式版与预览版：请求、标签和评估器都相同，结果可以离线重放。",

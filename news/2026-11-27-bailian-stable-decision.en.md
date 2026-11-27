@@ -1,11 +1,11 @@
-# Bailian Releases Its Official Decision Model, a Big Lift for HiRoute Smart Routing
+# Bailian Releases Its Official Decision Model, and HiRoute Beats OpenAI Decisions in Testing
 
-Alibaba Cloud Bailian (Model Studio) has released an official, stable decision model, with the model ID `decision-model`. HiRoute adds it to Bailian workspace decision connections in this change. Before merging, we compared it with the earlier `decision-model-preview` under identical conditions, on a public set of bilingual engineering checkpoints. On the engineering panel, group-selection accuracy rose from 79.81% to 96.15%.
+Alibaba Cloud Bailian (Model Studio) has released an official, stable decision model, with the model ID `decision-model`. HiRoute adds it to Bailian workspace decision connections in this change. Before merging, we compared it with the earlier `decision-model-preview` under identical conditions, on a public set of bilingual engineering checkpoints. On the engineering panel, group-selection accuracy rose from 79.81% to 96.15%, and also surpassed OpenAI Decisions at 89.42% on the same records.
 
 The fuller results first:
 
 - **Engineering group-selection accuracy is 96.15%, against 79.81% for the preview.** The requests sent to the two versions differ only in the model ID, and both are scored with the same labels and the same evaluator.
-- **That matches the 96.15% of Jev 1.14 on the same records.** OpenAI Decisions scores 89.42% on them.
+- **On the same engineering records it surpasses OpenAI Decisions at 89.42%, and matches Jev 1.14 at 96.15%.**
 - **The input window grows from 65,536 to 268,288 tokens**, so longer inputs can still reach the decision model.
 - **The whole comparison replays offline.** One command recomputes every result, with no key and no network access.
 
@@ -163,6 +163,7 @@ Full engineering panel, family-macro final group accuracy. The parentheses show 
 A few observations:
 
 - **Stable is a clear step up from the preview.** With three questions it goes from 79.81% to 96.15%, and from 68 to 82 correct records. With direct selection it also rises, from 50.00% to 75.00%, so both forms point the same way.
+- **It surpasses OpenAI Decisions on the same records.** With three questions the scores are 96.15% against 89.42% (82/86 against 76/86), and with direct selection 75.00% against 48.08%.
 - **It matches Jev 1.14 on these records.** Stable and Jev 1.14 both reach 82/86.
 - **All 4 of the stable model's errors are missed protection**, meaning it selected Regular where Primary was required. It never escalated work that belonged with Regular.
 - **All four decision models in the table score higher with three questions.** That is consistent with the split described in part one: the same model, with the same context, selects better when asked this way.
@@ -189,7 +190,7 @@ The study also has a subset that was reviewed after the fact. The review exclude
 | OpenAI Decisions | 50.00% (39/80) | 91.35% (72/80) |
 | Jev 1.14 | 67.31% (54/80) | 96.15% (76/80) |
 
-The improvement over the preview holds in this view too. Compared with Jev 1.14, stable has the same number of correct records (76/80), but its family-macro accuracy is 94.23%, slightly below Jev 1.14's 96.15% (families weigh equally, so which families the errors fall in changes the figure). The careful reading is that on engineering checkpoints the stable model has reached the same tier as Jev 1.14, not that it has passed it.
+The improvement over the preview holds in this view too. Compared with OpenAI Decisions, three-question accuracy is 94.23% against 91.35% (76/80 against 72/80), and direct selection is 72.12% against 50.00%, so the stable model remains ahead on both forms. Compared with Jev 1.14, stable has the same number of correct records (76/80), but its family-macro accuracy is 94.23%, slightly below Jev 1.14's 96.15% (families weigh equally, so which families the errors fall in changes the figure). The careful reading is that on engineering checkpoints the stable model surpasses OpenAI Decisions and has reached the same tier as Jev 1.14, not that it has passed Jev 1.14.
 
 ### What the larger input window means
 
