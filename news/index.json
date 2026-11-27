@@ -1,5 +1,25 @@
 [
   {
+    "slug": "bailian-stable-decision",
+    "date": "2026-11-27",
+    "title": {
+      "zh": "百炼决策模型正式版实测：工程场景选组准确率从 79.81% 提升到 96.15%",
+      "en": "Bailian's Stable Decision Model, Tested: Engineering Routing Accuracy Rises from 79.81% to 96.15%"
+    },
+    "shortTitle": {
+      "zh": "百炼决策模型正式版：工程选组实测",
+      "en": "Bailian's stable decision model: an engineering routing test"
+    },
+    "description": {
+      "zh": "HiRoute 每一轮向决策模型问三个问题，再按你发布的阈值选模型组。本文先完整介绍这套决策与路由机制，再用公开的中英文工程检查点对比百炼决策模型正式版与预览版：请求、标签和评估器都相同，结果可以离线重放。",
+      "en": "HiRoute asks a decision model three questions each turn and applies your published thresholds. This article walks through that mechanism, then compares Bailian's stable and preview decision models on public bilingual engineering checkpoints, with identical requests, labels and evaluator and an offline replay."
+    },
+    "files": {
+      "zh": "2026-11-27-bailian-stable-decision.zh-CN.md",
+      "en": "2026-11-27-bailian-stable-decision.en.md"
+    }
+  },
+  {
     "slug": "ai-coding-token-efficiency",
     "date": "2026-11-19",
     "title": {
