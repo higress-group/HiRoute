@@ -915,6 +915,15 @@ const scenarios = [
     assert(input('model').value === 'gpt-6-luna' && input('name').value === 'Team decisions', 'Suggested settings overwrote the edited name');
     setInput(input('model'), 'gpt-6-luna-mini'); await pause(40);
     mode(1).click(); await pause(40);
+    assert(input('model').value === 'decision-model-preview' && !input('model').list, 'Token Plan must retain the preview default');
+    await click('业务空间');
+    const modelOptions = Array.from(input('model').list.options, option => option.value);
+    assert(input('model').value === 'decision-model-preview' && modelOptions.join() === 'decision-model-preview,decision-model', 'Workspace model options changed its default');
+    setInput(input('model'), modelOptions[1]); await pause(40);
+    await click('Token Plan');
+    assert(input('model').value === 'decision-model-preview' && !input('model').list, 'Workspace selection leaked into Token Plan');
+    await click('业务空间');
+    assert(input('model').value === 'decision-model', 'Workspace lost its explicit model selection');
     setInput(input('credential'), 'pending-independent-key'); await pause(40);
     mode(0).click(); await pause(40);
     assert(text().includes('未保存的 Key 已清除') && input('model').value === 'gpt-6-luna-mini' && input('source').value === sourceId, 'Mode switch kept a pending key or replaced the shared bundle');

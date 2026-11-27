@@ -163,6 +163,23 @@ def run(repository):
                 smaller = data('decision context preview', preview_request)
                 assert (smaller['request_window_tokens'], smaller['per_question_window_tokens']) == (64000, 32000), smaller
                 assert not smaller['typesafe_long_context_header'], smaller
+        workspace = data('decision connections options --provider bailian-workspace')['selected_provider']
+        assert workspace['model'] == 'decision-model-preview' and workspace['endpoint'] == '', workspace
+        assert workspace['model_options'] == ['decision-model-preview', 'decision-model'], workspace
+        token_plan = data('decision connections options --provider bailian-token-plan')['selected_provider']
+        assert token_plan['model'] == workspace['model'] and 'model_options' not in token_plan, token_plan
+        for model, window in zip(workspace['model_options'], (65536, 268288)):
+            for region in ('cn-beijing', 'ap-southeast-1'):
+                resolved = data('decision context preview', {
+                    'endpoint': f'https://workspace.{region}.maas.aliyuncs.com/compatible-mode/v1/systemone',
+                    'model': model, 'wire_protocol': workspace['wire_protocol'],
+                    'policy': {'mode': 'automatic', 'typesafe_long_context': 'automatic'}})
+                assert resolved['request_source'] == 'metadata' and resolved['request_window_tokens'] == window, resolved
+        for endpoint in (token_plan['endpoint'], 'https://workspace.us-east-1.maas.aliyuncs.com/compatible-mode/v1/systemone'):
+            resolved = data('decision context preview', {
+                'endpoint': endpoint, 'model': 'decision-model', 'wire_protocol': 'system_one',
+                'policy': {'mode': 'automatic', 'typesafe_long_context': 'automatic'}})
+            assert resolved['request_source'] == 'fallback' and resolved['metadata'] is None, resolved
         assert not Endpoint.requests, 'Preset previews contacted a provider'
         assert not data('decision connections list')['services'], 'Preset previews saved a connection'
         product.install_codex_fixture(MODEL, 'medium', upstream.base_url, NATIVE_TOKEN)

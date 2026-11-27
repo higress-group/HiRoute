@@ -10,7 +10,7 @@ import { contextErrors, contextFromPolicy, contextPolicy, type DecisionContextDr
 /** Native decision-model authoring state. Plaintext Keys never enter this state. */
 export type DecisionMode = 'shared' | 'independent';
 export type DecisionBundle = { model: string; endpoint: string; wire_protocol: DecisionWireProtocol | null; context?: DecisionContextDraft };
-export type IndependentPreset = { id: string; endpoint: string; model: string; wire_protocol: DecisionWireProtocol | null };
+export type IndependentPreset = { id: string; endpoint: string; model: string; model_options?: string[]; wire_protocol: DecisionWireProtocol | null };
 /** A failed refresh keeps the last successful list only as unavailable state, never as missing. */
 export type SourceRead = { status: 'loading'; previous?: DecisionSourceSummary[] } | { status: 'ready'; sources: DecisionSourceSummary[] } | { status: 'error'; code?: string; previous?: DecisionSourceSummary[] };
 export function knownSources(read: SourceRead): DecisionSourceSummary[] {
@@ -35,7 +35,7 @@ export const independentPresets: IndependentPreset[] = providers.map(preset => {
   const protocol = preset.wire_protocol;
   const wire_protocol: DecisionWireProtocol | null = protocol === 'openai_decisions' || protocol === 'system_one'
     ? protocol : protocol === undefined && preset.id !== 'compatible' ? 'system_one' : null;
-  return { id: preset.id, endpoint: preset.endpoint, model: preset.model, wire_protocol };
+  return { ...preset, wire_protocol };
 });
 
 export function presetName(id: string, language: 'zh' | 'en'): string {

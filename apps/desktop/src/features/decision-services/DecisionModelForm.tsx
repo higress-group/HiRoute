@@ -118,6 +118,7 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
   const showProtocolInput = !!bundle && (protocolOpen || !bundle.wire_protocol);
   const host = bundle ? endpointHost(bundle.endpoint) : null;
   const preset = draft.mode === 'independent' ? draft.provider : null;
+  const modelOptions = independentPresets.find(item => item.id === preset)?.model_options;
   const title = saved ? t('编辑决策模型', 'Edit decision model') : t('添加决策模型', 'Add decision model');
 
   const sharedPanel = <>
@@ -173,7 +174,10 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
         {draft.mode === 'independent' && independentPanel}
         {credentialNotice && <p className="field-help decision-credential-notice" role="status">{credentialNotice}</p>}
         {bundle && <>
-          <label className="field"><span className="field-label">{t('模型 ID', 'Model ID')}</span><input className="input" data-native-field="model" maxLength={256} aria-invalid={!!issues.model} value={bundle.model} onChange={event => { setDraft(editBundle(draft, source, { model: event.target.value })); setIssues({}); }} />{fieldError('model')}</label>
+          <label className="field"><span className="field-label">{t('模型 ID', 'Model ID')}</span>
+            <input className="input" data-native-field="model" list={modelOptions ? 'decision-model-options' : undefined} maxLength={256} aria-invalid={!!issues.model} value={bundle.model} onChange={event => { setDraft(editBundle(draft, source, { model: event.target.value })); setIssues({}); }} />
+            {modelOptions && <datalist id="decision-model-options">{modelOptions.map(model => <option key={model} value={model} />)}</datalist>}
+            {fieldError('model')}</label>
           <div className="field decision-address"><span className="field-label">{t('完整地址', 'Complete URL')}</span>
             {showUrlInput ? <input className="input" data-native-field="endpoint" type="url" maxLength={2048} aria-invalid={!!issues.endpoint} aria-label={t('完整地址', 'Complete URL')} value={bundle.endpoint} placeholder="https://…" onChange={event => setEndpoint(event.target.value)} />
               : <div className="decision-address-value"><span className="decision-endpoint">{bundle.endpoint}</span><button className="btn btn-quiet" type="button" onClick={() => { setUrlOpen(true); requestAnimationFrame(() => form.current?.querySelector<HTMLInputElement>('[data-native-field="endpoint"]')?.focus()); }}>{t('更改', 'Change')}</button></div>}

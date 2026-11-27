@@ -1016,6 +1016,10 @@ hiroute decision connections test --service routing-decision@SAVED_REVISION --ou
 预设不代表账号已有访问权限。不复用来源时，用受保护输入登记的 `--candidate` 替代 `--source`，
 为决策模型独立配置 Key；Typesafe 可以继续使用这种方式。来源查询不会返回 Key 内容。
 
+百炼业务空间可用 `--provider bailian-workspace --model decision-model` 选择稳定版，通过
+`--endpoint` 填写工作空间的完整 System One 地址。北京、新加坡现有绑定的自动上下文为
+268,288 token，默认的 `decision-model-preview` 为 65,536 token。Token Plan 预设继续选用预览版。
+
 保存并测试后，通过已有的路由编辑流程引用返回的版本：
 
 ```sh

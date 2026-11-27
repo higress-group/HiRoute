@@ -121,6 +121,13 @@ impl DecisionContextIndex {
                 else {
                     continue;
                 };
+                // The Beijing Token Plan is a fixed product host, not a workspace.
+                // Preserve its installed preview preset's existing window.
+                if url.host_str() == Some("token-plan.cn-beijing.maas.aliyuncs.com")
+                    && model != "decision-model-preview"
+                {
+                    continue;
+                }
                 if !label.is_empty()
                     && label.len() <= 63
                     && !label.starts_with('-')
