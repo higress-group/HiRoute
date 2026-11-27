@@ -1,11 +1,11 @@
-# Bailian's Stable Decision Model, Tested: Engineering Routing Accuracy Rises from 79.81% to 96.15%
+# Bailian Releases Its Official Decision Model, a Big Lift for HiRoute Smart Routing
 
-Alibaba Cloud Bailian (Model Studio) now has a stable decision model, with the model ID `decision-model`. HiRoute adds it to Bailian workspace decision connections in this change. Before merging, we compared it with the earlier `decision-model-preview` under identical conditions, on a public set of bilingual engineering checkpoints.
+Alibaba Cloud Bailian (Model Studio) has released an official, stable decision model, with the model ID `decision-model`. HiRoute adds it to Bailian workspace decision connections in this change. Before merging, we compared it with the earlier `decision-model-preview` under identical conditions, on a public set of bilingual engineering checkpoints. On the engineering panel, group-selection accuracy rose from 79.81% to 96.15%.
 
-The results first:
+The fuller results first:
 
 - **Engineering group-selection accuracy is 96.15%, against 79.81% for the preview.** The requests sent to the two versions differ only in the model ID, and both are scored with the same labels and the same evaluator.
-- **That matches the 96.15% of Jev 1.13 and Jev 1.14 on the same records.** OpenAI Decisions scores 89.42% on them.
+- **That matches the 96.15% of Jev 1.14 on the same records.** OpenAI Decisions scores 89.42% on them.
 - **The input window grows from 65,536 to 268,288 tokens**, so longer inputs can still reach the decision model.
 - **The whole comparison replays offline.** One command recomputes every result, with no key and no network access.
 
@@ -145,7 +145,7 @@ To keep the stable-versus-preview comparison clean, the experiment controls thes
 - **Same labels and evaluator.** The original labels and the frozen original evaluator are used, with no prompt, threshold or scoring change made for Bailian. The rule selects Primary when the simple probability is below 0.5, or when the previous-stage score is below 1 and the probability that the problem still applies is at least 0.5, and Regular otherwise. The score here is on the provider's raw 0 to 2 scale; in the product HiRoute divides it by 2, which corresponds to the 0.5 competence floor.
 - **Interleaved calls.** A fixed shuffle (seed 20261127) interleaves the two versions and the two forms, with at most 4 concurrent requests, a fresh TLS connection per call and no retries.
 - **Every call completed.** On 27 November 2026, a Beijing workspace returned a valid answer for all 304 calls to the stable model and all 304 calls to the preview (152 records, two forms each).
-- **Comparison points on the same records.** The Jev 1.13 and Jev 1.14 responses were collected on 28 October and the OpenAI Decisions (`gpt-6-luna`) responses on 29 October. They are the study's archived historical responses and were not rerun.
+- **Comparison points on the same records.** The Jev 1.14 responses were collected on 28 October and the OpenAI Decisions (`gpt-6-luna`) responses on 29 October. They are the study's archived historical responses and were not rerun.
 
 Accuracy is a macro average over workflow families: every family has equal weight, so a family with more records does not count for more.
 
@@ -158,15 +158,14 @@ Full engineering panel, family-macro final group accuracy. The parentheses show 
 | Bailian stable `decision-model` | 75.00% (63/86) | **96.15% (82/86)** |
 | Bailian preview `decision-model-preview` | 50.00% (45/86) | 79.81% (68/86) |
 | OpenAI Decisions (`gpt-6-luna`) | 48.08% (43/86) | 89.42% (76/86) |
-| Jev 1.13 | 90.38% (78/86) | 96.15% (82/86) |
 | Jev 1.14 | 69.23% (60/86) | 96.15% (82/86) |
 
 A few observations:
 
 - **Stable is a clear step up from the preview.** With three questions it goes from 79.81% to 96.15%, and from 68 to 82 correct records. With direct selection it also rises, from 50.00% to 75.00%, so both forms point the same way.
-- **It matches Jev on these records.** Stable, Jev 1.13 and Jev 1.14 all reach 82/86.
+- **It matches Jev 1.14 on these records.** Stable and Jev 1.14 both reach 82/86.
 - **All 4 of the stable model's errors are missed protection**, meaning it selected Regular where Primary was required. It never escalated work that belonged with Regular.
-- **All five decision models score higher with three questions.** That is consistent with the split described in part one: the same model, with the same context, selects better when asked this way.
+- **All four decision models in the table score higher with three questions.** That is consistent with the split described in part one: the same model, with the same context, selects better when asked this way.
 
 Back to record `IG001_a`, to show what the answers look like. These are the three answers in the archived responses, to three decimals:
 
@@ -188,10 +187,9 @@ The study also has a subset that was reviewed after the fact. The review exclude
 | Bailian stable | 72.12% (57/80) | 94.23% (76/80) |
 | Bailian preview | 51.92% (41/80) | 77.88% (62/80) |
 | OpenAI Decisions | 50.00% (39/80) | 91.35% (72/80) |
-| Jev 1.13 | 89.42% (72/80) | 96.15% (76/80) |
 | Jev 1.14 | 67.31% (54/80) | 96.15% (76/80) |
 
-The improvement over the preview holds in this view too. Compared with Jev, stable has the same number of correct records (76/80), but its family-macro accuracy is 94.23%, slightly below Jev's 96.15% (families weigh equally, so which families the errors fall in changes the figure). The careful reading is that on engineering checkpoints the stable model has reached the same tier as Jev, not that it has passed it.
+The improvement over the preview holds in this view too. Compared with Jev 1.14, stable has the same number of correct records (76/80), but its family-macro accuracy is 94.23%, slightly below Jev 1.14's 96.15% (families weigh equally, so which families the errors fall in changes the figure). The careful reading is that on engineering checkpoints the stable model has reached the same tier as Jev 1.14, not that it has passed it.
 
 ### What the larger input window means
 
@@ -226,7 +224,7 @@ No credentials and no network access are needed. The script does the following, 
 
 - verifies the file manifest of the historical transfer study and the SHA-256 of the two compressed ledgers added here;
 - checks the hash of all 608 Bailian requests, confirming that each one is the original frozen state and question definitions plus the corresponding model ID;
-- parses all 1,520 formal responses again with the original evaluator (608 from Bailian, 912 historical) and recomputes the full results for the five decision models, along with usage and latency.
+- parses all 1,520 formal responses again with the original evaluator (608 from Bailian, 912 historical) and recomputes the full results, along with usage and latency. Those 912 historical responses include the Jev 1.14 and OpenAI Decisions baselines shown in this article, plus other archived baseline responses from the study.
 
 Every number in the two accuracy tables above is printed directly by this script. According to the verification notes in [PR #534](https://github.com/higress-group/HiRoute/pull/534), a reviewer has also independently replayed all 1,520 responses. The full write-up is in the [experiment README](../experiments/results/bailian-decision-20261127/README.md).
 
