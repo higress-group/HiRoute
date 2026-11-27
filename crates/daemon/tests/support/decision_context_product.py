@@ -175,9 +175,11 @@ def run(repository):
                     'model': model, 'wire_protocol': workspace['wire_protocol'],
                     'policy': {'mode': 'automatic', 'typesafe_long_context': 'automatic'}})
                 assert resolved['request_source'] == 'metadata' and resolved['request_window_tokens'] == window, resolved
-        for endpoint in (token_plan['endpoint'], 'https://workspace.us-east-1.maas.aliyuncs.com/compatible-mode/v1/systemone'):
+        for host in ('token-plan.cn-beijing', 'trial.cn-beijing', 'token-plan.ap-southeast-1',
+                     'trial.ap-southeast-1', 'workspace.us-east-1'):
             resolved = data('decision context preview', {
-                'endpoint': endpoint, 'model': 'decision-model', 'wire_protocol': 'system_one',
+                'endpoint': f'https://{host}.maas.aliyuncs.com/compatible-mode/v1/systemone',
+                'model': 'decision-model', 'wire_protocol': 'system_one',
                 'policy': {'mode': 'automatic', 'typesafe_long_context': 'automatic'}})
             assert resolved['request_source'] == 'fallback' and resolved['metadata'] is None, resolved
         assert not Endpoint.requests, 'Preset previews contacted a provider'

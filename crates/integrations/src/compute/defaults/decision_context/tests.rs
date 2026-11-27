@@ -176,6 +176,21 @@ fn unmatched_models_aliases_codecs_and_destinations_use_fallback() {
             "decision-model",
         ),
         (
+            "https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/systemone",
+            DecisionWireProtocolV2::SystemOne,
+            "decision-model",
+        ),
+        (
+            "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/systemone",
+            DecisionWireProtocolV2::SystemOne,
+            "decision-model",
+        ),
+        (
+            "https://trial.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/systemone",
+            DecisionWireProtocolV2::SystemOne,
+            "decision-model",
+        ),
+        (
             "https://workspace.us-east-1.maas.aliyuncs.com/compatible-mode/v1/systemone",
             DecisionWireProtocolV2::SystemOne,
             "decision-model",
