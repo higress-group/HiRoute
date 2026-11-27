@@ -56,7 +56,7 @@ CLI 参考：https://hiroute.ai/zh/docs/cli/
 ## 2. 需要判断与评分时，连接决策模型
 
 1. 打开“模型 → 决策模型”，选择“添加决策模型”。
-2. 在“凭据”中选择来源。“使用已有 API 接入”复用“模型”中已保存接入的 Key，无需再次填写；“独立配置”需要先选择供应商，再为决策模型单独填写 Key。选择百炼会默认打开业务空间，并填入 `decision-model`。使用 Token Plan 时，切换接入方式即可填入对应的 `decision-model-preview`。也可选择 OpenAI、OpenRouter、TypeSafe 或“其他兼容接入”。
+2. 在“凭据”中选择来源。“使用已有 API 接入”复用“模型”中已保存接入的 Key，无需再次填写；“独立配置”需要先选择供应商，再为决策模型单独填写 Key。选择百炼会默认打开业务空间，并填入 `decision-model`。先填写工作空间的完整地址，再填该空间的 API Key。使用 Token Plan 时，切换接入方式即可填入对应的 `decision-model-preview`。也可选择 OpenAI、OpenRouter、TypeSafe 或“其他兼容接入”。
 3. 确认模型 ID、完整地址和协议，并填写名称。已有预填可选择“更改”修改，未预填则直接填写。
 4. 选择“保存并测试”，或先“仅保存”，再在详情中选择“测试连接”。
 

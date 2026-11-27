@@ -254,7 +254,7 @@ python3 experiments/results/bailian-decision-20261127/compare.py
 
 1. 打开“模型 → 决策模型”，选择“添加决策模型”。
 2. 在“凭据”里选择“独立配置”，供应商选百炼，接入方式默认为“业务空间”；也可以选“使用已有 API 接入”，复用已经保存的百炼 Key。
-3. 确认模型 ID 为 `decision-model`，再填写北京或新加坡工作空间的完整地址，以 `/compatible-mode/v1/systemone` 结尾。
+3. 确认模型 ID 为 `decision-model`，再填写北京或新加坡工作空间的完整地址，以 `/compatible-mode/v1/systemone` 结尾。使用独立配置时，在地址下方填写该工作空间的 API Key。
 4. 选择“保存并测试”。然后在按难度分流的路由计划里选中这个连接版本，发布后生效。
 
 ![添加决策模型表单，已选百炼和业务空间，模型 ID 为 decision-model，协议为 System One](assets/bailian-stable-workspace-zh.png)

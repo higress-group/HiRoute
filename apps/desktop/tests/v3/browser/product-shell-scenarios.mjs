@@ -866,6 +866,7 @@ const scenarios = [
     assert(!input('timeout').closest('details').open, 'Advanced defaults overwhelm initial form');
     assert(input('model').value === 'decision-model' && input('endpoint').value === '', 'New Bailian connections should start on the stable workspace preset');
     const endpoint = input('endpoint');
+    assert(endpoint.compareDocumentPosition(input('credential')) & Node.DOCUMENT_POSITION_FOLLOWING, 'The workspace URL should be entered before its origin-scoped key');
     setInput(endpoint, 'h'); await pause(30);
     assert(input('endpoint') === endpoint, 'Typing the first character closed the workspace URL field');
     setInput(endpoint, 'https://workspace.example.test/compatible-mode/v1/systemone'); await pause(30);

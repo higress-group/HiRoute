@@ -255,7 +255,7 @@ Every number in the two accuracy tables above is printed directly by this script
 
 1. Open Models → Decision models and select Add decision model.
 2. Under Credentials, choose Configure independently and pick Bailian. The access type defaults to Workspace. You can also choose Use existing API connection to reuse a saved Bailian key.
-3. Confirm that the model ID is `decision-model`, then enter the complete URL of your Beijing or Singapore workspace, ending in `/compatible-mode/v1/systemone`.
+3. Confirm that the model ID is `decision-model`, then enter the complete URL of your Beijing or Singapore workspace, ending in `/compatible-mode/v1/systemone`. For independent setup, enter the workspace API key below the URL.
 4. Select Save and test. Then select this connection revision in a Difficulty routing plan and publish it.
 
 ![Add decision model form with Bailian and Workspace selected, decision-model as the model ID, and System One as the protocol](assets/bailian-stable-workspace-en.png)
