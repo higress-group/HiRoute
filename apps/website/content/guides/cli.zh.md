@@ -125,9 +125,9 @@ Apply 文件为新建的私有文件，不会覆盖已有文件，包含准确�
 按返回的必填项补充工作空间/兼容接入的地址和模型；兼容接入还要用 `--wire-protocol system_one|openai_decisions` 明确协议。
 普通 Chat 执行模型不是决策服务，本地规则仍是可以明确选择的另一条路径。
 
-百炼稳定版使用 `--provider bailian-workspace --model decision-model`，填写北京或新加坡工作空间以
-`/compatible-mode/v1/systemone` 结尾的完整地址。稳定版自动上下文为 268,288 token；
-工作空间与 Token Plan 预设默认选用 65,536 token 的 `decision-model-preview`。
+新建百炼业务空间连接时，`--provider bailian-workspace` 默认使用 `decision-model`。填写北京或新加坡工作空间以
+`/compatible-mode/v1/systemone` 结尾的完整地址，自动上下文为 268,288 token。
+如需使用 65,536 token 的预览版，可加上 `--model decision-model-preview`。Token Plan 默认使用预览版。
 
 如果已经接入了对应供应商的 API，可以直接复用其中的 Key，不需要再录入凭证。用 `decision sources list` 找到这个接入，
 新建连接时加上 `--source SOURCE_ID`；接入里的 Key 或网络设置变化会用于之后的调用，无需重新发布：

@@ -128,7 +128,7 @@ Looking back, the mechanism rests on a few plain choices:
 
 ### What this change adds
 
-In HiRoute versions that include this change, a Bailian workspace decision connection can select the stable `decision-model` as its model ID. Beijing and Singapore workspace URLs use `/compatible-mode/v1/systemone`, and HiRoute resolves the context window automatically from model metadata: 268,288 tokens for stable and 65,536 for the preview. The Workspace and Token Plan presets still default to the preview, so the stable model is an explicit choice.
+In HiRoute versions that include this change, a new independently configured Bailian decision connection opens with Workspace selected and the stable `decision-model` filled in. Beijing and Singapore workspace URLs use `/compatible-mode/v1/systemone`, and HiRoute resolves the context window automatically from model metadata: 268,288 tokens for stable and 65,536 for the preview. You can still select the preview in a workspace. Token Plan defaults to the preview, and saved connections retain their model.
 
 ### How the test was run
 
@@ -254,15 +254,15 @@ Every number in the two accuracy tables above is printed directly by this script
 ## How to use the stable model
 
 1. Open Models → Decision models and select Add decision model.
-2. Under Credentials, choose Configure independently, pick Bailian as the provider and Workspace as the access type. You can also choose Use existing API connection to reuse a saved Bailian key.
-3. Select or enter `decision-model` as the model ID, then enter the complete URL of your Beijing or Singapore workspace, ending in `/compatible-mode/v1/systemone`.
+2. Under Credentials, choose Configure independently and pick Bailian. The access type defaults to Workspace. You can also choose Use existing API connection to reuse a saved Bailian key.
+3. Confirm that the model ID is `decision-model`, then enter the complete URL of your Beijing or Singapore workspace, ending in `/compatible-mode/v1/systemone`.
 4. Select Save and test. Then select this connection revision in a Difficulty routing plan and publish it.
 
 ![Add decision model form with Bailian and Workspace selected, decision-model as the model ID, and System One as the protocol](assets/bailian-stable-workspace-en.png)
 
 *HiRoute's Add decision model form with an example Beijing workspace URL and an empty API key field. When setting up your own connection, copy the complete URL from your Bailian workspace.*
 
-From the CLI, the matching options are `--provider bailian-workspace --model decision-model`, with `--endpoint` for the complete URL. See [HiRoute CLI](https://hiroute.ai/en/docs/cli/) for details and [Use smart model routing](https://hiroute.ai/en/docs/model-routing/) for the illustrated steps.
+From the CLI, `--provider bailian-workspace` defaults to the stable model for a new connection, with `--endpoint` for the complete URL. See [HiRoute CLI](https://hiroute.ai/en/docs/cli/) for details and [Use smart model routing](https://hiroute.ai/en/docs/model-routing/) for the illustrated steps.
 
 Two reminders. A passing connection test only shows that this connection works; it says nothing about judgment quality, which you should watch in the session routing timeline and in Model performance. And a published route keeps the connection revision it was published with, so after switching to the stable model you need to select the new revision and publish again.
 

@@ -127,7 +127,7 @@
 
 ### 这次接入了什么
 
-在包含这次改动的 HiRoute 版本里，百炼业务空间的决策模型连接可以在模型 ID 中选择正式版 `decision-model`。北京和新加坡的工作空间地址使用 `/compatible-mode/v1/systemone`，HiRoute 会按模型元信息自动确定上下文窗口：正式版是 268,288 token，预览版是 65,536 token。业务空间和 Token Plan 的预设默认仍然是预览版，正式版需要手动选择。
+在包含这次改动的 HiRoute 版本里，新建百炼独立决策连接时，默认选中业务空间，模型 ID 自动填入正式版 `decision-model`。北京和新加坡的工作空间地址使用 `/compatible-mode/v1/systemone`，HiRoute 会按模型元信息自动确定上下文窗口：正式版是 268,288 token，预览版是 65,536 token。业务空间也可以手动选择预览版。Token Plan 默认使用预览版，已保存的连接保留原有模型。
 
 ### 实验怎么做的
 
@@ -253,15 +253,15 @@ python3 experiments/results/bailian-decision-20261127/compare.py
 ## 怎么用上正式版
 
 1. 打开“模型 → 决策模型”，选择“添加决策模型”。
-2. 在“凭据”里选择“独立配置”，供应商选百炼，接入方式选“业务空间”；也可以选“使用已有 API 接入”，复用已经保存的百炼 Key。
-3. 在模型 ID 中选择或填写 `decision-model`，再填写北京或新加坡工作空间的完整地址，以 `/compatible-mode/v1/systemone` 结尾。
+2. 在“凭据”里选择“独立配置”，供应商选百炼，接入方式默认为“业务空间”；也可以选“使用已有 API 接入”，复用已经保存的百炼 Key。
+3. 确认模型 ID 为 `decision-model`，再填写北京或新加坡工作空间的完整地址，以 `/compatible-mode/v1/systemone` 结尾。
 4. 选择“保存并测试”。然后在按难度分流的路由计划里选中这个连接版本，发布后生效。
 
 ![添加决策模型表单，已选百炼和业务空间，模型 ID 为 decision-model，协议为 System One](assets/bailian-stable-workspace-zh.png)
 
 *HiRoute 的“添加决策模型”界面。图中填写了北京业务空间的示例地址，API Key 留空。配置自己的连接时，请从百炼工作空间复制完整地址。*
 
-用 CLI 的话，对应的参数是 `--provider bailian-workspace --model decision-model`，再用 `--endpoint` 填写完整地址，详见 [HiRoute CLI](https://hiroute.ai/zh/docs/cli/)。图文步骤见[使用智能模型路由](https://hiroute.ai/zh/docs/model-routing/)。
+用 CLI 的话，新建连接时使用 `--provider bailian-workspace` 即可默认选用正式版，再用 `--endpoint` 填写完整地址，详见 [HiRoute CLI](https://hiroute.ai/zh/docs/cli/)。图文步骤见[使用智能模型路由](https://hiroute.ai/zh/docs/model-routing/)。
 
 有两点提醒。连接测试通过只说明这次连接可用，不代表判断效果，实际效果请在会话的路由时间线和模型表现里观察。另外，已发布的路由会继续使用原来选定的连接版本，换成正式版之后要重新选择并发布。
 

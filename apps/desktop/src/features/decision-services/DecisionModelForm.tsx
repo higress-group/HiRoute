@@ -77,6 +77,7 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
   function setMode(mode: DecisionMode) { if (mode !== draft.mode || !draft.modeChosen) switchContext(chooseMode(draft, mode, source)); }
   function setEndpoint(endpoint: string) {
     if (!bundle) return;
+    setUrlOpen(true);
     const next = editBundle(draft, source, { endpoint });
     clearChangedOrigin(next);
     setDraft(next); setIssues({});
@@ -146,7 +147,7 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
 
   const independentPanel = preset && <>
     <div className="field"><span className="field-label">{t('供应商', 'Provider')}</span><div className="decision-providers" role="group" aria-label={t('供应商', 'Provider')}>
-      {['bailian-token-plan', 'openai', 'openrouter', 'typesafe'].map(id => <button className="decision-provider" type="button" key={id} aria-pressed={id.startsWith('bailian') ? preset.startsWith('bailian') : preset === id} onClick={() => { if (!(id.startsWith('bailian') && preset.startsWith('bailian')) && id !== preset) switchContext(chooseProvider(draft, id)); }}><DecisionIcon provider={id} language={language} /><span>{id.startsWith('bailian') ? t('百炼', 'Bailian') : presetName(id, language)}</span></button>)}
+      {['bailian-workspace', 'openai', 'openrouter', 'typesafe'].map(id => <button className="decision-provider" type="button" key={id} aria-pressed={id.startsWith('bailian') ? preset.startsWith('bailian') : preset === id} onClick={() => { if (!(id.startsWith('bailian') && preset.startsWith('bailian')) && id !== preset) switchContext(chooseProvider(draft, id)); }}><DecisionIcon provider={id} language={language} /><span>{id.startsWith('bailian') ? t('百炼', 'Bailian') : presetName(id, language)}</span></button>)}
     </div><button className="btn btn-quiet decision-compatible" type="button" aria-pressed={preset === 'compatible'} onClick={() => { if (preset !== 'compatible') switchContext(chooseProvider(draft, 'compatible')); }}>{t('其他兼容接入', 'Other compatible connection')}<UiIcon name="chevronRight" /></button></div>
     {preset.startsWith('bailian') && <div className="field"><span className="field-label">{t('接入方式', 'Access')}</span><div className="segmented" role="group" aria-label={t('百炼接入方式', 'Bailian access')}>{independentPresets.filter(p => p.id.startsWith('bailian')).map(item => <button type="button" key={item.id} className={'segment' + (preset === item.id ? ' active' : '')} aria-pressed={preset === item.id} onClick={() => { if (preset !== item.id) switchContext(chooseProvider(draft, item.id)); }}>{item.id === 'bailian-token-plan' ? 'Token Plan' : t('业务空间', 'Workspace')}</button>)}</div></div>}
     <div className="field"><label className="field-label" htmlFor="decision-credential">API Key</label>

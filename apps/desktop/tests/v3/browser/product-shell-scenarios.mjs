@@ -836,10 +836,11 @@ const scenarios = [
     await until(() => document.querySelector('.plan-identity-fields input')?.value === 'Branch regular model use', 'referenced route opened');
   }),
   scenario('desktop.decisions.hidden-invalid-field', ['decision-services'], 'An invalid collapsed field and its error scroll above the sticky form actions', async () => {
-    const saved = { id: 'decision/invalid-field', revision: 1, name: 'Connection with a collapsed timeout', connection: { kind: 'system_one', provider: 'bailian-token-plan', model: 'decision-model-preview', endpoint: 'https://example.test/systemone', timeout_ms: 10000, auth_header: { name: 'Authorization', value_secret_ref: 'protected/r1' } } };
+    const saved = { id: 'decision/invalid-field', revision: 1, name: 'Connection with a collapsed timeout', connection: { kind: 'system_one', provider: 'bailian-workspace', model: 'decision-model-preview', endpoint: 'https://example.test/systemone', timeout_ms: 10000, auth_header: { name: 'Authorization', value_secret_ref: 'protected/r1' } } };
     await fresh(() => { decisionStore([saved]); });
     await click('模型'); await click('决策模型'); await click('编辑');
     const form = all('.decision-connection-form')[0];
+    assert(nativeField('model').value === 'decision-model-preview', 'Editing a saved workspace connection replaced its preview model');
     const timeout = form.querySelector('[data-native-field="timeout"]');
     const details = timeout.closest('details');
     details.querySelector('summary').click(); await pause(40);
@@ -863,12 +864,18 @@ const scenarios = [
     assert(all('.decision-mode')[1].getAttribute('aria-pressed') === 'true', 'An empty connection read did not default to independent setup');
     assert(all('.decision-provider img').length >= 2, 'Provider brand logos are missing');
     assert(!input('timeout').closest('details').open, 'Advanced defaults overwhelm initial form');
+    assert(input('model').value === 'decision-model' && input('endpoint').value === '', 'New Bailian connections should start on the stable workspace preset');
+    const endpoint = input('endpoint');
+    setInput(endpoint, 'h'); await pause(30);
+    assert(input('endpoint') === endpoint, 'Typing the first character closed the workspace URL field');
+    setInput(endpoint, 'https://workspace.example.test/compatible-mode/v1/systemone'); await pause(30);
     setInput(input('credential'), 'synthetic-test-key'); await pause(30);
     input('timeout').closest('details').querySelector('summary').click(); await pause(30);
     assert(input('credential').value === 'synthetic-test-key', 'Disclosure lost the credential');
     await click('保存并测试'); await until(() => text().includes('配置已保存，测试失败'), 'saved failure feedback');
     const saved = calls('save_decision_service_v3').at(-1).payload.input;
     assert(saved.change.expected_revision === 0 && saved.change.service.revision === 1 && saved.change.service.schema === 'hiroute.decision-service/v3', 'New connection did not use the V3 revision transaction');
+    assert(saved.change.service.connection.provider === 'bailian-workspace' && saved.change.service.connection.model === 'decision-model', 'Save replaced the workspace default');
     assert(saved.secret === 'synthetic-test-key' && saved.change.service.connection.authentication.kind === 'independent', 'Independent key was not sent once as the save secret');
     assert(decisionOrder().slice(-4).join() === 'save_decision_service_v3,decision_services_v3,test_decision_service_v3,decision_services_v3', 'Test did not follow readback of the saved revision or skipped the post-test readback');
     const tested = calls('test_decision_service_v3').at(-1).payload.input;
@@ -915,15 +922,14 @@ const scenarios = [
     assert(input('model').value === 'gpt-6-luna' && input('name').value === 'Team decisions', 'Suggested settings overwrote the edited name');
     setInput(input('model'), 'gpt-6-luna-mini'); await pause(40);
     mode(1).click(); await pause(40);
-    assert(input('model').value === 'decision-model-preview' && !input('model').list, 'Token Plan must retain the preview default');
-    await click('业务空间');
+    await click('OpenAI'); await click('百炼');
     const modelOptions = Array.from(input('model').list.options, option => option.value);
-    assert(input('model').value === 'decision-model-preview' && modelOptions.join() === 'decision-model-preview,decision-model', 'Workspace model options changed its default');
+    assert(input('model').value === 'decision-model' && modelOptions.join() === 'decision-model,decision-model-preview', 'Selecting Bailian should open the workspace stable model with preview available');
     setInput(input('model'), modelOptions[1]); await pause(40);
     await click('Token Plan');
     assert(input('model').value === 'decision-model-preview' && !input('model').list, 'Workspace selection leaked into Token Plan');
     await click('业务空间');
-    assert(input('model').value === 'decision-model', 'Workspace lost its explicit model selection');
+    assert(input('model').value === 'decision-model-preview', 'Workspace lost its explicit preview selection');
     setInput(input('credential'), 'pending-independent-key'); await pause(40);
     mode(0).click(); await pause(40);
     assert(text().includes('未保存的 Key 已清除') && input('model').value === 'gpt-6-luna-mini' && input('source').value === sourceId, 'Mode switch kept a pending key or replaced the shared bundle');
@@ -975,6 +981,7 @@ const scenarios = [
     assert(store.view(record.id).related_sources.map(item => item.source_id).join() === `${a},${b}`, 'Retained revision no longer relates its source');
     await click('编辑'); await until(() => input('source')?.value === b, 'shared edit on B');
     all('.decision-mode')[1].click(); await until(() => input('credential'), 'independent setup');
+    setInput(input('endpoint'), 'https://workspace.example.test/compatible-mode/v1/systemone'); await pause(40);
     setInput(input('credential'), 'synthetic-closure-key'); await pause(40);
     await click('仅保存'); await until(() => store.services[0].revision === 3, 'shared -> independent save');
     assert(sent().service.connection.authentication.kind === 'independent' && sources() === '[]', `Independent save registered sources: ${sources()}`);
