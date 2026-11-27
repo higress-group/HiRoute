@@ -2,6 +2,10 @@
 
 Alibaba Cloud Bailian (Model Studio) has released an official, stable decision model, with the model ID `decision-model`. HiRoute adds it to Bailian workspace decision connections in this change. Before merging, we compared it with the earlier `decision-model-preview` under identical conditions, on a public set of bilingual engineering checkpoints. On the engineering panel, group-selection accuracy rose from 79.81% to 96.15%, and also surpassed OpenAI Decisions at 89.42% on the same records.
 
+![Engineering group-selection accuracy: Bailian stable 96.15%, tied with Jev 1.14, ahead of OpenAI Decisions at 89.42% and the Bailian preview at 79.81%](assets/bailian-stable-accuracy-en.png)
+
+*Engineering scenario, three-question form, 86 records with a determinate label.*
+
 The fuller results first:
 
 - **Engineering group-selection accuracy is 96.15%, against 79.81% for the preview.** The requests sent to the two versions differ only in the model ID, and both are scored with the same labels and the same evaluator.
@@ -256,7 +260,7 @@ Every number in the two accuracy tables above is printed directly by this script
 
 ![Add decision model form with Bailian and Workspace selected, decision-model as the model ID, and System One as the protocol](assets/bailian-stable-workspace-en.png)
 
-*HiRoute’s Add decision model form with an example Beijing workspace URL and an empty API key field. When setting up your own connection, copy the complete URL from your Bailian workspace.*
+*HiRoute's Add decision model form with an example Beijing workspace URL and an empty API key field. When setting up your own connection, copy the complete URL from your Bailian workspace.*
 
 From the CLI, the matching options are `--provider bailian-workspace --model decision-model`, with `--endpoint` for the complete URL. See [HiRoute CLI](https://hiroute.ai/en/docs/cli/) for details and [Use smart model routing](https://hiroute.ai/en/docs/model-routing/) for the illustrated steps.
 
