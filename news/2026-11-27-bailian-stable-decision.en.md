@@ -94,23 +94,19 @@ Wherever a piece of the judgment itself is missing (difficulty unavailable, rele
 
 ### Trading cost against quality
 
-How much work goes to Regular is your call. The **Trust** slider in the route editor stores the simple-probability threshold, with five presets or an exact value:
+In the route editor, drag the **Trust** slider to the right to lower the simple-probability threshold. More stages can then go to Regular. You can also enter an exact value. Low-score protection applies at every setting, and you can adjust the threshold without rewriting the decision questions.
 
-| Preset | Trial | Familiar (default) | Trusted | Hands-off | Entrusted |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Simple-probability threshold | 0.9 | 0.8 | 0.65 | 0.5 | 0 |
+As you move the slider, **Replay this setting on your records** uses judgments recorded for the active version over the last seven days to show how many stages would go to Regular and how many to Primary at the new threshold. Replay makes no new model calls. If you expect a similar mix of tasks, use those shares to estimate how much work each group will handle before you publish the change.
 
-Further right sends more work to Regular and lowers cost. At every preset, applicable low-score protection still applies. Changing trust changes the threshold, not the questions, so no prompt needs rewriting.
+![Trust slider set to Hands-off at 0.5, with the historical replay bar showing 49% Regular and 51% Primary](assets/ai-coding-token-efficiency-trust-replay-en.png)
 
-![The route editor’s Trust slider with Trusted selected and a simple-probability threshold of 0.65](../decision-extensions/assets/readme-trial-en.png)
-
-*This example plan uses the Trusted preset. The 0.65 below the slider is the threshold HiRoute compares with each turn’s simple probability.*
+*At the current setting, 42% of the recorded stages actually went to Regular. With the slider at Hands-off (0.5), replaying the same 106 stages would send 52 to Regular (49%) and 54 to Primary (51%).*
 
 Beyond the threshold, a few design choices affect cost directly:
 
 - **Decide only when a decision is due.** A new user message triggers a new decision. When the Agent keeps working after tool calls within the same turn, it normally keeps the selection already made for that turn.
 - **Keep the model when you can.** When a fresh decision selects the same group, HiRoute prefers the model from the previous turn, which preserves context and reuses the prompt cache. For what switching does to caching and total task cost, see [this analysis](https://hiroute.ai/en/news/routing-cache-cost/).
-- **Tune from your own records.** The session routing timeline shows each turn's simple probability, the threshold at that time, the selected group and reason, and the score the stage received later. When you edit an existing route, you can replay a new trust setting on the last 7 days of records to see how many stages would move to Regular. HiRoute does not rewrite your plan because of one low score.
+- **Tune from your own records.** The session routing timeline shows each turn's simple probability, the threshold at that time, the selected group and reason, and the score the stage received later. HiRoute does not rewrite your plan because of one low score.
 - **The decision itself must be cheap.** Every new message adds one decision call, so that overhead has to stay small. Part two reports the actual usage in this test.
 
 ### Why this design holds up
