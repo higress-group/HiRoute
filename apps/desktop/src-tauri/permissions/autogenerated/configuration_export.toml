@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-configuration-export"
+description = "Enables the configuration_export command without any pre-configured scope."
+commands.allow = ["configuration_export"]
+
+[[permission]]
+identifier = "deny-configuration-export"
+description = "Denies the configuration_export command without any pre-configured scope."
+commands.deny = ["configuration_export"]

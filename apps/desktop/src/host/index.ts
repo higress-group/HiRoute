@@ -52,6 +52,12 @@ async function browserCall(command: string, args: Record<string, unknown>): Prom
     const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'hiroute-decision.openapi.json'; anchor.rel = 'noopener noreferrer'; anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 0); return 'saved';
   }
+  if (command === 'save_configuration_bundle') {
+    const source = JSON.stringify(args.bundle);
+    const url = URL.createObjectURL(new Blob([source], { type: 'application/json' }));
+    const anchor = document.createElement('a'); anchor.href = url; anchor.download = 'hiroute-configuration.json'; anchor.rel = 'noopener noreferrer'; anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0); return 'saved';
+  }
   if (command === 'open_diagnostic_directory' || command === 'open_startup_recovery_directory') {
     // Paths belong to the authenticated console's service host, even inside the Windows shell.
     const caps = override?.capabilities() ?? consoleCapabilities();
@@ -64,14 +70,14 @@ async function browserCall(command: string, args: Record<string, unknown>): Prom
 }
 async function invokeHost<T>(command: string, args: Record<string, unknown>): Promise<T> {
   if (override) {
-    if (override.capabilities().host === 'console' && ['open_external_url', 'save_classifier_openapi', 'open_diagnostic_directory', 'open_startup_recovery_directory'].includes(command)) return browserCall(command, args) as Promise<T>;
+    if (override.capabilities().host === 'console' && ['open_external_url', 'save_classifier_openapi', 'save_configuration_bundle', 'open_diagnostic_directory', 'open_startup_recovery_directory'].includes(command)) return browserCall(command, args) as Promise<T>;
     return override.call<T>(command, args);
   }
   if (hostKind() === 'tauri') return (await import('./tauri.ts')).tauriTransport.call<T>(command, args);
   if (hostKind() === 'shell-console') {
     const linux = linuxShellWindow();
     const shellCommand = command.startsWith('update_') || command.startsWith('login_start_')
-      || ['open_external_url', 'save_classifier_openapi', 'open_in_browser', 'restart_service', 'reconnect', 'launch_codex_desktop'].includes(command)
+      || ['open_external_url', 'save_classifier_openapi', 'save_configuration_bundle', 'open_in_browser', 'restart_service', 'reconnect', 'launch_codex_desktop'].includes(command)
       || (linux && ['open_diagnostic_directory', 'write_clipboard', 'preview_runtime_removal', 'remove_runtime'].includes(command));
     if (shellCommand) {
       const nativeArgs = linux && command !== 'reconnect' ? { ...args, bearer: sessionBearer() } : args;

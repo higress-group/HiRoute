@@ -36,6 +36,8 @@ mod classifier;
 pub use classifier::*;
 mod worker_tasks;
 pub use worker_tasks::*;
+mod configuration;
+pub use configuration::*;
 mod web_confirmation;
 use web_confirmation::*;
 mod agent_home;

@@ -21,6 +21,9 @@ The production owners are [Agent sections](../../apps/desktop/src/agents.tsx),
 and [Settings areas](../../apps/desktop/src/product/SettingsPage.tsx).
 Comparative fixture captures bind each image to its own production revision; they
 do not establish actual native configuration writes or provider effects.
+Portable preference transfer keeps its client-side bundle admission in
+[configuration-transfer.test.mjs](../../apps/desktop/tests/configuration-transfer.test.mjs);
+the daemon re-validates the same bundle authoritatively.
 Cross-feature [interaction rules](../desktop-interactions.md) are exercised by
 [state and navigation scenarios](../../apps/desktop/tests/v3/browser/interaction-consistency-scenarios.mjs)
 and [same-state captures](../../apps/desktop/tests/v3/visual/interaction-audit-captures.mjs).

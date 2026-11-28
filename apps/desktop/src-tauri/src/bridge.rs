@@ -1,10 +1,11 @@
 use hiroute_application_api::*;
 use hiroute_product_session::commands::{
-    ClassifierDecisionTestInput, ClassifierHeaderSecretSaveInput, DecisionServiceSaveInput,
-    DecisionServiceSaveInputV2, DecisionServiceSaveInputV3, ObservationDeleteInput,
-    ProtectedModelInputRegistration, WebComputeCandidateViewV2, WebComputeConnectionApplyRequestV1,
-    WebComputeDiscoveryRefV1, WebComputeManagementChangeV2, WebComputeSavePreviewV2,
-    WebComputeSaveResultV2, WebComputeScanResultV2, WebComputeSubscriptionCandidatesV2,
+    ClassifierDecisionTestInput, ClassifierHeaderSecretSaveInput, ConfigurationBundleV1,
+    ConfigurationImportResultV1, DecisionServiceSaveInput, DecisionServiceSaveInputV2,
+    DecisionServiceSaveInputV3, ObservationDeleteInput, ProtectedModelInputRegistration,
+    WebComputeCandidateViewV2, WebComputeConnectionApplyRequestV1, WebComputeDiscoveryRefV1,
+    WebComputeManagementChangeV2, WebComputeSavePreviewV2, WebComputeSaveResultV2,
+    WebComputeScanResultV2, WebComputeSubscriptionCandidatesV2,
     WebComputeSubscriptionCheckResultV2, WebValidationRefV2, WorkerDependencyConfirmationInput,
     WorkerDependencyConfirmationState, WorkerDependencyConfirmationV1,
 };
@@ -49,6 +50,8 @@ mod classifier;
 use classifier::*;
 mod worker_tasks;
 use worker_tasks::*;
+mod configuration;
+use configuration::*;
 mod diagnostics;
 use diagnostics::*;
 mod external_url;
@@ -779,6 +782,7 @@ pub fn run() {
             test_decision_service_v3,
             save_classifier_header_secret,
             save_classifier_openapi,
+            save_configuration_bundle,
             desktop_snapshot,
             preview_rename,
             preview_plan_editor,
@@ -844,6 +848,8 @@ pub fn run() {
             retry_agent_settings,
             check_agent_authentication,
             check_agent_live,
+            configuration_export,
+            configuration_import,
             worker_settings_get,
             worker_settings_set,
             worker_task_plans,
