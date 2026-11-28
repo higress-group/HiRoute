@@ -37,6 +37,23 @@ The NSIS installer only supports native x64 hosts and refuses other architecture
 before product writes. Windows headless archives for x64 and ARM64 are internal
 build/test payloads, not downloads or a separate supported installation path.
 
+Every destination must be reachable through reparse-free ancestors. A junction,
+mount point or symbolic link above any destination is refused rather than followed,
+and the refusals keep their own codes so the diagnostic identifies the shape instead
+of reporting a byte conflict:
+
+```powershell
+Get-Item "$HOME\.claude\skills", "$HOME\.agents\skills", "$HOME\.local" |
+  Select-Object FullName, LinkType
+```
+
+Installation writes the Agent skill record under both `~/.agents` and `~/.claude`, so
+a `LinkType` of `Junction` or `SymbolicLink` on either directory, or anywhere above
+`~/.local`, stops the transaction at `plan-installed-files` with
+`INSTALL_PATH_REPARSE_UNSUPPORTED`. A destination that exists but is not a regular
+file reports `INSTALL_PATH_NOT_REGULAR_FILE`. Replace the link with a real directory,
+move the previous entries into it as their own links, then rerun the installer.
+
 ## Service and console
 
 Task Scheduler runs the service as the current logged-on user with an
