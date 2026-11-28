@@ -1,0 +1,31 @@
+services:
+  hiroute:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        ARCHIVE: ${ARCHIVE}
+        ARCHIVE_SHA256: ${ARCHIVE_SHA256}
+        CPA_SHA256: ${CPA_SHA256}
+    image: hiroute:${HIROUTE_VERSION:-0.6.4}
+    container_name: hiroute
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      CONSOLE_MODE: ${CONSOLE_MODE:-network}
+      CONSOLE_PORT: ${CONSOLE_PORT:-5838}
+      ADVERTISE_ADDRESS: ${ADVERTISE_ADDRESS:-}
+      CPA_SHA256: ${CPA_SHA256}
+      XDG_STATE_HOME: /var/lib/hiroute/state
+      XDG_DATA_HOME: /var/lib/hiroute/share
+      XDG_RUNTIME_DIR: /run/hiroute
+    ports:
+      - "${CONSOLE_PORT:-5838}:${CONSOLE_PORT:-5838}"
+    volumes:
+      - ./data/state:/var/lib/hiroute/state
+      - ./data/share:/var/lib/hiroute/share
+    tmpfs:
+      - /run/hiroute
+    stop_signal: SIGTERM
+    stop_grace_period: 45s
