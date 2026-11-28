@@ -1,7 +1,7 @@
 //! Bounded native download and read-only DMG staging; existing work keeps running throughout.
 use super::{PreparedUpdate, Updates};
 use hiroute_host_runtime::{
-    DesktopRelease, MAX_RELEASE_FEED_BYTES, RELEASE_FEED, WebsiteReleasesV2, verify_desktop_app,
+    DesktopRelease, MAX_RELEASE_FEED_BYTES, RELEASE_FEED, WebsiteReleasesV2,
 };
 use sha2::{Digest, Sha256};
 use std::{fs, io::Write, path::Path, process::Command, sync::atomic::Ordering, time::Duration};
@@ -143,7 +143,7 @@ pub(super) async fn prepare(
         let mount = download_root.join("volume");
         let selected = release.clone();
         let (old_identity, new_identity) = tokio::task::spawn_blocking(move || {
-            let old = verify_desktop_app(&source, "ai.hiroute.desktop", None, None)?;
+            let old = super::verify_update_package(&source, None)?;
             let new = stage_dmg(&image, &mount, &next, &selected)?;
             Ok::<_, String>((old, new))
         })
@@ -219,14 +219,9 @@ fn stage_dmg(
             return Err("UPGRADE_DMG_INVALID".into());
         }
         let app = mount.join("HiRoute.app");
-        verify_desktop_app(&app, "ai.hiroute.desktop", Some(release), None)?;
+        super::verify_update_package(&app, Some(release))?;
         command("/usr/bin/ditto", &[app.as_os_str(), staged.as_os_str()])?;
-        Ok(verify_desktop_app(
-            staged,
-            "ai.hiroute.desktop",
-            Some(release),
-            None,
-        )?)
+        Ok(super::verify_update_package(staged, Some(release))?)
     })();
     let detached = command("/usr/bin/hdiutil", &[O::new("detach"), mount.as_os_str()]);
     if detached.is_err() {
