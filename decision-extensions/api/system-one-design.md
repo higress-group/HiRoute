@@ -11,10 +11,12 @@
 | 接入 | 完整 endpoint | 默认模型 |
 | --- | --- | --- |
 | 百炼 Token Plan | `https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/systemone` | `decision-model-preview` |
-| 百炼业务空间 | 用户填写包含地域和 WorkspaceId 的完整 System One 地址 | `decision-model-preview` |
+| 百炼业务空间 | 用户填写包含地域和 WorkspaceId 的完整 System One 地址 | `decision-model` |
 | OpenRouter | `https://openrouter.ai/api/alpha/decisions` | `typesafe/jev-1.13` |
 | TypeSafe | `https://api.typesafe.ai/v1/systemone` | `jev-latest` |
 | 兼容接入 | 用户填写完整地址与模型 | 无预设 |
+
+新建百炼独立连接时默认使用业务空间和稳定版 `decision-model`，也可以选择预览版。北京与新加坡的工作空间地址使用 `/compatible-mode/v1/systemone`，自动上下文与最大输入均为 268,288 token；预览版为 65,536 token。稳定版 API 支持文本与图片，当前 HiRoute 路由适配器发送文本，将图片标记为不可用。运行时以保存的具体连接及其账号权限为准。[稳定版模型说明](https://help.aliyun.com/en/model-studio/decision-model-stable) · [决策 API](https://help.aliyun.com/en/model-studio/decision-model-api)
 
 Token Plan 保持一个入口，不根据个人/团队版做本地资格判断；以用户接入的实际调用结果为准。[Token Plan 官方入口](https://help.aliyun.com/zh/model-studio/token-plan-decision-model)。这些地址与模型名是连接预设，不能成为运行时按名字识别协议的隐式规则。
 

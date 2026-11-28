@@ -121,6 +121,16 @@ impl DecisionContextIndex {
                 else {
                     continue;
                 };
+                // Bailian reserves these labels for separate products in both regions.
+                if model == "decision-model"
+                    && matches!(label, "token-plan" | "trial")
+                    && matches!(
+                        suffix.as_str(),
+                        "cn-beijing.maas.aliyuncs.com" | "ap-southeast-1.maas.aliyuncs.com"
+                    )
+                {
+                    continue;
+                }
                 if !label.is_empty()
                     && label.len() <= 63
                     && !label.starts_with('-')

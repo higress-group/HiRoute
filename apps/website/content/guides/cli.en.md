@@ -126,6 +126,11 @@ endpoint/model shown in their options; a compatible connection also needs an exp
 `--wire-protocol system_one|openai_decisions`. Ordinary Chat execution models are not decision
 services. Local rules remain an explicit alternative.
 
+A new connection with `--provider bailian-workspace` defaults to `decision-model`. Supply the full
+Beijing or Singapore workspace URL ending in `/compatible-mode/v1/systemone` for the automatic
+268,288-token window. Select `--model decision-model-preview` for the 65,536-token preview.
+Token Plan uses the preview by default.
+
 If you already connected the provider's API, reuse its keys instead of entering a credential again.
 Find the connection with `decision sources list` and add `--source SOURCE_ID` when creating the
 decision connection. Key or network changes in that API connection apply to later calls without

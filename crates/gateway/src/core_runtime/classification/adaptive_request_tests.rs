@@ -231,6 +231,36 @@ fn assert_wire_budgets(
 }
 
 #[test]
+fn bailian_stable_encodes_long_text_and_keeps_image_input_unavailable() {
+    let codec = DecisionWireProtocolV2::SystemOne;
+    let mut stable = authority(codec, 268_288, 268_288);
+    stable.system_one_model = Some("decision-model".into());
+    let mut preview = authority(codec, 65_536, 65_536);
+    preview.system_one_model = Some("decision-model-preview".into());
+    let text = "a".repeat(80_000);
+    let r = request(json!([{"role":"user","content":[
+        {"type":"text","text":text},
+        {"type":"image_url","image_url":{"url":"https://example.test/image.png"}}
+    ]}]));
+    let history = AgentTurnHistorySnapshot::empty(true);
+    let prepared = request_template(&stable, &r, &history, false).unwrap();
+    assert_wire_budgets(codec, &stable, &prepared);
+    let wire: Value = serde_json::from_slice(&prepared.template.bytes).unwrap();
+    assert_eq!(wire["model"], "decision-model");
+    assert_eq!(wire["state"]["latest_user"][0]["text"], text);
+    assert_eq!(
+        wire["state"]["latest_user"][1],
+        json!({"kind":"unavailable","source_kind":"image_url"})
+    );
+    assert_eq!(wire["questions"]["q0"]["type"], "score");
+    assert!(wire.get("image").is_none() && wire.get("images").is_none());
+    assert!(matches!(
+        request_template(&preview, &r, &history, false),
+        Err(CallFailure::BudgetRejected(_))
+    ));
+}
+
+#[test]
 fn larger_window_admits_above_legacy_ceiling_and_small_window_keeps_whole_latest_steps() {
     for codec in [
         DecisionWireProtocolV2::SystemOne,

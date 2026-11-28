@@ -56,7 +56,7 @@ Models → General models manages models that execute your tasks. Models → Dec
 ## 2. Connect a decision model for judgments and scores
 
 1. Open Models → Decision models and select Add decision model.
-2. Choose a source under Credentials. Use existing API connection reuses the keys of a connection saved under Models, without entering them again. Configure independently asks you to choose a provider and enter a key for this decision model only. Providers include Bailian (Token Plan or Workspace), OpenAI, OpenRouter, TypeSafe, and Other compatible connection.
+2. Choose a source under Credentials. Use existing API connection reuses the keys of a connection saved under Models, without entering them again. Configure independently asks you to choose a provider and enter a key for this decision model only. Selecting Bailian opens Workspace with `decision-model` filled in. Enter the full workspace URL, then its API key. Choose Token Plan to use its `decision-model-preview` preset. Other providers include OpenAI, OpenRouter, TypeSafe, and Other compatible connection.
 3. Confirm the model ID, complete URL and protocol, then enter a name. Select Change to edit a prefilled value, or fill in any missing values.
 4. Select Save and test, or Save only and later Test connection in the saved details.
 

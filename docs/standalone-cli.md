@@ -1384,6 +1384,11 @@ Choose the appropriate Bailian Token Plan or workspace endpoint; a preset does n
 access. Use `--candidate` with protected input for an independent Key instead of `--source`.
 Typesafe can continue to use independent configuration. The source API never returns Key values.
 
+For a new Bailian workspace connection, use `--provider bailian-workspace` and supply its
+full System One URL with `--endpoint`. The model defaults to `decision-model` (268,288 tokens
+for the Beijing and Singapore bindings). Use `--model decision-model-preview` for the
+65,536-token preview. The Token Plan preset uses the preview.
+
 Native connections resolve context windows automatically from exact endpoint, codec and model
 metadata. Unknown windows use a conservative **32,000 tokens**. The Preview and saved V3 record
 show the request and independent per-question limits, their sources and the frozen context digest.

@@ -55,6 +55,22 @@ fn maintained_bindings_resolve_only_on_the_documented_wire_surface() {
             DecisionContextBasisV1::Documented,
         ),
         (
+            "https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/systemone",
+            DecisionWireProtocolV2::SystemOne,
+            "decision-model",
+            268288,
+            268288,
+            DecisionContextBasisV1::Documented,
+        ),
+        (
+            "https://workspace.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/systemone",
+            DecisionWireProtocolV2::SystemOne,
+            "decision-model",
+            268288,
+            268288,
+            DecisionContextBasisV1::Documented,
+        ),
+        (
             "https://openrouter.ai/api/alpha/decisions",
             DecisionWireProtocolV2::SystemOne,
             "typesafe/jev-1.13",
@@ -155,6 +171,41 @@ fn unmatched_models_aliases_codecs_and_destinations_use_fallback() {
             "typesafe/jev-1.14",
         ),
         (
+            "https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/systemone",
+            DecisionWireProtocolV2::SystemOne,
+            "decision-model",
+        ),
+        (
+            "https://trial.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/systemone",
+            DecisionWireProtocolV2::SystemOne,
+            "decision-model",
+        ),
+        (
+            "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/systemone",
+            DecisionWireProtocolV2::SystemOne,
+            "decision-model",
+        ),
+        (
+            "https://trial.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/systemone",
+            DecisionWireProtocolV2::SystemOne,
+            "decision-model",
+        ),
+        (
+            "https://workspace.us-east-1.maas.aliyuncs.com/compatible-mode/v1/systemone",
+            DecisionWireProtocolV2::SystemOne,
+            "decision-model",
+        ),
+        (
+            "https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions",
+            DecisionWireProtocolV2::SystemOne,
+            "decision-model",
+        ),
+        (
+            "https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/systemone",
+            DecisionWireProtocolV2::OpenaiDecisions,
+            "decision-model",
+        ),
+        (
             "https://x.y.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/systemone",
             DecisionWireProtocolV2::SystemOne,
             "decision-model-preview",
@@ -189,6 +240,7 @@ fn installed_provider_presets_resolve_automatic_windows_without_model_substituti
     )))
     .unwrap();
     for (id, model, window, header) in [
+        ("bailian-token-plan", "decision-model-preview", 65536, false),
         ("typesafe", "jev-latest", 262144, true),
         ("openrouter", "~typesafe/jev-latest", 262144, false),
         ("openai", "gpt-6-luna", 1050000, false),
@@ -299,7 +351,8 @@ fn index_does_not_promote_decisions_to_inference_and_rejects_ambiguous_facts() {
             .model_data()
             .models
             .iter()
-            .all(|model| !model.model_configuration_id.contains("jev"))
+            .all(|model| !model.model_configuration_id.contains("jev")
+                && !model.model_configuration_id.contains("decision-model"))
     );
     let metadata = &mut catalog.current_release_model_data.metadata_catalog;
     let index = metadata

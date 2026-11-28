@@ -77,6 +77,7 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
   function setMode(mode: DecisionMode) { if (mode !== draft.mode || !draft.modeChosen) switchContext(chooseMode(draft, mode, source)); }
   function setEndpoint(endpoint: string) {
     if (!bundle) return;
+    setUrlOpen(true);
     const next = editBundle(draft, source, { endpoint });
     clearChangedOrigin(next);
     setDraft(next); setIssues({});
@@ -118,6 +119,7 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
   const showProtocolInput = !!bundle && (protocolOpen || !bundle.wire_protocol);
   const host = bundle ? endpointHost(bundle.endpoint) : null;
   const preset = draft.mode === 'independent' ? draft.provider : null;
+  const modelOptions = independentPresets.find(item => item.id === preset)?.model_options;
   const title = saved ? t('编辑决策模型', 'Edit decision model') : t('添加决策模型', 'Add decision model');
 
   const sharedPanel = <>
@@ -143,18 +145,20 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
     </div>}
   </>;
 
+  const credentialField = <div className="field"><label className="field-label" htmlFor="decision-credential">API Key</label>
+    {retained && !replacing && <div className="decision-credential-saved"><UiIcon name="lock" /><span>{t('已配置', 'Configured')}</span><button className="btn btn-quiet" type="button" onClick={() => { setReplacing(true); requestAnimationFrame(() => secret.current?.focus()); }}>{t('更换', 'Replace')}</button></div>}
+    <SecretTransportWarning language={language} />
+    <div className="decision-secret-input" hidden={!!retained && !replacing}><input ref={secret} id="decision-credential" data-native-field="credential" className="input" type={revealed ? 'text' : 'password'} autoComplete="new-password" maxLength={32768} aria-invalid={!!issues.credential} placeholder={t('输入 API Key', 'Enter an API key')} onChange={event => { setHasSecret(!!event.target.value); setCredentialNotice(''); setIssues({}); }} /><button className="btn btn-quiet" type="button" aria-pressed={revealed} onClick={() => setRevealed(!revealed)}>{revealed ? t('隐藏', 'Hide') : t('显示', 'Show')}</button></div>
+    {replacing && retained && <button className="btn btn-quiet" type="button" onClick={() => clearSecret()}>{t('保留已保存的 Key', 'Keep saved key')}</button>}
+    {fieldError('credential')}
+  </div>;
+
   const independentPanel = preset && <>
     <div className="field"><span className="field-label">{t('供应商', 'Provider')}</span><div className="decision-providers" role="group" aria-label={t('供应商', 'Provider')}>
-      {['bailian-token-plan', 'openai', 'openrouter', 'typesafe'].map(id => <button className="decision-provider" type="button" key={id} aria-pressed={id.startsWith('bailian') ? preset.startsWith('bailian') : preset === id} onClick={() => { if (!(id.startsWith('bailian') && preset.startsWith('bailian')) && id !== preset) switchContext(chooseProvider(draft, id)); }}><DecisionIcon provider={id} language={language} /><span>{id.startsWith('bailian') ? t('百炼', 'Bailian') : presetName(id, language)}</span></button>)}
+      {['bailian-workspace', 'openai', 'openrouter', 'typesafe'].map(id => <button className="decision-provider" type="button" key={id} aria-pressed={id.startsWith('bailian') ? preset.startsWith('bailian') : preset === id} onClick={() => { if (!(id.startsWith('bailian') && preset.startsWith('bailian')) && id !== preset) switchContext(chooseProvider(draft, id)); }}><DecisionIcon provider={id} language={language} /><span>{id.startsWith('bailian') ? t('百炼', 'Bailian') : presetName(id, language)}</span></button>)}
     </div><button className="btn btn-quiet decision-compatible" type="button" aria-pressed={preset === 'compatible'} onClick={() => { if (preset !== 'compatible') switchContext(chooseProvider(draft, 'compatible')); }}>{t('其他兼容接入', 'Other compatible connection')}<UiIcon name="chevronRight" /></button></div>
     {preset.startsWith('bailian') && <div className="field"><span className="field-label">{t('接入方式', 'Access')}</span><div className="segmented" role="group" aria-label={t('百炼接入方式', 'Bailian access')}>{independentPresets.filter(p => p.id.startsWith('bailian')).map(item => <button type="button" key={item.id} className={'segment' + (preset === item.id ? ' active' : '')} aria-pressed={preset === item.id} onClick={() => { if (preset !== item.id) switchContext(chooseProvider(draft, item.id)); }}>{item.id === 'bailian-token-plan' ? 'Token Plan' : t('业务空间', 'Workspace')}</button>)}</div></div>}
-    <div className="field"><label className="field-label" htmlFor="decision-credential">API Key</label>
-      {retained && !replacing && <div className="decision-credential-saved"><UiIcon name="lock" /><span>{t('已配置', 'Configured')}</span><button className="btn btn-quiet" type="button" onClick={() => { setReplacing(true); requestAnimationFrame(() => secret.current?.focus()); }}>{t('更换', 'Replace')}</button></div>}
-      <SecretTransportWarning language={language} />
-      <div className="decision-secret-input" hidden={!!retained && !replacing}><input ref={secret} id="decision-credential" data-native-field="credential" className="input" type={revealed ? 'text' : 'password'} autoComplete="new-password" maxLength={32768} aria-invalid={!!issues.credential} placeholder={t('输入 API Key', 'Enter an API key')} onChange={event => { setHasSecret(!!event.target.value); setCredentialNotice(''); setIssues({}); }} /><button className="btn btn-quiet" type="button" aria-pressed={revealed} onClick={() => setRevealed(!revealed)}>{revealed ? t('隐藏', 'Hide') : t('显示', 'Show')}</button></div>
-      {replacing && retained && <button className="btn btn-quiet" type="button" onClick={() => clearSecret()}>{t('保留已保存的 Key', 'Keep saved key')}</button>}
-      {fieldError('credential')}
-    </div>
+    {preset !== 'bailian-workspace' && credentialField}
   </>;
 
   return <form ref={form} noValidate className="decision-connection-form" onSubmit={event => { event.preventDefault(); void submit(true); }}>
@@ -173,7 +177,10 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
         {draft.mode === 'independent' && independentPanel}
         {credentialNotice && <p className="field-help decision-credential-notice" role="status">{credentialNotice}</p>}
         {bundle && <>
-          <label className="field"><span className="field-label">{t('模型 ID', 'Model ID')}</span><input className="input" data-native-field="model" maxLength={256} aria-invalid={!!issues.model} value={bundle.model} onChange={event => { setDraft(editBundle(draft, source, { model: event.target.value })); setIssues({}); }} />{fieldError('model')}</label>
+          <label className="field"><span className="field-label">{t('模型 ID', 'Model ID')}</span>
+            <input className="input" data-native-field="model" list={modelOptions ? 'decision-model-options' : undefined} maxLength={256} aria-invalid={!!issues.model} value={bundle.model} onChange={event => { setDraft(editBundle(draft, source, { model: event.target.value })); setIssues({}); }} />
+            {modelOptions && <datalist id="decision-model-options">{modelOptions.map(model => <option key={model} value={model} />)}</datalist>}
+            {fieldError('model')}</label>
           <div className="field decision-address"><span className="field-label">{t('完整地址', 'Complete URL')}</span>
             {showUrlInput ? <input className="input" data-native-field="endpoint" type="url" maxLength={2048} aria-invalid={!!issues.endpoint} aria-label={t('完整地址', 'Complete URL')} value={bundle.endpoint} placeholder="https://…" onChange={event => setEndpoint(event.target.value)} />
               : <div className="decision-address-value"><span className="decision-endpoint">{bundle.endpoint}</span><button className="btn btn-quiet" type="button" onClick={() => { setUrlOpen(true); requestAnimationFrame(() => form.current?.querySelector<HTMLInputElement>('[data-native-field="endpoint"]')?.focus()); }}>{t('更改', 'Change')}</button></div>}
@@ -184,6 +191,7 @@ export function DecisionModelForm({ initial, saved, view, revision, sources, lan
             {fieldError('wire_protocol')}
             {draft.mode === 'shared' && source?.endpoint_host && host && host !== source.endpoint_host && <p className="field-help decision-host-note" role="note">{t(`这个地址的主机（${host}）与 API 接入（${source.endpoint_host}）不同。调用时会向这个地址发送接入中的 Key。`, `This address’s host (${host}) differs from the API connection (${source.endpoint_host}). Calls send the connection’s key to this address.`)}</p>}
           </div>
+          {preset === 'bailian-workspace' && credentialField}
           {draft.mode === 'shared' && source && !rebind && <InheritedSourceNetwork key={source.source_id} sourceId={source.source_id} target={{ kind: 'draft', endpoint_url: bundle.endpoint }} refreshKey={source.revision ?? 0} language={language} mutable={mutable && !busy && source.state !== 'missing'} onDirty={networkChanged} onSaved={onRetrySources} />}
           {suggestion && !sameBundle(bundle, suggestion) && (suggestion.model || suggestion.endpoint) && <button className="btn btn-quiet decision-suggested" type="button" onClick={() => update(resetToSuggested(draft, source))}><UiIcon name="refresh" />{t('使用建议设置', 'Use suggested settings')}</button>}
           <DecisionContextSettings bundle={bundle} view={view} language={language} refreshKey={contextRefresh} onChange={context => { setDraft(editBundle(draft, source, { context })); setIssues({}); }} onPreview={setContextPreview} />

@@ -163,11 +163,36 @@ def run(repository):
                 smaller = data('decision context preview', preview_request)
                 assert (smaller['request_window_tokens'], smaller['per_question_window_tokens']) == (64000, 32000), smaller
                 assert not smaller['typesafe_long_context_header'], smaller
+        workspace = data('decision connections options --provider bailian-workspace')['selected_provider']
+        assert workspace['model'] == 'decision-model' and workspace['endpoint'] == '', workspace
+        assert workspace['model_options'] == ['decision-model', 'decision-model-preview'], workspace
+        token_plan = data('decision connections options --provider bailian-token-plan')['selected_provider']
+        assert token_plan['model'] == 'decision-model-preview' and 'model_options' not in token_plan, token_plan
+        for model, window in zip(workspace['model_options'], (268288, 65536)):
+            for region in ('cn-beijing', 'ap-southeast-1'):
+                resolved = data('decision context preview', {
+                    'endpoint': f'https://workspace.{region}.maas.aliyuncs.com/compatible-mode/v1/systemone',
+                    'model': model, 'wire_protocol': workspace['wire_protocol'],
+                    'policy': {'mode': 'automatic', 'typesafe_long_context': 'automatic'}})
+                assert resolved['request_source'] == 'metadata' and resolved['request_window_tokens'] == window, resolved
+        for host in ('token-plan.cn-beijing', 'trial.cn-beijing', 'token-plan.ap-southeast-1',
+                     'trial.ap-southeast-1', 'workspace.us-east-1'):
+            resolved = data('decision context preview', {
+                'endpoint': f'https://{host}.maas.aliyuncs.com/compatible-mode/v1/systemone',
+                'model': 'decision-model', 'wire_protocol': 'system_one',
+                'policy': {'mode': 'automatic', 'typesafe_long_context': 'automatic'}})
+            assert resolved['request_source'] == 'fallback' and resolved['metadata'] is None, resolved
         assert not Endpoint.requests, 'Preset previews contacted a provider'
         assert not data('decision connections list')['services'], 'Preset previews saved a connection'
         product.install_codex_fixture(MODEL, 'medium', upstream.base_url, NATIVE_TOKEN)
         source = save_native_source(product, upstream, NATIVE_TOKEN, cli_input=True)
         source_id = product.source_id
+        workspace_draft = data('decision connections apply --id decision/workspace-default --name Workspace'
+                               f' --provider bailian-workspace --source {source_id}'
+                               ' --endpoint https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/systemone')
+        service = workspace_draft['normalized_spec']['desired_state']['change']['service']
+        assert service['connection']['model'] == 'decision-model', service
+        assert service['context']['resolved']['request_window_tokens'] == 268288, service
         for codec in ('system_one', 'openai_decisions'):
             id = 'decision/context-' + codec
             command = f'decision connections apply --id {id} --name Context --provider compatible --model fixture --endpoint {endpoint} --wire-protocol {codec}'

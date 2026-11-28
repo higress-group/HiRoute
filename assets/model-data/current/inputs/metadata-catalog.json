@@ -1,6 +1,6 @@
 {
   "artifact_kind": "hiroute.model-metadata-current-source",
-  "as_of": "2026-11-23",
+  "as_of": "2026-11-27",
   "scope": {
     "catalog_generation": "current",
     "delivery": "client-bundled",
@@ -2233,6 +2233,24 @@
       "digest_state": "captured"
     },
     {
+      "source_key": "source-bailian-decision-model-api-20261127",
+      "authority": "help.aliyun.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://help.aliyun.com/en/model-studio/decision-model-api",
+      "collected_on": "2026-11-27",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
+      "source_key": "source-bailian-decision-model-stable-20261127",
+      "authority": "help.aliyun.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://help.aliyun.com/en/model-studio/decision-model-stable",
+      "collected_on": "2026-11-27",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
+    },
+    {
       "source_key": "source-bailian-deepseek-current",
       "authority": "help.aliyun.com",
       "source_kind": "provider-documentation",
@@ -2240,6 +2258,15 @@
       "collected_on": "2026-11-11",
       "bytes_digest": "sha256:a16f3c42bb1f9b36f86543351265f69136a527c3acccc85cf8a208da3641af5e",
       "digest_state": "captured"
+    },
+    {
+      "source_key": "source-bailian-newly-released-models-20261127",
+      "authority": "help.aliyun.com",
+      "source_kind": "provider-documentation",
+      "locator": "https://help.aliyun.com/en/model-studio/newly-released-models",
+      "collected_on": "2026-11-27",
+      "bytes_digest": null,
+      "digest_state": "not-captured"
     },
     {
       "source_key": "source-bailian-release-current",
@@ -4645,6 +4672,44 @@
         "source-188",
         "source-189"
       ]
+    },
+    {
+      "model_key": "decision-model",
+      "publisher": "Alibaba Cloud Model Studio",
+      "display_name": "Decision Model",
+      "canonical_identity": "decision-model",
+      "upstream_ids": [
+        "decision-model"
+      ],
+      "context_tokens": null,
+      "context_state": "not-applicable",
+      "max_output_tokens": null,
+      "max_output_state": "not-applicable",
+      "modalities": {
+        "text_input": "supported",
+        "image_input": "supported",
+        "text_output": "not-applicable"
+      },
+      "capabilities": {
+        "tool": "not-applicable",
+        "streaming": "not-applicable",
+        "web": "not-applicable",
+        "file": "not-applicable",
+        "computer": "not-applicable"
+      },
+      "reasoning": {
+        "kind": "unknown-per-protocol",
+        "note": "Decision-only model; no ordinary generation or reasoning contract is inferred."
+      },
+      "identity_stability": "immutable-or-provider-stable",
+      "lifecycle": "active",
+      "source_stability_note": "Decision input constraints belong exclusively to exact endpoint bindings.",
+      "evidence_refs": [
+        "source-bailian-decision-model-api-20261127",
+        "source-bailian-decision-model-stable-20261127",
+        "source-bailian-newly-released-models-20261127"
+      ],
+      "data_note": "System One returns choice, yes/no (noul), and score results with probabilities. The provider documents a 268,288-token context and maximum input; HiRoute resolves decision budgets on exact endpoint bindings."
     },
     {
       "model_key": "decision-model-preview",
@@ -7340,6 +7405,41 @@
       ]
     },
     {
+      "binding_key": "bailian-decisions-sg/decision-model/decision-model/decision",
+      "product_key": "bailian-decisions-sg",
+      "model_key": "decision-model",
+      "upstream_model_id": "decision-model",
+      "upstream_identity_role": "canonical-callable-id",
+      "lifecycle": "active",
+      "interface_candidates": [
+        "bailian-decisions-sg/system-one"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Documented decision interface; account and request-shape eligibility require runtime qualification."
+      },
+      "protocol_qualification": "runtime-required",
+      "decision_constraints": [
+        {
+          "constraint_key": "bailian-decisions-sg/system-one/always",
+          "interface_key": "bailian-decisions-sg/system-one",
+          "condition": "always",
+          "request_tokens": 268288,
+          "per_question_tokens": null,
+          "basis": "documented",
+          "note": "Documented System One context and maximum input are both 268,288 tokens. No separate per-question limit is specified.",
+          "evidence_refs": [
+            "source-bailian-decision-model-api-20261127",
+            "source-bailian-decision-model-stable-20261127"
+          ]
+        }
+      ],
+      "evidence_refs": [
+        "source-bailian-decision-model-api-20261127",
+        "source-bailian-decision-model-stable-20261127"
+      ]
+    },
+    {
       "binding_key": "bailian-payg-cn/decision-model-preview/decision-model-preview/decision",
       "product_key": "bailian-payg-cn",
       "model_key": "decision-model-preview",
@@ -7372,6 +7472,41 @@
       "evidence_refs": [
         "source-195",
         "source-196"
+      ]
+    },
+    {
+      "binding_key": "bailian-payg-cn/decision-model/decision-model/decision",
+      "product_key": "bailian-payg-cn",
+      "model_key": "decision-model",
+      "upstream_model_id": "decision-model",
+      "upstream_identity_role": "canonical-callable-id",
+      "lifecycle": "active",
+      "interface_candidates": [
+        "bailian-payg-cn/system-one"
+      ],
+      "availability": {
+        "state": "conditional",
+        "condition": "Documented decision interface; account and request-shape eligibility require runtime qualification."
+      },
+      "protocol_qualification": "runtime-required",
+      "decision_constraints": [
+        {
+          "constraint_key": "bailian-payg-cn/system-one/always",
+          "interface_key": "bailian-payg-cn/system-one",
+          "condition": "always",
+          "request_tokens": 268288,
+          "per_question_tokens": null,
+          "basis": "documented",
+          "note": "Documented System One context and maximum input are both 268,288 tokens. No separate per-question limit is specified.",
+          "evidence_refs": [
+            "source-bailian-decision-model-api-20261127",
+            "source-bailian-decision-model-stable-20261127"
+          ]
+        }
+      ],
+      "evidence_refs": [
+        "source-bailian-decision-model-api-20261127",
+        "source-bailian-decision-model-stable-20261127"
       ]
     },
     {
@@ -11025,6 +11160,56 @@
       ]
     },
     {
+      "pricing_key": "bailian-decisions-sg/decision-model/decision-model",
+      "product_key": "bailian-decisions-sg",
+      "model_key": "decision-model",
+      "upstream_model_id": "decision-model",
+      "currency": "CNY",
+      "unit": "per-1m-tokens",
+      "price_state": "exact",
+      "schedules": [
+        {
+          "schedule_key": "standard",
+          "condition": {
+            "kind": "region",
+            "region": "ap-southeast-1"
+          },
+          "application": "whole-request",
+          "rates": {
+            "input": "0.306"
+          }
+        }
+      ],
+      "evidence_refs": [
+        "source-bailian-decision-model-stable-20261127"
+      ]
+    },
+    {
+      "pricing_key": "bailian-payg-cn/decision-model/decision-model",
+      "product_key": "bailian-payg-cn",
+      "model_key": "decision-model",
+      "upstream_model_id": "decision-model",
+      "currency": "CNY",
+      "unit": "per-1m-tokens",
+      "price_state": "exact",
+      "schedules": [
+        {
+          "schedule_key": "standard",
+          "condition": {
+            "kind": "region",
+            "region": "cn-beijing"
+          },
+          "application": "whole-request",
+          "rates": {
+            "input": "0.30"
+          }
+        }
+      ],
+      "evidence_refs": [
+        "source-bailian-decision-model-stable-20261127"
+      ]
+    },
+    {
       "pricing_key": "bailian-payg-cn/qwen-4-max/qwen4-max",
       "product_key": "bailian-payg-cn",
       "model_key": "qwen-4-max",
@@ -12699,6 +12884,12 @@
       "status": "runtime_required",
       "subject": "Qwen3-Coder-Next thinking support differs between Coding Plan FAQ and general model table",
       "decision": "Keep endpoint reasoning conflict until product-authenticated metadata resolves it."
+    },
+    {
+      "decision_key": "bailian-stable-decision-regions",
+      "status": "runtime_required",
+      "subject": "Regional availability and standard input rates for Bailian decision-model",
+      "decision": "Alibaba Cloud documents Beijing, Singapore, Virginia, Frankfurt, Tokyo and Hong Kong. Standard input costs CNY 0.306 per million tokens in Singapore and CNY 0.30 in each of the other five regions. HiRoute binds only its existing Beijing and Singapore workspace System One products. Account access requires independent qualification."
     },
     {
       "decision_key": "claude-5-2-pricing-and-access",
