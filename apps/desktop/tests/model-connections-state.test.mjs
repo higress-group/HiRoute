@@ -14,7 +14,10 @@ import {
   selectedModelRefsAfterRecheck,
   explicitApiModelSelection,
   blankModel,
-  withCapabilityFallback,
+  declareCapability,
+  applySuggestedCapabilities,
+  displayCapabilities,
+  toWireModel,
   withRegisteredModels,
 } from '../src/features/model-connections/state.ts';
 
@@ -46,21 +49,50 @@ test('tool recheck keeps explicit model identities with fresh refs and drops una
   assert.deepEqual([...selected], ['old', 'old-removed', 'old-blocked']);
 });
 
-test('unknown capability fallback is explicit and leaves user facts untouched', () => {
+test('a blank model keeps every fact unknown and offers editable suggestions', () => {
   const model = blankModel('unknown-model');
-  assert.equal(model.capabilities.context_tokens.value, 200_000);
-  assert.equal(model.capabilities.max_output_tokens.value, 32_768);
-  assert.equal(model.capabilities.vision.value, false);
-  assert.equal(model.capabilities.tool.value, true);
-  assert.equal(model.capabilities.streaming.value, true);
-  assert.deepEqual(model.capabilities.native_reasoning.value, { kind: 'toggle', parameter: 'enable_thinking' });
-  const withUnknown = { ...model, capabilities: { ...model.capabilities,
-    tool: { value: null, basis: 'unknown' },
-    vision: { value: true, basis: 'user_declared' },
-  } };
-  const completed = withCapabilityFallback(withUnknown);
-  assert.equal(completed.capabilities.tool.value, true);
-  assert.equal(completed.capabilities.vision.value, true);
+  for (const key of ['tool', 'vision', 'streaming', 'context_tokens', 'max_output_tokens', 'native_reasoning']) {
+    assert.equal(model.capabilities[key].value, null, key);
+    assert.equal(model.capabilities[key].basis, 'unknown', key);
+  }
+  assert.ok(model.suggested_capabilities);
+  assert.equal(displayCapabilities(model).context_tokens.value, 200_000);
+  assert.equal(displayCapabilities(model).vision.value, false);
+});
+
+test('declaring one capability preserves unrelated facts and suggestions', () => {
+  const model = blankModel('unknown-model');
+  const declared = declareCapability(model, 'vision', { value: true, basis: 'user_declared' });
+  assert.equal(declared.capabilities.vision.value, true);
+  assert.equal(declared.capabilities.vision.basis, 'user_declared');
+  assert.equal(declared.capabilities.tool.basis, 'unknown');
+  assert.deepEqual(declared.cleared_capabilities, []);
+  assert.ok(declared.suggested_capabilities);
+});
+
+test('apply suggestions fills only untouched unknown facts', () => {
+  const model = declareCapability(blankModel('unknown-model'), 'vision', { value: true, basis: 'user_declared' });
+  const applied = applySuggestedCapabilities(model);
+  assert.equal(applied.capabilities.tool.value, true);
+  assert.equal(applied.capabilities.vision.value, true);
+  assert.equal(applied.capabilities.context_tokens.value, 200_000);
+});
+
+test('clearing a suggested field keeps it unknown and blocks silent refill', () => {
+  const model = declareCapability(blankModel('unknown-model'), 'tool', { value: null, basis: 'unknown' });
+  assert.deepEqual(model.cleared_capabilities, ['tool']);
+  assert.equal(displayCapabilities(model).tool.value, null);
+  const applied = applySuggestedCapabilities(model);
+  assert.equal(applied.capabilities.tool.value, null);
+});
+
+test('wire model keeps declarations and never serializes suggestions', () => {
+  const model = declareCapability(blankModel('wire-model'), 'vision', { value: true, basis: 'user_declared' });
+  const wire = toWireModel(model);
+  assert.equal(wire.capabilities.vision.value, true);
+  assert.equal(wire.capabilities.tool.basis, 'unknown');
+  assert.equal('suggested_capabilities' in wire, false);
+  assert.equal('client_id' in wire, false);
 });
 
 test('only a terminal saved Operation can close a model save as successful', () => {

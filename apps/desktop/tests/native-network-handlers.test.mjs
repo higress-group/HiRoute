@@ -94,7 +94,7 @@ for (const [name, ready, network] of [
     const check = bind(runCheck, {
       phase: 'editing', props: { mutable: true }, custom: true, draftRef,
       registeredCandidates: [], preservedModelIds: { current: new Set(['model-one']) },
-      withCapabilityFallback: value => value, manualModelIdError: () => null,
+      toWireModel: value => value, manualModelIdError: () => null,
       password: { current: input }, networkReady: ready, networkDraft, manualProxyError,
       setError: value => { state.error = value; }, setScreen: value => { state.screen = value; },
       setNetworkReveal: update => { state.reveal = update(state.reveal); },
